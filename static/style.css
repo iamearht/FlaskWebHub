@@ -13,13 +13,13 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 2px solid #1e7a46;
+    border-bottom: 2px solid #1565C0;
 }
 
 .nav-brand {
     font-size: 1.4em;
     font-weight: bold;
-    color: #4caf50;
+    color: #2196F3;
 }
 
 .nav-links { display: flex; gap: 16px; align-items: center; }
@@ -32,7 +32,7 @@ body {
     transition: all 0.2s;
 }
 
-.nav-link:hover { color: #fff; background: #1e7a46; }
+.nav-link:hover { color: #fff; background: #1565C0; }
 
 .nav-coins { color: #ffd700; font-weight: 600; }
 
@@ -45,7 +45,7 @@ body {
     margin-bottom: 8px;
 }
 .flash.error { background: #5c1a1a; border: 1px solid #ff4444; }
-.flash.success { background: #1a3d1a; border: 1px solid #4caf50; }
+.flash.success { background: #0D2137; border: 1px solid #2196F3; }
 
 .btn {
     padding: 10px 20px;
@@ -59,10 +59,10 @@ body {
     display: inline-block;
 }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: #1e7a46; color: #fff; }
-.btn-primary:hover:not(:disabled) { background: #25954f; }
-.btn-success { background: #2e7d32; color: #fff; }
-.btn-success:hover { background: #388e3c; }
+.btn-primary { background: #1565C0; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #1976D2; }
+.btn-success { background: #1E88E5; color: #fff; }
+.btn-success:hover { background: #2196F3; }
 .btn-danger { background: #c62828; color: #fff; }
 .btn-danger:hover { background: #e53935; }
 .btn-warning { background: #f57f17; color: #fff; }
@@ -85,7 +85,7 @@ body {
 .auth-container h1 {
     text-align: center;
     margin-bottom: 24px;
-    color: #4caf50;
+    color: #2196F3;
 }
 
 .form-group { margin-bottom: 16px; }
@@ -106,11 +106,11 @@ body {
 }
 .form-group input:focus, .bet-input:focus {
     outline: none;
-    border-color: #4caf50;
+    border-color: #2196F3;
 }
 
 .auth-switch { text-align: center; margin-top: 16px; color: #888; }
-.auth-switch a { color: #4caf50; }
+.auth-switch a { color: #2196F3; }
 
 .lobby { padding: 10px 0; }
 .lobby-header {
@@ -119,7 +119,7 @@ body {
     align-items: center;
     margin-bottom: 24px;
 }
-.lobby-header h1 { color: #4caf50; }
+.lobby-header h1 { color: #2196F3; }
 .coins-display { color: #ffd700; font-size: 1.2em; }
 
 .lobby-section {
@@ -130,7 +130,7 @@ body {
     border: 1px solid #2a3450;
 }
 .lobby-section h2 {
-    color: #4caf50;
+    color: #2196F3;
     margin-bottom: 16px;
     font-size: 1.1em;
 }
@@ -158,11 +158,11 @@ body {
 .match-stake { color: #ffd700; font-weight: 600; }
 .match-status { padding: 3px 10px; border-radius: 12px; font-size: 0.8em; text-transform: uppercase; }
 .status-waiting { background: #5d4037; color: #ffcc80; }
-.status-active { background: #1b5e20; color: #a5d6a7; }
+.status-active { background: #0D47A1; color: #90CAF9; }
 .waiting-text { color: #999; font-style: italic; }
 .match-actions { display: flex; gap: 8px; align-items: center; }
 
-.result-win { color: #4caf50; font-weight: bold; }
+.result-win { color: #2196F3; font-weight: bold; }
 .result-lose { color: #ef5350; font-weight: bold; }
 .result-tie { color: #ffd700; font-weight: bold; }
 
@@ -170,12 +170,12 @@ body {
     text-align: center;
     padding: 60px 20px;
 }
-.waiting-room h1 { color: #4caf50; margin-bottom: 16px; }
+.waiting-room h1 { color: #2196F3; margin-bottom: 16px; }
 
 .spinner {
     width: 40px; height: 40px;
     border: 4px solid #2a3450;
-    border-top-color: #4caf50;
+    border-top-color: #2196F3;
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 20px auto;
@@ -195,7 +195,7 @@ body {
     border: 1px solid #2a3450;
 }
 .player-info { text-align: center; }
-.player-info.you .player-name { color: #4caf50; font-weight: bold; }
+.player-info.you .player-name { color: #2196F3; font-weight: bold; }
 .player-name { font-size: 1.1em; display: block; }
 .player-scores { font-size: 0.85em; color: #999; }
 .game-meta { text-align: center; }
@@ -207,7 +207,7 @@ body {
     border-radius: 16px;
     padding: 24px;
     min-height: 400px;
-    border: 3px solid #1e7a46;
+    border: 3px solid #1565C0;
     position: relative;
 }
 
@@ -244,26 +244,26 @@ body {
     background: #0a2010;
     padding: 14px;
     border-radius: 10px;
-    border: 1px solid #1e7a46;
+    border: 1px solid #1565C0;
     min-width: 130px;
 }
-.bet-box label { display: block; margin-bottom: 6px; color: #8bc34a; font-size: 0.85em; }
+.bet-box label { display: block; margin-bottom: 6px; color: #64B5F6; font-size: 0.85em; }
 .bet-box .bet-input { width: 100%; text-align: center; }
 
 .dealer-section {
     text-align: center;
     margin-bottom: 20px;
     padding-bottom: 16px;
-    border-bottom: 2px dashed #1e7a46;
+    border-bottom: 2px dashed #1565C0;
 }
 
 #table-top-section .dealer-section {
-    border-bottom: 2px dashed #1e7a46;
+    border-bottom: 2px dashed #1565C0;
     margin-bottom: 20px;
 }
 
 #table-bottom-section .dealer-section {
-    border-top: 2px dashed #1e7a46;
+    border-top: 2px dashed #1565C0;
     border-bottom: none;
     margin-top: 20px;
     padding-top: 16px;
@@ -274,11 +274,11 @@ body {
 #table-top-section .boxes-section {
     margin-bottom: 20px;
     padding-bottom: 16px;
-    border-bottom: 2px dashed #1e7a46;
+    border-bottom: 2px dashed #1565C0;
 }
 
 .boxes-label {
-    color: #8bc34a;
+    color: #64B5F6;
     font-size: 1em;
     margin-bottom: 12px;
     text-align: center;
@@ -344,7 +344,7 @@ body {
     box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
 }
 .hand-container.result-win, .hand-container.result-blackjack_win {
-    border-color: #4caf50;
+    border-color: #2196F3;
     background: #0a2a10;
 }
 .hand-container.result-lose { border-color: #ef5350; background: #2a0a0a; }
@@ -352,7 +352,7 @@ body {
 
 .hand-header {
     font-size: 0.8em;
-    color: #8bc34a;
+    color: #64B5F6;
     margin-bottom: 6px;
 }
 
@@ -364,7 +364,7 @@ body {
     font-size: 0.85em;
     margin-left: 6px;
 }
-.hand-result.result-win, .hand-result.result-blackjack_win { background: #1b5e20; color: #a5d6a7; }
+.hand-result.result-win, .hand-result.result-blackjack_win { background: #0D47A1; color: #90CAF9; }
 .hand-result.result-lose { background: #b71c1c; color: #ef9a9a; }
 .hand-result.result-push { background: #5d4037; color: #ffcc80; }
 
@@ -387,7 +387,7 @@ body {
     text-align: center;
     padding: 40px 0;
 }
-.match-result-page h1 { color: #4caf50; margin-bottom: 24px; }
+.match-result-page h1 { color: #2196F3; margin-bottom: 24px; }
 
 .result-card {
     background: #151b2b;
@@ -412,14 +412,14 @@ body {
     min-width: 200px;
     border: 2px solid #2a3450;
 }
-.result-player.winner { border-color: #4caf50; background: #0d2220; }
-.result-player h3 { color: #4caf50; margin-bottom: 8px; }
+.result-player.winner { border-color: #2196F3; background: #0D1B2A; }
+.result-player h3 { color: #2196F3; margin-bottom: 8px; }
 .result-total { font-size: 1.6em; color: #ffd700; font-weight: bold; }
 .result-vs { font-size: 1.4em; color: #666; font-weight: bold; }
 
 .result-outcome { padding: 16px; }
 .result-outcome h2 { font-size: 1.6em; margin-bottom: 8px; }
-.win-text { color: #4caf50; }
+.win-text { color: #2196F3; }
 .lose-text { color: #ef5350; }
 
 .timer-display {
@@ -441,7 +441,7 @@ body {
 .timer-bar {
     height: 100%;
     width: 100%;
-    background: #4caf50;
+    background: #2196F3;
     border-radius: 4px;
     transition: width 0.1s linear;
 }
@@ -478,7 +478,7 @@ body {
 }
 
 .draw-player h4 {
-    color: #8bc34a;
+    color: #64B5F6;
     margin-bottom: 10px;
 }
 
@@ -522,7 +522,7 @@ body {
 .insurance-check {
     margin-right: 8px;
     transform: scale(1.2);
-    accent-color: #4caf50;
+    accent-color: #2196F3;
 }
 
 .nav-brand {
@@ -538,10 +538,10 @@ body {
     color: #e0e0e0;
     font-size: 1em;
 }
-.form-group select:focus { outline: none; border-color: #4caf50; }
+.form-group select:focus { outline: none; border-color: #2196F3; }
 
 .wallet-page h1, .account-page h1, .tournaments-page h1,
-.affiliate-page h1, .history-page h1 { color: #4caf50; margin-bottom: 20px; }
+.affiliate-page h1, .history-page h1 { color: #2196F3; margin-bottom: 20px; }
 
 .wallet-balance {
     background: #151b2b;
@@ -566,14 +566,14 @@ body {
     border-radius: 12px;
     border: 1px solid #2a3450;
 }
-.wallet-card h3 { color: #4caf50; margin-bottom: 16px; }
+.wallet-card h3 { color: #2196F3; margin-bottom: 16px; }
 .wallet-section {
     background: #151b2b;
     padding: 20px;
     border-radius: 12px;
     border: 1px solid #2a3450;
 }
-.wallet-section h2 { color: #4caf50; margin-bottom: 16px; }
+.wallet-section h2 { color: #2196F3; margin-bottom: 16px; }
 
 .data-table {
     width: 100%;
@@ -591,18 +591,18 @@ body {
     padding: 10px 12px;
     border-bottom: 1px solid #1e2a40;
 }
-.text-green { color: #4caf50; }
+.text-green { color: #2196F3; }
 .text-red { color: #ef5350; }
 
 .tx-type { padding: 2px 8px; border-radius: 4px; font-size: 0.85em; text-transform: uppercase; }
-.tx-deposit { background: #1b5e20; color: #a5d6a7; }
+.tx-deposit { background: #0D47A1; color: #90CAF9; }
 .tx-withdrawal { background: #5d4037; color: #ffcc80; }
 
 .status-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.8em; text-transform: capitalize; }
 .status-pending { background: #5d4037; color: #ffcc80; }
-.status-approved { background: #1b5e20; color: #a5d6a7; }
+.status-approved { background: #0D47A1; color: #90CAF9; }
 .status-rejected { background: #b71c1c; color: #ef9a9a; }
-.status-completed { background: #1b5e20; color: #a5d6a7; }
+.status-completed { background: #0D47A1; color: #90CAF9; }
 
 .empty-text { color: #666; text-align: center; padding: 20px; font-style: italic; }
 
@@ -627,7 +627,7 @@ body {
     border-radius: 12px;
     border: 1px solid #2a3450;
 }
-.account-card h3 { color: #4caf50; margin-bottom: 16px; }
+.account-card h3 { color: #2196F3; margin-bottom: 16px; }
 .profile-info { margin-bottom: 16px; }
 .info-row { padding: 6px 0; border-bottom: 1px solid #1e2a40; display: flex; justify-content: space-between; }
 .info-row .label { color: #888; }
@@ -683,7 +683,7 @@ body {
 .vip-progress-bar.large { height: 12px; margin: 12px 0; }
 .vip-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #4caf50, #8bc34a);
+    background: linear-gradient(90deg, #2196F3, #64B5F6);
     border-radius: 4px;
     transition: width 0.3s;
 }
@@ -714,7 +714,7 @@ body {
     border-radius: 12px;
     border: 1px solid #2a3450;
 }
-.affiliate-card h3 { color: #4caf50; margin-bottom: 16px; }
+.affiliate-card h3 { color: #2196F3; margin-bottom: 16px; }
 .affiliate-section {
     background: #151b2b;
     padding: 20px;
@@ -722,7 +722,7 @@ body {
     border: 1px solid #2a3450;
     margin-bottom: 20px;
 }
-.affiliate-section h2 { color: #4caf50; margin-bottom: 16px; }
+.affiliate-section h2 { color: #2196F3; margin-bottom: 16px; }
 .referral-code-display {
     text-align: center;
     padding: 16px;
@@ -745,7 +745,7 @@ body {
     border: 1px solid #2a3450;
     text-align: center;
 }
-.stake-header h3 { color: #4caf50; margin-bottom: 6px; }
+.stake-header h3 { color: #2196F3; margin-bottom: 6px; }
 .prize-pool { color: #ffd700; font-weight: 600; }
 .stake-info { margin: 12px 0; }
 .entry-count { color: #aaa; font-size: 0.9em; display: block; margin-bottom: 6px; }
@@ -759,15 +759,15 @@ body {
 }
 .entry-progress-fill {
     height: 100%;
-    background: #4caf50;
+    background: #2196F3;
     border-radius: 4px;
     transition: width 0.3s;
 }
 .payout-info { color: #888; font-size: 0.75em; margin-bottom: 12px; }
 .joined-badge {
     display: inline-block;
-    background: #1b5e20;
-    color: #a5d6a7;
+    background: #0D47A1;
+    color: #90CAF9;
     padding: 6px 16px;
     border-radius: 8px;
     font-weight: 600;
@@ -780,10 +780,10 @@ body {
     border: 1px solid #2a3450;
     margin-bottom: 20px;
 }
-.tournament-section h2 { color: #4caf50; margin-bottom: 16px; }
+.tournament-section h2 { color: #2196F3; margin-bottom: 16px; }
 .subtitle { color: #888; margin-bottom: 20px; }
 
-.tournament-view h1 { color: #4caf50; margin-bottom: 12px; }
+.tournament-view h1 { color: #2196F3; margin-bottom: 12px; }
 .tournament-meta {
     display: flex;
     gap: 16px;
@@ -803,7 +803,7 @@ body {
     flex-shrink: 0;
 }
 .bracket-round h3 {
-    color: #8bc34a;
+    color: #64B5F6;
     font-size: 0.9em;
     margin-bottom: 12px;
     text-align: center;
@@ -816,14 +816,14 @@ body {
     margin-bottom: 12px;
     text-align: center;
 }
-.bracket-match.bracket-active { border-color: #4caf50; box-shadow: 0 0 8px rgba(76,175,80,0.3); }
+.bracket-match.bracket-active { border-color: #2196F3; box-shadow: 0 0 8px rgba(33,150,243,0.3); }
 .bracket-match.bracket-completed { opacity: 0.8; }
 .bracket-match.bracket-final { border-color: #ffd700; }
 .bracket-player {
     padding: 4px 0;
     font-size: 0.95em;
 }
-.bracket-player.bracket-winner { color: #4caf50; font-weight: bold; }
+.bracket-player.bracket-winner { color: #2196F3; font-weight: bold; }
 .bracket-vs { color: #666; font-size: 0.8em; }
 .entries-list { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .entry-badge {
@@ -846,11 +846,11 @@ body {
 .standing-3 { border-left: 4px solid #795548; }
 .standing-4 { border-left: 4px solid #546e7a; }
 .placement { font-weight: bold; color: #ffd700; }
-.prize { color: #4caf50; font-weight: 600; }
+.prize { color: #2196F3; font-weight: 600; }
 .tournament-results { margin-top: 24px; }
-.tournament-results h3 { color: #4caf50; margin-bottom: 16px; }
+.tournament-results h3 { color: #2196F3; margin-bottom: 16px; }
 
-.live-card { border-color: #4caf50; }
+.live-card { border-color: #2196F3; }
 .live-indicator {
     background: #ef5350;
     color: #fff;
@@ -893,7 +893,7 @@ body {
     border: 1px solid #1e2a40;
     text-align: center;
 }
-.variant-header h4 { color: #8bc34a; margin-bottom: 4px; }
+.variant-header h4 { color: #64B5F6; margin-bottom: 4px; }
 .variant-meta { margin-top: 6px; }
 
 .filter-bar {
@@ -931,9 +931,9 @@ body {
     align-items: flex-end;
     flex-wrap: wrap;
 }
-.payout-section h4 { color: #4caf50; }
+.payout-section h4 { color: #2196F3; }
 
-.tx-match { background: #1b5e20; color: #a5d6a7; }
+.tx-match { background: #0D47A1; color: #90CAF9; }
 .tx-tournament { background: #e65100; color: #ffcc80; }
 
 @media (max-width: 768px) {
@@ -989,7 +989,7 @@ body {
 }
 
 .mode-tab.active {
-    background: #1e7a46;
+    background: #1565C0;
     color: #fff;
 }
 

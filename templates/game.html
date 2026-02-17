@@ -120,21 +120,24 @@ function startTimer(remaining) {
         return;
     }
 
+    var totalTime = remaining;
     timerEl.style.display = 'block';
     timerEnd = Date.now() + remaining * 1000;
 
     timerInterval = setInterval(function() {
         var left = Math.max(0, (timerEnd - Date.now()) / 1000);
         timerText.textContent = Math.ceil(left) + 's';
-        timerBar.style.width = (left / 10 * 100) + '%';
-        if (left <= 3) {
+        timerBar.style.width = (left / totalTime * 100) + '%';
+        if (left <= 5) {
             timerBar.className = 'timer-bar timer-critical';
         } else {
             timerBar.className = 'timer-bar';
         }
         if (left <= 0) {
             clearInterval(timerInterval);
-            setTimeout(function() { fetchState(); }, 500);
+            var btns = document.querySelectorAll('.game-area button');
+            for (var b = 0; b < btns.length; b++) btns[b].disabled = true;
+            fetchState();
         }
     }, 100);
 }

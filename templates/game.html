@@ -26,10 +26,9 @@
 
         <div id="card-draw-area" class="game-area" style="display:none">
             <h2>Card Draw</h2>
-            <p>Each player draws a card. The higher card gets to choose whether to play as Player or Bank first.</p>
+            <p>Drawing cards to determine who chooses their role...</p>
             <div id="draw-cards-display" class="draw-cards-display"></div>
             <div id="draw-result-text" class="draw-result-text"></div>
-            <button class="btn btn-primary" id="btn-draw-card">Draw Card</button>
         </div>
 
         <div id="choice-area" class="game-area" style="display:none">
@@ -40,12 +39,6 @@
                 <button class="btn btn-primary" id="btn-go-player">Go First as Player</button>
                 <button class="btn btn-secondary" id="btn-go-bank">Go First as Bank</button>
             </div>
-        </div>
-
-        <div id="turn-start-area" class="game-area" style="display:none">
-            <h2 id="turn-start-title"></h2>
-            <p id="turn-start-desc"></p>
-            <button class="btn btn-primary" id="btn-start-turn">Start Turn</button>
         </div>
 
         <div id="betting-area" class="game-area" style="display:none">
@@ -69,9 +62,9 @@
 
         <div id="insurance-area" class="game-area" style="display:none">
             <h3>Dealer shows an Ace! Insurance?</h3>
-            <p id="insurance-cost"></p>
-            <button class="btn btn-success" id="btn-insurance-yes">Take Insurance</button>
-            <button class="btn btn-danger" id="btn-insurance-no">No Insurance</button>
+            <p>Insurance costs half of each hand's bet. Pays 2:1 if dealer has Blackjack.</p>
+            <div id="insurance-hands"></div>
+            <button class="btn btn-primary" id="btn-insurance-submit">Confirm Insurance</button>
         </div>
 
         <div id="table-area" class="game-area" style="display:none">
@@ -87,7 +80,7 @@
         </div>
 
         <div id="dealer-action-area" class="action-area" style="display:none">
-            <span id="dealer-action-label" class="dealer-label">Dealer has <strong id="dealer-action-value"></strong> — Hit or Stand?</span>
+            <span id="dealer-action-label" class="dealer-label"></span>
             <button class="btn btn-primary" id="btn-dealer-hit">Hit</button>
             <button class="btn btn-warning" id="btn-dealer-stand">Stand</button>
         </div>
@@ -95,7 +88,7 @@
         <div id="round-result-area" class="game-area" style="display:none">
             <h3>Round Complete</h3>
             <p id="round-result-chips"></p>
-            <button class="btn btn-primary" id="btn-next-round">Continue</button>
+            <p id="round-result-auto" style="color:#aaa;font-size:0.85em"></p>
         </div>
 
         <div id="waiting-opponent" class="game-area" style="display:none">
@@ -121,12 +114,18 @@ let polling = null;
 let actionLock = false;
 let timerInterval = null;
 let timerEnd = null;
+let drawAnimationDone = false;
+let roundResultAutoTimer = null;
 
 function cardHtml(card) {
     if (card.rank === '?') return '<div class="card card-back">?</div>';
     const suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
     const color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
     return '<div class="card card-' + color + '">' + card.rank + '<span class="suit">' + suitSymbols[card.suit] + '</span></div>';
+}
+
+function cardBackHtml() {
+    return '<div class="card card-back">?</div>';
 }
 
 function startTimer(remaining) {
@@ -170,7 +169,7 @@ async function apiCall(endpoint, method, body) {
         var r = await fetch('/api/match/' + MATCH_ID + '/' + endpoint, opts);
         var data = await r.json();
         if (data.error) {
-            alert(data.error);
+            console.warn('API error:', data.error);
             return null;
         }
         return data;
@@ -224,12 +223,9 @@ function renderState(s) {
         return;
     }
 
-    if (s.phase === 'CARD_DRAW') {
+    if (s.phase === 'CARD_DRAW' || (s.phase === 'CHOICE' && !drawAnimationDone)) {
         phaseEl.textContent = 'Card Draw';
-        showCardDraw(s);
-        if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
-            startTimer(s.timer_remaining);
-        }
+        showCardDrawAnimation(s);
         return;
     }
 
@@ -248,15 +244,8 @@ function renderState(s) {
         return;
     }
 
-    if (s.phase === 'TURN_START') {
-        phaseEl.textContent = 'Turn Start';
-        showTurnStart(s);
-        document.getElementById('timer-display').style.display = 'none';
-        return;
-    }
-
     if (!s.is_my_turn) {
-        if (s.round && s.phase !== 'WAITING_BETS' && s.phase !== 'TURN_START') {
+        if (s.round && s.phase !== 'WAITING_BETS') {
             phaseEl.textContent = s.i_am_dealer ? "Watching Player" : "Watching Opponent";
             showTable(s);
             document.getElementById('waiting-opponent').style.display = 'block';
@@ -301,34 +290,69 @@ function renderState(s) {
     }
 }
 
-function showCardDraw(s) {
+function showCardDrawAnimation(s) {
     var area = document.getElementById('card-draw-area');
     area.style.display = 'block';
+    document.getElementById('timer-display').style.display = 'none';
 
-    var html = '<div class="draw-hands">';
     var p1Cards = s.draw_cards.player1;
     var p2Cards = s.draw_cards.player2;
 
+    var elapsed = (Date.now() / 1000) - (s.draw_timestamp || 0);
+    var revealDelay = 3;
+
+    if (elapsed < revealDelay) {
+        var html = '<div class="draw-hands">';
+        html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
+        for (var i = 0; i < p1Cards.length; i++) html += cardBackHtml();
+        html += '</div></div>';
+        html += '<div class="draw-vs">VS</div>';
+        html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
+        for (var i = 0; i < p2Cards.length; i++) html += cardBackHtml();
+        html += '</div></div>';
+        html += '</div>';
+        document.getElementById('draw-cards-display').innerHTML = html;
+        document.getElementById('draw-result-text').textContent = 'Revealing cards...';
+
+        var timeLeft = (revealDelay - elapsed) * 1000;
+        setTimeout(function() {
+            drawAnimationDone = true;
+            renderState(currentState);
+        }, timeLeft);
+        return;
+    }
+
+    drawAnimationDone = true;
+
+    var html = '<div class="draw-hands">';
     html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
     for (var i = 0; i < p1Cards.length; i++) html += cardHtml(p1Cards[i]);
     html += '</div></div>';
-
     html += '<div class="draw-vs">VS</div>';
-
     html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
     for (var i = 0; i < p2Cards.length; i++) html += cardHtml(p2Cards[i]);
     html += '</div></div>';
     html += '</div>';
-
     document.getElementById('draw-cards-display').innerHTML = html;
 
-    var resultText = '';
-    if (p1Cards.length > 0 && !s.draw_winner) {
-        resultText = 'Tied! Draw again.';
+    var winnerText = '';
+    if (s.draw_winner === PLAYER_NUM) {
+        winnerText = 'You drew the higher card!';
+    } else {
+        winnerText = 'Opponent drew the higher card!';
     }
-    document.getElementById('draw-result-text').textContent = resultText;
 
-    document.getElementById('btn-draw-card').style.display = s.draw_winner ? 'none' : '';
+    var tieDraws = p1Cards.length - 1;
+    if (tieDraws > 0) {
+        winnerText = tieDraws + ' tie(s) before deciding. ' + winnerText;
+    }
+    document.getElementById('draw-result-text').textContent = winnerText;
+
+    if (s.phase === 'CHOICE') {
+        setTimeout(function() {
+            renderState(currentState);
+        }, 2000);
+    }
 }
 
 function showChoice(s) {
@@ -364,25 +388,6 @@ function showChoice(s) {
     }
 }
 
-function showTurnStart(s) {
-    var area = document.getElementById('turn-start-area');
-    area.style.display = 'block';
-    var title = document.getElementById('turn-start-title');
-    var desc = document.getElementById('turn-start-desc');
-    var turnNum = s.current_turn + 1;
-    if (s.current_player_role === PLAYER_NUM) {
-        title.textContent = 'Turn ' + turnNum + '/4: You are the Player';
-        var chipText = 'Starting chips: ' + (s.starting_chips || 100);
-        if (turnNum > 2) {
-            chipText += ' (carry-over + 100 bonus)';
-        }
-        desc.textContent = chipText;
-    } else {
-        title.textContent = 'Turn ' + turnNum + '/4: You are the Bank (Dealer)';
-        desc.textContent = 'Your opponent plays this turn. You control all dealer hit/stand decisions.';
-    }
-}
-
 function showBetting(s) {
     document.getElementById('betting-area').style.display = 'block';
     document.getElementById('chips-display').textContent = 'Chips: ' + s.chips;
@@ -391,11 +396,27 @@ function showBetting(s) {
 
 function showInsurance(s) {
     document.getElementById('insurance-area').style.display = 'block';
-    var totalBet = 0;
-    for (var i = 0; i < s.round.boxes.length; i++) {
-        totalBet += s.round.boxes[i].hands[0].bet;
+    var handsDiv = document.getElementById('insurance-hands');
+    var html = '';
+    var handIdx = 0;
+    for (var bi = 0; bi < s.round.boxes.length; bi++) {
+        var box = s.round.boxes[bi];
+        for (var hi = 0; hi < box.hands.length; hi++) {
+            var hand = box.hands[hi];
+            var insCost = Math.floor(hand.bet / 2);
+            if (insCost < 1) insCost = 1;
+            var label = 'Box ' + (bi + 1);
+            if (box.hands.length > 1) label += ' Hand ' + (hi + 1);
+            html += '<div class="insurance-hand-option">';
+            html += '<label><input type="checkbox" class="insurance-check" data-idx="' + handIdx + '"> ';
+            html += label + ' (Bet: ' + hand.bet + ') — Insurance cost: ' + insCost + ' chips';
+            html += '</label>';
+            html += '<div class="card-row" style="margin-top:4px">' + hand.cards.map(cardHtml).join('') + '</div>';
+            html += '</div>';
+            handIdx++;
+        }
     }
-    document.getElementById('insurance-cost').textContent = 'Insurance costs ' + Math.floor(totalBet / 2) + ' chips';
+    handsDiv.innerHTML = html;
 }
 
 function buildDealerHtml(s) {
@@ -466,8 +487,7 @@ function showActions(s) {
 
 function showDealerActions(s) {
     document.getElementById('dealer-action-area').style.display = 'flex';
-    document.getElementById('dealer-action-value').textContent = s.round.dealer_value;
-    document.getElementById('dealer-action-label').innerHTML = 'Your hand is at <strong id="dealer-action-value">' + s.round.dealer_value + '</strong> — Hit or Stand?';
+    document.getElementById('dealer-action-label').innerHTML = 'Your hand is at <strong>' + s.round.dealer_value + '</strong> — Hit or Stand?';
 }
 
 function showRoundResult(s) {
@@ -476,6 +496,13 @@ function showRoundResult(s) {
     if (s.cut_card_reached) msg += ' | Cut card reached - turn will end';
     if (s.chips <= 0) msg += ' | No chips left - turn will end';
     document.getElementById('round-result-chips').textContent = msg;
+    document.getElementById('round-result-auto').textContent = 'Continuing automatically...';
+
+    if (roundResultAutoTimer) clearTimeout(roundResultAutoTimer);
+    roundResultAutoTimer = setTimeout(async function() {
+        var data = await apiCall('next_round', 'POST');
+        if (data) renderState(data);
+    }, 3000);
 }
 
 function showMatchOver(s) {
@@ -510,17 +537,12 @@ function showMatchOver(s) {
 
 function startPolling() {
     if (polling) return;
-    polling = setInterval(fetchState, 3000);
+    polling = setInterval(fetchState, 1500);
 }
 
 function stopPolling() {
     if (polling) { clearInterval(polling); polling = null; }
 }
-
-document.getElementById('btn-draw-card').addEventListener('click', async function() {
-    var data = await apiCall('draw', 'POST');
-    if (data) renderState(data);
-});
 
 document.getElementById('btn-go-player').addEventListener('click', async function() {
     var data = await apiCall('choice', 'POST', {go_first_as_player: true});
@@ -529,11 +551,6 @@ document.getElementById('btn-go-player').addEventListener('click', async functio
 
 document.getElementById('btn-go-bank').addEventListener('click', async function() {
     var data = await apiCall('choice', 'POST', {go_first_as_player: false});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-start-turn').addEventListener('click', async function() {
-    var data = await apiCall('start_turn', 'POST');
     if (data) renderState(data);
 });
 
@@ -550,13 +567,13 @@ document.getElementById('btn-place-bets').addEventListener('click', async functi
     if (data) renderState(data);
 });
 
-document.getElementById('btn-insurance-yes').addEventListener('click', async function() {
-    var data = await apiCall('insurance', 'POST', {take: true});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-insurance-no').addEventListener('click', async function() {
-    var data = await apiCall('insurance', 'POST', {take: false});
+document.getElementById('btn-insurance-submit').addEventListener('click', async function() {
+    var checks = document.querySelectorAll('.insurance-check');
+    var decisions = [];
+    for (var i = 0; i < checks.length; i++) {
+        decisions.push(checks[i].checked);
+    }
+    var data = await apiCall('insurance', 'POST', {decisions: decisions});
     if (data) renderState(data);
 });
 
@@ -577,11 +594,7 @@ document.getElementById('btn-dealer-stand').addEventListener('click', async func
     if (data) renderState(data);
 });
 
-document.getElementById('btn-next-round').addEventListener('click', async function() {
-    var data = await apiCall('next_round', 'POST');
-    if (data) renderState(data);
-});
-
 fetchState();
+startPolling();
 </script>
 {% endblock %}

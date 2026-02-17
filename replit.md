@@ -25,7 +25,7 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 
 ## Game Rules
 - 1v1 matches with coin stakes
-- **Card Draw**: Match starts with each player drawing a card; higher card chooses role. Tied? Draw again.
+- **Card Draw**: Auto-drawn when 2nd player joins with 3-sec suspense reveal; higher card chooses role. Ties auto-redraw.
 - **4 turns** in a **1-2-2-1 structure**: First player goes Player, Bank, Bank, Player
 - Multi-box betting (up to 3 boxes per round)
 - Full blackjack: hit, stand, double, split, insurance
@@ -35,16 +35,26 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 - **Chip carryover**: 100 chips for first Player turn; second Player turn gets leftover + 100 bonus
 - Winner = highest final chip count after all 4 turns
 - 30-second decision timer (server-side enforced) with auto-fallback actions
+- 5-second round result display before auto-advancing
 - Bank player can see opponent's turn in real-time (spectating) with swapped perspective (dealer cards at bottom)
 - Bank player can hit or stand on ANY dealer hand value 1-20 (full manual control)
 - No auto-draw to 17; dealer makes all decisions manually
 - Forfeit option available for active matches (opponent gets both stakes)
 
+## Insurance
+- Offered when dealer upcard is an Ace
+- Per-hand individual insurance decisions (checkbox for each hand)
+- Insurance costs half of each hand's bet
+- Pays 2:1 if dealer has blackjack (player gets back insurance amount * 3)
+- If dealer doesn't have blackjack, insurance bet is lost
+
 ## Game Phases
-- CARD_DRAW → CHOICE → TURN_START → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN (any value 1-20) → ROUND_RESULT → (next round or end turn)
-- CARD_DRAW: both players draw cards, higher rank wins (poker ordering: 2-A)
+- CARD_DRAW (auto) → CHOICE → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN (any value 1-20) → ROUND_RESULT (auto-advance) → (next round or end turn)
+- CARD_DRAW: auto-performed at match init; cards shown with 3-sec reveal delay
 - CHOICE: draw winner picks Player or Bank first
+- TURN_START skipped: turns auto-enter after choice/turn transitions
 - DEALER_TURN: bank player decides hit/stand on any value 1-20; no auto-draw
+- ROUND_RESULT: auto-advances after 3 seconds client-side; 5-second server timeout
 
 ## Perspective
 - When you're the Player: dealer cards at top, your boxes at bottom
@@ -60,15 +70,15 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 - Winner determined by comparing final chip counts
 
 ## Recent Changes (Feb 2026)
-- Upgraded RNG to use `secrets` module (CSPRNG) instead of `random`
-- Card draw phase at match start to determine role choice
-- 4-turn 1-2-2-1 structure with chip carryover
-- Infinite splits, double after split, hit/double on split aces
-- Split aces + ten is NOT blackjack (from_split_aces flag)
-- DEALER_TURN phase: bank player can hit on 17-20
-- Real-time spectating for bank player during opponent's turn
-- Forfeit active matches from lobby
-- 30-second server-side decision timer with auto-fallbacks
+- Auto card draw at match start with 3-sec suspense reveal (no Draw Card button)
+- Auto turn start (no Start Turn button; turns enter immediately after choice/transitions)
+- Per-hand individual insurance decisions
+- Round result auto-advances after 3 seconds (5-second server timeout)
+- Polling interval reduced to 1.5 seconds for faster updates
+- Polling always runs in background for real-time updates
+- Bank player can hit/stand on any value 1-20 (full manual control)
+- Swapped perspective for bank player
+- CSPRNG deck shuffling with secrets module
 
 ## Running
 - `python app.py` starts Flask dev server on port 5000

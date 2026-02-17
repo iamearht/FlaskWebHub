@@ -503,6 +503,28 @@ body {
     flex-wrap: wrap;
 }
 
+.insurance-hand-option {
+    background: #0a2010;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid #1e5030;
+    margin: 10px auto;
+    max-width: 400px;
+    text-align: left;
+}
+
+.insurance-hand-option label {
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 0.95em;
+}
+
+.insurance-check {
+    margin-right: 8px;
+    transform: scale(1.2);
+    accent-color: #4caf50;
+}
+
 @media (max-width: 600px) {
     .game-header { flex-direction: column; gap: 8px; }
     .create-match-form { flex-direction: column; }

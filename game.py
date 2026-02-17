@@ -37,9 +37,7 @@ def _check_and_handle_timeout(match):
 
 def _set_timer_for_phase(match, state):
     phase = state['phase']
-    if phase == 'CARD_DRAW':
-        set_decision_timer(match, 'DRAW')
-    elif phase == 'CHOICE':
+    if phase == 'CHOICE':
         set_decision_timer(match, 'CHOICE')
     elif phase == 'WAITING_BETS':
         set_decision_timer(match, 'BET')
@@ -51,7 +49,7 @@ def _set_timer_for_phase(match, state):
         set_decision_timer(match, 'DEALER')
     elif phase == 'ROUND_RESULT':
         set_decision_timer(match, 'NEXT')
-    elif phase in ('TURN_START', 'MATCH_OVER'):
+    elif phase in ('TURN_START', 'MATCH_OVER', 'CARD_DRAW'):
         clear_decision_timer(match)
 
 
@@ -336,8 +334,12 @@ def api_insurance(match_id):
         return jsonify({'error': 'Not in insurance phase'}), 400
 
     data = request.get_json()
-    take = data.get('take', False)
-    state, err = handle_insurance(state, take)
+    decisions = data.get('decisions', [])
+    if not decisions:
+        take_all = data.get('take', False)
+        num_hands = sum(len(box['hands']) for box in state['turn_state']['round']['boxes'])
+        decisions = [take_all] * num_hands
+    state, err = handle_insurance(state, decisions)
     if err:
         return jsonify({'error': err}), 400
 

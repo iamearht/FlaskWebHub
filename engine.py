@@ -15,6 +15,7 @@ DRAW_RANK_VALUES = {
 CUT_CARD_POSITION = 65
 TURN_STARTING_CHIPS = 100
 DECISION_TIMEOUT = 30
+ROUND_RESULT_TIMEOUT = 5
 
 
 def _secure_shuffle(lst):
@@ -68,7 +69,7 @@ def can_double(hand, chips):
 
 def init_game_state():
     draw_deck = create_deck()
-    return {
+    state = {
         'phase': 'CARD_DRAW',
         'draw_deck': draw_deck,
         'draw_deck_pos': 0,
@@ -87,7 +88,13 @@ def init_game_state():
         'turn_state': None,
         'match_over': False,
         'match_result': None,
+        'draw_timestamp': time.time(),
     }
+
+    while state['draw_winner'] is None:
+        state, _ = do_card_draw(state)
+
+    return state
 
 
 def do_card_draw(state):
@@ -148,7 +155,7 @@ def make_choice(state, chooser_goes_first_as_player):
         {'player_role': first_player, 'dealer_role': first_bank},
     ]
     state['choice_made'] = True
-    state['phase'] = 'TURN_START'
+    state = enter_turn(state)
     return state, None
 
 
@@ -236,20 +243,31 @@ def place_bets(state, bets):
     if dealt >= CUT_CARD_POSITION:
         ts['cut_card_reached'] = True
 
+    insurance_per_hand = []
+    for box in boxes:
+        for hand in box['hands']:
+            insurance_per_hand.append({
+                'offered': False,
+                'taken': False,
+                'amount': 0,
+                'decided': False,
+            })
+
     ts['round'] = {
         'boxes': boxes,
         'dealer_cards': dealer_cards,
         'current_box': 0,
         'current_hand': 0,
         'insurance_offered': False,
-        'insurance_taken': False,
-        'insurance_amount': 0,
+        'insurance_per_hand': insurance_per_hand,
         'total_initial_bet': total_bet,
         'resolved': False,
     }
 
     if dealer_cards[0]['rank'] == 'A':
         ts['round']['insurance_offered'] = True
+        for ih in ts['round']['insurance_per_hand']:
+            ih['offered'] = True
         state['phase'] = 'INSURANCE'
     elif is_ten_value(dealer_cards[0]['rank']) and is_blackjack(dealer_cards):
         _resolve_dealer_blackjack(state)
@@ -284,25 +302,36 @@ def _mark_player_blackjacks(rnd):
                 hand['status'] = 'blackjack'
 
 
-def handle_insurance(state, take_insurance):
+def handle_insurance(state, decisions):
     ts = state['turn_state']
     rnd = ts['round']
     if state['phase'] != 'INSURANCE':
         return state, 'Not in insurance phase'
 
-    if take_insurance:
-        ins_amount = math.floor(rnd['total_initial_bet'] / 2)
-        if ins_amount > ts['chips']:
-            ins_amount = ts['chips']
-        ts['chips'] -= ins_amount
-        rnd['insurance_taken'] = True
-        rnd['insurance_amount'] = ins_amount
+    iph = rnd['insurance_per_hand']
+    hand_idx = 0
+    for box in rnd['boxes']:
+        for hand in box['hands']:
+            if hand_idx < len(decisions) and hand_idx < len(iph):
+                take = decisions[hand_idx]
+                if take and iph[hand_idx]['offered'] and not iph[hand_idx]['decided']:
+                    ins_amount = math.floor(hand['bet'] / 2)
+                    if ins_amount < 1:
+                        ins_amount = 1
+                    if ins_amount > ts['chips']:
+                        ins_amount = ts['chips']
+                    ts['chips'] -= ins_amount
+                    iph[hand_idx]['taken'] = True
+                    iph[hand_idx]['amount'] = ins_amount
+                iph[hand_idx]['decided'] = True
+            hand_idx += 1
 
     if is_blackjack(rnd['dealer_cards']):
-        if rnd['insurance_taken']:
-            ts['chips'] += rnd['insurance_amount'] * 3
+        hand_idx = 0
         for box in rnd['boxes']:
             for hand in box['hands']:
+                if hand_idx < len(iph) and iph[hand_idx]['taken']:
+                    ts['chips'] += iph[hand_idx]['amount'] * 3
                 if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
                     ts['chips'] += hand['bet']
                     hand['status'] = 'push'
@@ -310,6 +339,7 @@ def handle_insurance(state, take_insurance):
                 else:
                     hand['status'] = 'lose'
                     hand['result'] = 'lose'
+                hand_idx += 1
         rnd['resolved'] = True
         state['phase'] = 'ROUND_RESULT'
     else:
@@ -563,14 +593,15 @@ def end_turn(state):
         return state, True
 
     state['turn_state'] = None
-    state['phase'] = 'TURN_START'
+    state = enter_turn(state)
     return state, False
 
 
 def check_timeout(match):
     if not match.is_waiting_decision or not match.decision_started_at:
         return False
-    return (time.time() - match.decision_started_at) > DECISION_TIMEOUT
+    timeout = ROUND_RESULT_TIMEOUT if match.decision_type == 'NEXT' else DECISION_TIMEOUT
+    return (time.time() - match.decision_started_at) > timeout
 
 
 def apply_timeout(state, match):
@@ -578,9 +609,8 @@ def apply_timeout(state, match):
     ts = state.get('turn_state')
 
     if phase == 'CARD_DRAW':
-        state, _ = do_card_draw(state)
         match.is_waiting_decision = False
-        return state, True
+        return state, False
 
     elif phase == 'CHOICE':
         state, _ = make_choice(state, True)
@@ -596,7 +626,8 @@ def apply_timeout(state, match):
         return state, True
 
     elif phase == 'INSURANCE':
-        state, _ = handle_insurance(state, False)
+        num_hands = sum(len(box['hands']) for box in ts['round']['boxes'])
+        state, _ = handle_insurance(state, [False] * num_hands)
         match.is_waiting_decision = False
         return state, True
 
@@ -633,7 +664,8 @@ def clear_decision_timer(match):
 def get_timer_remaining(match):
     if not match.is_waiting_decision or not match.decision_started_at:
         return None
-    remaining = DECISION_TIMEOUT - (time.time() - match.decision_started_at)
+    timeout = ROUND_RESULT_TIMEOUT if match.decision_type == 'NEXT' else DECISION_TIMEOUT
+    remaining = timeout - (time.time() - match.decision_started_at)
     return max(0, remaining)
 
 
@@ -649,6 +681,7 @@ def get_client_state(state, user_player_num, match=None):
         'draw_winner': state.get('draw_winner'),
         'chooser': state.get('chooser'),
         'choice_made': state.get('choice_made', False),
+        'draw_timestamp': state.get('draw_timestamp'),
     }
 
     if match:
@@ -701,7 +734,7 @@ def get_client_state(state, user_player_num, match=None):
                 'current_box': rnd['current_box'],
                 'current_hand': rnd['current_hand'],
                 'insurance_offered': rnd['insurance_offered'],
-                'insurance_taken': rnd['insurance_taken'],
+                'insurance_per_hand': rnd.get('insurance_per_hand', []),
                 'resolved': rnd['resolved'],
             }
             for box in rnd['boxes']:

@@ -1,0 +1,262 @@
+PROMPT FOR REPLIT — FULL GAME RULE EXPLANATION
+
+Build a 1v1 competitive blackjack game that follows the rules described below exactly.
+
+This is not a casino-style single blackjack table. It is a structured competitive match between two players with alternating player-turns, fixed turn counts, multi-box betting, insurance, splitting, doubling, and final match comparison.
+
+You must implement the rules exactly as described in this specification.
+
+Overall Match Structure
+
+The game is a head-to-head match between two players. One player creates a room, and another joins. When both players are present, a match begins.
+
+Each match consists of four total player-turns.
+
+The turn order is fixed:
+
+Turn 1: Player 1 plays as the Player.
+
+Turn 2: Player 2 plays as the Player.
+
+
+During each turn, one participant is the Player and the other is the Bank. The Player plays blackjack rounds against a dealer, and their chip result for that turn is recorded. After four total turns, the match ends and totals are compared.
+
+Each player therefore plays exactly twice as Player during the match.
+
+Player-Turn Bankroll
+
+At the beginning of every player-turn, the Player receives 100 chips. This is not their global balance; it is the temporary bankroll for that turn only.
+
+The player continues playing multiple blackjack rounds within that same turn until either:
+
+The cut card position is reached in the shoe, or
+
+The player’s chips reach zero.
+
+When a player-turn ends, the final chip count remaining is recorded in that player’s results list.
+
+After recording the result, roles rotate according to the fixed turn schedule described above.
+
+Shoe and Deck Rules
+
+Each player-turn uses a freshly shuffled two-deck shoe (104 cards total).
+
+The shoe is shuffled at the start of each player-turn.
+
+The cut card position is fixed at the 65th card. If the next round cannot be started because it would exceed the cut position, the player-turn ends immediately.
+
+Cards are drawn sequentially from the shoe. If the deck position reaches the cut card during play, no new rounds may begin.
+
+Round Structure
+
+Within a player-turn, the game consists of multiple rounds.
+
+Each round begins in a betting phase. The player may place bets on up to three independent betting boxes.
+
+Each box may have:
+
+A bet amount (minimum 1 chip)
+
+Zero or more hands (after splits)
+
+At least one box must have a positive bet for a round to begin.
+
+The total bet across all three boxes cannot exceed the player’s remaining chips.
+
+Once bets are placed, the total bet amount is deducted from the player’s chips immediately.
+
+Initial Deal
+
+For each active box (a box with a positive bet):
+
+Two cards are dealt to that box’s hand.
+
+After all player boxes are dealt, the dealer receives two cards.
+
+The dealer’s upcard is visible; the second card is hidden unless the round resolves.
+
+Insurance
+
+If the dealer’s upcard is an Ace, insurance is offered.
+
+The insurance amount is fixed at half of the total initial bets placed across all boxes.
+
+If the player accepts insurance:
+
+The insurance amount is deducted from their chips.
+
+If the dealer has blackjack, insurance pays 2:1 (effectively 3× the insurance bet is returned including original).
+
+If the dealer has blackjack:
+
+The round resolves immediately.
+
+All hands are settled accordingly.
+
+If the player declines insurance:
+
+The game proceeds normally.
+
+Player Actions
+
+During the PLAYER_TURN phase, the player acts on one hand at a time.
+
+For each active hand, the player may:
+
+Hit
+
+Stand
+
+Double (if allowed)
+
+Split (if allowed)
+
+The game tracks which box and which hand within that box is currently active.
+
+When a hand is completed (either by standing, busting, or doubling), the game moves to the next unfinished hand. When no unfinished hands remain, the round resolves.
+
+Splitting
+
+A split is allowed only if:
+
+The hand has exactly two cards.
+
+It is the first action taken on that hand.
+
+The two cards have identical rank OR are both 10-value cards (10, J, Q, K).
+
+The player has enough chips to place an additional bet equal to the original.
+
+When splitting:
+
+The original hand is replaced with two hands.
+
+Each receives one additional card from the shoe.
+
+An additional bet equal to the original bet is deducted.
+
+Each resulting hand is played independently.
+
+Doubling
+
+Doubling is allowed only if:
+
+The hand has exactly two cards.
+
+It is the first action taken.
+
+The player has enough chips to double the bet.
+
+When doubling:
+
+An additional bet equal to the original is deducted.
+
+One card is dealt.
+
+The hand automatically stands.
+
+The bet for that hand becomes doubled.
+
+Dealer Rules
+
+After all player hands are completed:
+
+If all player hands are bust, the dealer does not draw.
+
+Otherwise, the dealer reveals the hidden card and draws until reaching 17 or higher.
+
+Dealer stands on all 17 values.
+
+Payout Rules
+
+For each hand:
+
+If player busts → loss (no chips returned).
+
+If dealer has blackjack and player does not → loss.
+
+If both have blackjack → push (bet returned).
+
+If player has blackjack and dealer does not → payout 3:2 (bet + floor(1.5 × bet)).
+
+If dealer busts → player wins (2× bet returned).
+
+If player total > dealer total → win (2× bet returned).
+
+If equal totals → push (bet returned).
+
+Otherwise → loss.
+
+All payouts are added back to the player’s chip balance.
+
+End of Round
+
+After payouts are processed:
+
+The round result is stored.
+
+The game enters ROUND_RESULT phase.
+
+The player may continue to a new round if:
+
+Cut card not reached AND
+
+Player still has chips.
+
+Otherwise, the player-turn ends.
+
+End of Player-Turn
+
+When a player-turn ends:
+
+The final chip total is recorded into that player’s results list.
+
+Turn index increments.
+
+Roles rotate.
+
+A new shoe is created.
+
+Player chips reset to 100.
+
+Game state resets to WAITING_BETS.
+
+End of Match
+
+After four total turns:
+
+Sum Player 1’s recorded results.
+
+Sum Player 2’s recorded results.
+
+The higher total wins the match.
+
+If totals are equal, the match is a tie.
+
+The match status becomes FINISHED.
+
+Game Phases
+
+The match operates using strict phases:
+
+WAITING_BETS
+
+INSURANCE
+
+PLAYER_TURN
+
+ROUND_RESULT
+
+MATCH_OVER
+
+Transitions between phases must be explicit and enforced server-side.
+
+This specification must be followed exactly. Do not simplify the mechanics. Do not remove multi-box logic. Do not change payout math. All state transitions must remain consistent with these rules.
+
+If you want, I can also rewrite this into:
+
+A formal technical state-machine specification
+
+A database-driven implementation guide
+
+Or a simplified production-safe architecture blueprint

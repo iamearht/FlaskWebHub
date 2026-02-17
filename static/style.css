@@ -429,6 +429,53 @@ body {
     font-size: 0.95em;
 }
 
+.draw-cards-display {
+    margin: 20px 0;
+}
+
+.draw-hands {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+
+.draw-player {
+    text-align: center;
+    background: #0a2010;
+    padding: 16px 24px;
+    border-radius: 12px;
+    border: 1px solid #1e5030;
+    min-width: 150px;
+}
+
+.draw-player h4 {
+    color: #8bc34a;
+    margin-bottom: 10px;
+}
+
+.draw-vs {
+    font-size: 1.6em;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+.draw-result-text {
+    color: #ffcc80;
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 12px 0;
+}
+
+.choice-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 600px) {
     .game-header { flex-direction: column; gap: 8px; }
     .create-match-form { flex-direction: column; }

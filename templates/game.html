@@ -24,6 +24,24 @@
     <div class="game-board" id="game-board">
         <div id="phase-display" class="phase-display"></div>
 
+        <div id="card-draw-area" class="game-area" style="display:none">
+            <h2>Card Draw</h2>
+            <p>Each player draws a card. The higher card gets to choose whether to play as Player or Bank first.</p>
+            <div id="draw-cards-display" class="draw-cards-display"></div>
+            <div id="draw-result-text" class="draw-result-text"></div>
+            <button class="btn btn-primary" id="btn-draw-card">Draw Card</button>
+        </div>
+
+        <div id="choice-area" class="game-area" style="display:none">
+            <h2 id="choice-title"></h2>
+            <p>The match has 4 turns in a 1-2-2-1 pattern. If you go first as Player, you'll play: Player, Bank, Bank, Player.</p>
+            <div id="choice-draw-cards" class="draw-cards-display"></div>
+            <div class="choice-buttons">
+                <button class="btn btn-primary" id="btn-go-player">Go First as Player</button>
+                <button class="btn btn-secondary" id="btn-go-bank">Go First as Bank</button>
+            </div>
+        </div>
+
         <div id="turn-start-area" class="game-area" style="display:none">
             <h2 id="turn-start-title"></h2>
             <p id="turn-start-desc"></p>
@@ -175,17 +193,30 @@ function hideAll() {
     for (var i = 0; i < els.length; i++) els[i].style.display = 'none';
 }
 
+function getPlayerScoreText(s, playerKey) {
+    var t1 = s.results[playerKey + '_turn1'];
+    var t2 = s.results[playerKey + '_turn2'];
+    if (t2 !== null && t2 !== undefined) return 'Final: ' + t2;
+    if (t1 !== null && t1 !== undefined) return 'R1: ' + t1;
+    return '-';
+}
+
 function renderState(s) {
     currentState = s;
     hideAll();
-    var allBtns = document.querySelectorAll('.game-area button, #action-area button');
+    var allBtns = document.querySelectorAll('.game-area button, #action-area button, #dealer-action-area button');
     for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = false;
 
-    var p1Score = s.results.player1 !== null ? s.results.player1 : '-';
-    var p2Score = s.results.player2 !== null ? s.results.player2 : '-';
-    document.getElementById('p1-score').textContent = 'Score: ' + p1Score;
-    document.getElementById('p2-score').textContent = 'Score: ' + p2Score;
-    document.getElementById('turn-info').textContent = 'Turn ' + Math.min(s.current_turn + 1, 2) + '/2';
+    document.getElementById('p1-score').textContent = getPlayerScoreText(s, 'player1');
+    document.getElementById('p2-score').textContent = getPlayerScoreText(s, 'player2');
+
+    var turnText = '';
+    if (s.phase === 'CARD_DRAW' || s.phase === 'CHOICE') {
+        turnText = 'Setup';
+    } else {
+        turnText = 'Turn ' + Math.min(s.current_turn + 1, 4) + '/4';
+    }
+    document.getElementById('turn-info').textContent = turnText;
 
     var phaseEl = document.getElementById('phase-display');
 
@@ -194,6 +225,30 @@ function renderState(s) {
         showMatchOver(s);
         stopPolling();
         document.getElementById('timer-display').style.display = 'none';
+        return;
+    }
+
+    if (s.phase === 'CARD_DRAW') {
+        phaseEl.textContent = 'Card Draw';
+        showCardDraw(s);
+        if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
+            startTimer(s.timer_remaining);
+        }
+        return;
+    }
+
+    if (s.phase === 'CHOICE') {
+        phaseEl.textContent = 'Choose Role';
+        showChoice(s);
+        if (s.is_my_turn) {
+            stopPolling();
+            if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
+                startTimer(s.timer_remaining);
+            }
+        } else {
+            document.getElementById('timer-display').style.display = 'none';
+            startPolling();
+        }
         return;
     }
 
@@ -250,17 +305,85 @@ function renderState(s) {
     }
 }
 
+function showCardDraw(s) {
+    var area = document.getElementById('card-draw-area');
+    area.style.display = 'block';
+
+    var html = '<div class="draw-hands">';
+    var p1Cards = s.draw_cards.player1;
+    var p2Cards = s.draw_cards.player2;
+
+    html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
+    for (var i = 0; i < p1Cards.length; i++) html += cardHtml(p1Cards[i]);
+    html += '</div></div>';
+
+    html += '<div class="draw-vs">VS</div>';
+
+    html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
+    for (var i = 0; i < p2Cards.length; i++) html += cardHtml(p2Cards[i]);
+    html += '</div></div>';
+    html += '</div>';
+
+    document.getElementById('draw-cards-display').innerHTML = html;
+
+    var resultText = '';
+    if (p1Cards.length > 0 && !s.draw_winner) {
+        resultText = 'Tied! Draw again.';
+    }
+    document.getElementById('draw-result-text').textContent = resultText;
+
+    document.getElementById('btn-draw-card').style.display = s.draw_winner ? 'none' : '';
+}
+
+function showChoice(s) {
+    var area = document.getElementById('choice-area');
+    area.style.display = 'block';
+
+    var html = '<div class="draw-hands">';
+    var p1Cards = s.draw_cards.player1;
+    var p2Cards = s.draw_cards.player2;
+
+    html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
+    for (var i = 0; i < p1Cards.length; i++) html += cardHtml(p1Cards[i]);
+    html += '</div></div>';
+
+    html += '<div class="draw-vs">VS</div>';
+
+    html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
+    for (var i = 0; i < p2Cards.length; i++) html += cardHtml(p2Cards[i]);
+    html += '</div></div>';
+    html += '</div>';
+
+    document.getElementById('choice-draw-cards').innerHTML = html;
+
+    var title = document.getElementById('choice-title');
+    if (s.chooser === PLAYER_NUM) {
+        title.textContent = 'You won the draw! Choose your starting role:';
+        document.getElementById('btn-go-player').style.display = '';
+        document.getElementById('btn-go-bank').style.display = '';
+    } else {
+        title.textContent = 'Opponent won the draw. Waiting for their choice...';
+        document.getElementById('btn-go-player').style.display = 'none';
+        document.getElementById('btn-go-bank').style.display = 'none';
+    }
+}
+
 function showTurnStart(s) {
     var area = document.getElementById('turn-start-area');
     area.style.display = 'block';
     var title = document.getElementById('turn-start-title');
     var desc = document.getElementById('turn-start-desc');
+    var turnNum = s.current_turn + 1;
     if (s.current_player_role === PLAYER_NUM) {
-        title.textContent = 'Turn ' + (s.current_turn + 1) + ': You are the Player';
-        desc.textContent = 'You will play blackjack hands. Try to keep as many of your 100 chips as possible!';
+        title.textContent = 'Turn ' + turnNum + '/4: You are the Player';
+        var chipText = 'Starting chips: ' + (s.starting_chips || 100);
+        if (turnNum > 2) {
+            chipText += ' (carry-over + 100 bonus)';
+        }
+        desc.textContent = chipText;
     } else {
-        title.textContent = 'Turn ' + (s.current_turn + 1) + ': You are the Dealer';
-        desc.textContent = 'Your opponent plays this turn. The dealer is automated.';
+        title.textContent = 'Turn ' + turnNum + '/4: You are the Bank (Dealer)';
+        desc.textContent = 'Your opponent plays this turn. You control dealer decisions on 17-20.';
     }
 }
 
@@ -350,6 +473,18 @@ function showMatchOver(s) {
     var title = document.getElementById('match-over-title');
     var details = document.getElementById('match-over-details');
 
+    if (r.forfeit) {
+        if (r.winner === PLAYER_NUM) {
+            title.textContent = 'Opponent Forfeited - You Win!';
+            title.className = 'win-text';
+        } else {
+            title.textContent = 'You Forfeited';
+            title.className = 'lose-text';
+        }
+        details.innerHTML = '<p>Match ended by forfeit.</p>';
+        return;
+    }
+
     if (r.winner === 0) {
         title.textContent = "It's a Tie!";
     } else if (r.winner === PLAYER_NUM) {
@@ -359,7 +494,7 @@ function showMatchOver(s) {
         title.textContent = 'You Lost';
         title.className = 'lose-text';
     }
-    details.innerHTML = '<p>Player 1 Total: ' + r.player1_total + '</p><p>Player 2 Total: ' + r.player2_total + '</p>';
+    details.innerHTML = '<p>Player 1 Final Chips: ' + r.player1_total + '</p><p>Player 2 Final Chips: ' + r.player2_total + '</p>';
 }
 
 function startPolling() {
@@ -370,6 +505,21 @@ function startPolling() {
 function stopPolling() {
     if (polling) { clearInterval(polling); polling = null; }
 }
+
+document.getElementById('btn-draw-card').addEventListener('click', async function() {
+    var data = await apiCall('draw', 'POST');
+    if (data) renderState(data);
+});
+
+document.getElementById('btn-go-player').addEventListener('click', async function() {
+    var data = await apiCall('choice', 'POST', {go_first_as_player: true});
+    if (data) renderState(data);
+});
+
+document.getElementById('btn-go-bank').addEventListener('click', async function() {
+    var data = await apiCall('choice', 'POST', {go_first_as_player: false});
+    if (data) renderState(data);
+});
 
 document.getElementById('btn-start-turn').addEventListener('click', async function() {
     var data = await apiCall('start_turn', 'POST');

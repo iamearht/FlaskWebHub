@@ -1,4 +1,4 @@
-import random
+import secrets
 import math
 import time
 
@@ -8,9 +8,19 @@ CARD_VALUES = {
     '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,
     '9': 9, '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
 }
+DRAW_RANK_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,
+    '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+}
 CUT_CARD_POSITION = 65
 TURN_STARTING_CHIPS = 100
 DECISION_TIMEOUT = 30
+
+
+def _secure_shuffle(lst):
+    for i in range(len(lst) - 1, 0, -1):
+        j = secrets.randbelow(i + 1)
+        lst[i], lst[j] = lst[j], lst[i]
 
 
 def create_deck():
@@ -19,7 +29,7 @@ def create_deck():
         for suit in SUITS:
             for rank in RANKS:
                 deck.append({'rank': rank, 'suit': suit})
-    random.shuffle(deck)
+    _secure_shuffle(deck)
     return deck
 
 
@@ -57,27 +67,117 @@ def can_double(hand, chips):
 
 
 def init_game_state():
+    draw_deck = create_deck()
     return {
+        'phase': 'CARD_DRAW',
+        'draw_deck': draw_deck,
+        'draw_deck_pos': 0,
+        'draw_cards': {'player1': [], 'player2': []},
+        'draw_winner': None,
+        'chooser': None,
+        'choice_made': False,
         'current_turn': 0,
-        'turns': [
-            {'player_role': 1, 'dealer_role': 2},
-            {'player_role': 2, 'dealer_role': 1},
-        ],
-        'results': {'player1': None, 'player2': None},
+        'turns': [],
+        'results': {
+            'player1_turn1': None,
+            'player1_turn2': None,
+            'player2_turn1': None,
+            'player2_turn2': None,
+        },
         'turn_state': None,
-        'phase': 'TURN_START',
         'match_over': False,
         'match_result': None,
     }
 
 
+def do_card_draw(state):
+    if state['phase'] != 'CARD_DRAW':
+        return state, 'Not in card draw phase'
+
+    deck = state['draw_deck']
+    pos = state['draw_deck_pos']
+
+    if pos + 2 > len(deck):
+        state['draw_deck'] = create_deck()
+        state['draw_deck_pos'] = 0
+        deck = state['draw_deck']
+        pos = 0
+
+    card1 = deck[pos]
+    card2 = deck[pos + 1]
+    state['draw_deck_pos'] = pos + 2
+
+    state['draw_cards']['player1'].append(card1)
+    state['draw_cards']['player2'].append(card2)
+
+    val1 = DRAW_RANK_VALUES[card1['rank']]
+    val2 = DRAW_RANK_VALUES[card2['rank']]
+
+    if val1 > val2:
+        state['draw_winner'] = 1
+        state['chooser'] = 1
+        state['phase'] = 'CHOICE'
+    elif val2 > val1:
+        state['draw_winner'] = 2
+        state['chooser'] = 2
+        state['phase'] = 'CHOICE'
+    else:
+        state['draw_winner'] = None
+
+    return state, None
+
+
+def make_choice(state, chooser_goes_first_as_player):
+    if state['phase'] != 'CHOICE':
+        return state, 'Not in choice phase'
+
+    chooser = state['chooser']
+    other = 2 if chooser == 1 else 1
+
+    if chooser_goes_first_as_player:
+        first_player = chooser
+        first_bank = other
+    else:
+        first_player = other
+        first_bank = chooser
+
+    state['turns'] = [
+        {'player_role': first_player, 'dealer_role': first_bank},
+        {'player_role': first_bank, 'dealer_role': first_player},
+        {'player_role': first_bank, 'dealer_role': first_player},
+        {'player_role': first_player, 'dealer_role': first_bank},
+    ]
+    state['choice_made'] = True
+    state['phase'] = 'TURN_START'
+    return state, None
+
+
 def enter_turn(state):
+    turn_idx = state['current_turn']
+    turn_info = state['turns'][turn_idx]
+    player_role = turn_info['player_role']
+
+    if player_role == 1:
+        first_turn_result = state['results']['player1_turn1']
+    else:
+        first_turn_result = state['results']['player2_turn1']
+
+    is_second_player_turn = (turn_idx >= 2 and
+        ((player_role == 1 and state['results']['player1_turn1'] is not None) or
+         (player_role == 2 and state['results']['player2_turn1'] is not None)))
+
+    if is_second_player_turn and first_turn_result is not None:
+        starting_chips = first_turn_result + TURN_STARTING_CHIPS
+    else:
+        starting_chips = TURN_STARTING_CHIPS
+
     state['turn_state'] = {
-        'player_role': state['turns'][state['current_turn']]['player_role'],
-        'dealer_role': state['turns'][state['current_turn']]['dealer_role'],
+        'player_role': player_role,
+        'dealer_role': turn_info['dealer_role'],
         'deck': create_deck(),
         'cards_dealt': 0,
-        'chips': TURN_STARTING_CHIPS,
+        'chips': starting_chips,
+        'starting_chips': starting_chips,
         'cut_card_reached': False,
         'round': None,
     }
@@ -455,16 +555,22 @@ def end_turn(state):
     player_role = state['turns'][turn_idx]['player_role']
 
     if player_role == 1:
-        state['results']['player1'] = turn_chips
+        if state['results']['player1_turn1'] is None:
+            state['results']['player1_turn1'] = turn_chips
+        else:
+            state['results']['player1_turn2'] = turn_chips
     else:
-        state['results']['player2'] = turn_chips
+        if state['results']['player2_turn1'] is None:
+            state['results']['player2_turn1'] = turn_chips
+        else:
+            state['results']['player2_turn2'] = turn_chips
 
     state['current_turn'] += 1
 
-    if state['current_turn'] >= 2:
+    if state['current_turn'] >= 4:
         state['match_over'] = True
-        p1 = state['results']['player1'] if state['results']['player1'] is not None else 0
-        p2 = state['results']['player2'] if state['results']['player2'] is not None else 0
+        p1 = state['results']['player1_turn2'] if state['results']['player1_turn2'] is not None else (state['results']['player1_turn1'] or 0)
+        p2 = state['results']['player2_turn2'] if state['results']['player2_turn2'] is not None else (state['results']['player2_turn1'] or 0)
         if p1 > p2:
             winner = 1
         elif p2 > p1:
@@ -494,7 +600,17 @@ def apply_timeout(state, match):
     phase = state['phase']
     ts = state.get('turn_state')
 
-    if phase == 'WAITING_BETS':
+    if phase == 'CARD_DRAW':
+        state, _ = do_card_draw(state)
+        match.is_waiting_decision = False
+        return state, True
+
+    elif phase == 'CHOICE':
+        state, _ = make_choice(state, True)
+        match.is_waiting_decision = False
+        return state, True
+
+    elif phase == 'WAITING_BETS':
         if ts and ts['chips'] > 0:
             state, _ = place_bets(state, [1])
         else:
@@ -551,23 +667,41 @@ def get_client_state(state, user_player_num, match=None):
         'results': state['results'],
         'match_over': state['match_over'],
         'match_result': state['match_result'],
-        'total_turns': 2,
+        'total_turns': 4,
+        'draw_cards': state.get('draw_cards'),
+        'draw_winner': state.get('draw_winner'),
+        'chooser': state.get('chooser'),
+        'choice_made': state.get('choice_made', False),
     }
 
     if match:
         cs['timer_remaining'] = get_timer_remaining(match)
         cs['decision_type'] = match.decision_type
 
-    if state['current_turn'] < 2:
+    if state.get('turns') and state['current_turn'] < len(state['turns']):
         ti = state['turns'][state['current_turn']]
         cs['current_player_role'] = ti['player_role']
         cs['current_dealer_role'] = ti['dealer_role']
         if state['phase'] == 'DEALER_TURN':
             cs['is_my_turn'] = (ti['dealer_role'] == user_player_num)
             cs['is_dealer_turn'] = True
+        elif state['phase'] in ('CARD_DRAW', 'CHOICE'):
+            if state['phase'] == 'CHOICE':
+                cs['is_my_turn'] = (state['chooser'] == user_player_num)
+            else:
+                cs['is_my_turn'] = True
+            cs['is_dealer_turn'] = False
         else:
             cs['is_my_turn'] = (ti['player_role'] == user_player_num)
             cs['is_dealer_turn'] = False
+    elif state['phase'] in ('CARD_DRAW', 'CHOICE'):
+        cs['current_player_role'] = None
+        cs['current_dealer_role'] = None
+        if state['phase'] == 'CHOICE':
+            cs['is_my_turn'] = (state['chooser'] == user_player_num)
+        else:
+            cs['is_my_turn'] = True
+        cs['is_dealer_turn'] = False
     else:
         cs['is_my_turn'] = False
         cs['is_dealer_turn'] = False
@@ -577,6 +711,7 @@ def get_client_state(state, user_player_num, match=None):
     ts = state.get('turn_state')
     if ts:
         cs['chips'] = ts['chips']
+        cs['starting_chips'] = ts.get('starting_chips', TURN_STARTING_CHIPS)
         cs['cut_card_reached'] = ts['cut_card_reached']
         rnd = ts.get('round')
         if rnd:
@@ -608,7 +743,7 @@ def get_client_state(state, user_player_num, match=None):
                 cs['round']['boxes'].append(b)
 
             dc = rnd['dealer_cards']
-            is_dealer_player = (state['current_turn'] < 2 and
+            is_dealer_player = (state.get('turns') and state['current_turn'] < len(state.get('turns', [])) and
                                 state['turns'][state['current_turn']]['dealer_role'] == user_player_num)
             if rnd['resolved'] or state['phase'] == 'DEALER_TURN' or is_dealer_player:
                 cs['round']['dealer_cards'] = dc

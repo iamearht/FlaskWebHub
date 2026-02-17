@@ -4,15 +4,38 @@
 <div class="match-result-page">
     <h1>Match Over</h1>
     <div class="result-card">
+        {% if cs.match_result.get('forfeit') %}
+        <div class="result-outcome">
+            {% if (cs.match_result.winner == 1 and user.id == match.player1_id) or (cs.match_result.winner == 2 and user.id == match.player2_id) %}
+                <h2 class="win-text">Opponent Forfeited - You Win!</h2>
+                <p>You earned {{ match.stake }} coins!</p>
+            {% else %}
+                <h2 class="lose-text">You Forfeited</h2>
+                <p>You lost {{ match.stake }} coins.</p>
+            {% endif %}
+        </div>
+        {% else %}
         <div class="result-players">
             <div class="result-player {% if cs.match_result.winner == 1 %}winner{% endif %}">
                 <h3>{{ p1.username }}</h3>
-                <p class="result-total">Chips: {{ cs.match_result.player1_total }}</p>
+                <p class="result-total">Final Chips: {{ cs.match_result.player1_total }}</p>
+                {% if cs.results %}
+                <p style="color:#aaa;font-size:0.85em">
+                    Round 1: {{ cs.results.player1_turn1 if cs.results.player1_turn1 is not none else '-' }} |
+                    Round 2: {{ cs.results.player1_turn2 if cs.results.player1_turn2 is not none else '-' }}
+                </p>
+                {% endif %}
             </div>
             <div class="result-vs">VS</div>
             <div class="result-player {% if cs.match_result.winner == 2 %}winner{% endif %}">
                 <h3>{{ p2.username }}</h3>
-                <p class="result-total">Chips: {{ cs.match_result.player2_total }}</p>
+                <p class="result-total">Final Chips: {{ cs.match_result.player2_total }}</p>
+                {% if cs.results %}
+                <p style="color:#aaa;font-size:0.85em">
+                    Round 1: {{ cs.results.player2_turn1 if cs.results.player2_turn1 is not none else '-' }} |
+                    Round 2: {{ cs.results.player2_turn2 if cs.results.player2_turn2 is not none else '-' }}
+                </p>
+                {% endif %}
             </div>
         </div>
         <div class="result-outcome">
@@ -27,6 +50,7 @@
                 <p>You lost {{ match.stake }} coins.</p>
             {% endif %}
         </div>
+        {% endif %}
     </div>
     <a href="/lobby" class="btn btn-primary">Back to Lobby</a>
 </div>

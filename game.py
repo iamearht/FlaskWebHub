@@ -5,7 +5,8 @@ from auth import login_required, get_current_user
 from engine import (
     init_game_state, enter_turn, place_bets, handle_insurance,
     player_action, dealer_action, next_round_or_end_turn, get_client_state,
-    check_timeout, apply_timeout, set_decision_timer, clear_decision_timer
+    check_timeout, apply_timeout, set_decision_timer, clear_decision_timer,
+    do_card_draw, make_choice
 )
 
 game_bp = Blueprint('game', __name__)
@@ -36,7 +37,11 @@ def _check_and_handle_timeout(match):
 
 def _set_timer_for_phase(match, state):
     phase = state['phase']
-    if phase == 'WAITING_BETS':
+    if phase == 'CARD_DRAW':
+        set_decision_timer(match, 'DRAW')
+    elif phase == 'CHOICE':
+        set_decision_timer(match, 'CHOICE')
+    elif phase == 'WAITING_BETS':
         set_decision_timer(match, 'BET')
     elif phase == 'INSURANCE':
         set_decision_timer(match, 'INSURANCE')
@@ -127,7 +132,9 @@ def join_match(match_id):
     user.coins -= match.stake
     match.player2_id = user.id
     match.status = 'active'
-    match.game_state = init_game_state()
+    state = init_game_state()
+    match.game_state = state
+    _set_timer_for_phase(match, state)
     _save_match(match)
     return redirect(url_for('game.play', match_id=match.id))
 
@@ -144,7 +151,7 @@ def play(match_id):
         return render_template('waiting.html', match=match, user=user)
 
     state = match.game_state
-    if state and 'turns' not in state:
+    if state and 'turns' not in state and state.get('phase') not in ('CARD_DRAW', 'CHOICE'):
         match.status = 'finished'
         match.game_state = state
         if match.winner_id is None:
@@ -182,7 +189,7 @@ def api_state(match_id):
     if user.id not in (match.player1_id, match.player2_id):
         return jsonify({'error': 'Not your match'}), 403
     state = match.game_state
-    if state and 'turns' not in state:
+    if state and 'turns' not in state and state.get('phase') not in ('CARD_DRAW', 'CHOICE'):
         return jsonify({'error': 'Old match format', 'status': 'finished'}), 400
     if match.status == 'active':
         _check_and_handle_timeout(match)
@@ -192,6 +199,66 @@ def api_state(match_id):
     cs['stake'] = match.stake
     cs['status'] = match.status
     return jsonify(cs)
+
+
+@game_bp.route('/api/match/<int:match_id>/draw', methods=['POST'])
+@login_required
+def api_draw(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+    if match.status != 'active':
+        return jsonify({'error': 'Match not active'}), 400
+    if user.id not in (match.player1_id, match.player2_id):
+        return jsonify({'error': 'Not your match'}), 403
+
+    _check_and_handle_timeout(match)
+    state = match.game_state
+
+    if state['phase'] != 'CARD_DRAW':
+        return jsonify({'error': 'Not in card draw phase'}), 400
+
+    state, err = do_card_draw(state)
+    if err:
+        return jsonify({'error': err}), 400
+
+    clear_decision_timer(match)
+    match.game_state = state
+    _set_timer_for_phase(match, state)
+    _save_match(match)
+
+    player_num = _get_player_num(user, match)
+    return jsonify(get_client_state(state, player_num, match))
+
+
+@game_bp.route('/api/match/<int:match_id>/choice', methods=['POST'])
+@login_required
+def api_choice(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+    if match.status != 'active':
+        return jsonify({'error': 'Match not active'}), 400
+
+    player_num = _get_player_num(user, match)
+    _check_and_handle_timeout(match)
+    state = match.game_state
+
+    if state['phase'] != 'CHOICE':
+        return jsonify({'error': 'Not in choice phase'}), 400
+    if state['chooser'] != player_num:
+        return jsonify({'error': 'Not your choice to make'}), 403
+
+    data = request.get_json()
+    go_first = data.get('go_first_as_player', True)
+
+    state, err = make_choice(state, go_first)
+    if err:
+        return jsonify({'error': err}), 400
+
+    clear_decision_timer(match)
+    match.game_state = state
+    _set_timer_for_phase(match, state)
+    _save_match(match)
+    return jsonify(get_client_state(state, player_num, match))
 
 
 @game_bp.route('/api/match/<int:match_id>/start_turn', methods=['POST'])
@@ -419,8 +486,8 @@ def forfeit_match(match_id):
     state['match_over'] = True
     state['phase'] = 'MATCH_OVER'
     state['match_result'] = {
-        'player1_total': state.get('results', {}).get('player1') or 0,
-        'player2_total': state.get('results', {}).get('player2') or 0,
+        'player1_total': 0,
+        'player2_total': 0,
         'winner': winner_num,
         'forfeit': True,
     }

@@ -135,8 +135,7 @@ function startTimer(remaining) {
         }
         if (left <= 0) {
             clearInterval(timerInterval);
-            var btns = document.querySelectorAll('.game-area button');
-            for (var b = 0; b < btns.length; b++) btns[b].disabled = true;
+            actionLock = false;
             fetchState();
         }
     }, 100);
@@ -173,6 +172,8 @@ function hideAll() {
 function renderState(s) {
     currentState = s;
     hideAll();
+    var allBtns = document.querySelectorAll('.game-area button, #action-area button');
+    for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = false;
 
     var p1Score = s.results.player1 !== null ? s.results.player1 : '-';
     var p2Score = s.results.player2 !== null ? s.results.player2 : '-';

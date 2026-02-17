@@ -354,3 +354,41 @@ def cancel_match(match_id):
     db.session.commit()
     flash('Match cancelled. Stake refunded.', 'success')
     return redirect(url_for('game.lobby'))
+
+
+@game_bp.route('/forfeit_match/<int:match_id>', methods=['POST'])
+@login_required
+def forfeit_match(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+    if match.status != 'active':
+        flash('Cannot forfeit this match.', 'error')
+        return redirect(url_for('game.lobby'))
+    if user.id not in (match.player1_id, match.player2_id):
+        flash('Not your match.', 'error')
+        return redirect(url_for('game.lobby'))
+    if user.id == match.player1_id:
+        winner_id = match.player2_id
+        winner_num = 2
+    else:
+        winner_id = match.player1_id
+        winner_num = 1
+    winner = User.query.get(winner_id)
+    if winner:
+        winner.coins += match.stake * 2
+    match.winner_id = winner_id
+    match.status = 'finished'
+    clear_decision_timer(match)
+    state = match.game_state or {}
+    state['match_over'] = True
+    state['phase'] = 'MATCH_OVER'
+    state['match_result'] = {
+        'player1_total': state.get('results', {}).get('player1') or 0,
+        'player2_total': state.get('results', {}).get('player2') or 0,
+        'winner': winner_num,
+        'forfeit': True,
+    }
+    match.game_state = state
+    _save_match(match)
+    flash('You forfeited the match. Your stake goes to your opponent.', 'error')
+    return redirect(url_for('game.lobby'))

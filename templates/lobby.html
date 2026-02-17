@@ -37,6 +37,9 @@
                 <div class="match-actions">
                     {% if m.status == 'active' %}
                         <a href="/match/{{ m.id }}" class="btn btn-success">Play</a>
+                        <form method="POST" action="/forfeit_match/{{ m.id }}" style="display:inline" onsubmit="return confirm('Are you sure you want to forfeit? Your stake will go to your opponent.')">
+                            <button type="submit" class="btn btn-danger btn-sm">Forfeit</button>
+                        </form>
                     {% elif m.status == 'waiting' and m.player1_id == user.id %}
                         <span class="waiting-text">Waiting for opponent...</span>
                         <form method="POST" action="/cancel_match/{{ m.id }}" style="display:inline">

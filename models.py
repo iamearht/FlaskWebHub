@@ -1,9 +1,10 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.ext.mutable import MutableDict
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timedelta
 import secrets
 import string
+import json
 
 db = SQLAlchemy()
 
@@ -22,6 +23,7 @@ class User(db.Model):
     coins = db.Column(db.Integer, default=1000, nullable=False)
     affiliate_code = db.Column(db.String(20), unique=True, nullable=True)
     referred_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     referred_by = db.relationship('User', remote_side=[id], foreign_keys=[referred_by_id])
@@ -53,12 +55,20 @@ class User(db.Model):
             db.session.flush()
         return vp
 
+    def get_rakeback_progress(self):
+        rp = RakebackProgress.query.filter_by(user_id=self.id).first()
+        if not rp:
+            rp = RakebackProgress(user_id=self.id)
+            db.session.add(rp)
+            db.session.flush()
+        return rp
+
 
 class WalletTransaction(db.Model):
     __tablename__ = 'wallet_transactions'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    type = db.Column(db.String(20), nullable=False)
+    type = db.Column(db.String(30), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     currency = db.Column(db.String(10), default='USD')
     crypto_address = db.Column(db.String(256), nullable=True)
@@ -153,6 +163,7 @@ class Match(db.Model):
     is_waiting_decision = db.Column(db.Boolean, default=False)
     is_spectatable = db.Column(db.Boolean, default=True)
     tournament_match_id = db.Column(db.Integer, db.ForeignKey('tournament_matches.id'), nullable=True)
+    rake_amount = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     player1 = db.relationship('User', foreign_keys=[player1_id], backref='matches_as_p1')
@@ -164,9 +175,11 @@ class Tournament(db.Model):
     __tablename__ = 'tournaments'
     id = db.Column(db.Integer, primary_key=True)
     stake_amount = db.Column(db.Integer, nullable=False)
+    max_players = db.Column(db.Integer, default=8, nullable=False)
     status = db.Column(db.String(20), default='waiting')
-    current_round = db.Column(db.String(20), default='quarterfinal')
+    current_round = db.Column(db.String(20), default='round_1')
     prize_pool = db.Column(db.Integer, default=0)
+    rake_amount = db.Column(db.Integer, default=0)
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -174,14 +187,8 @@ class Tournament(db.Model):
     entries = db.relationship('TournamentEntry', backref='tournament', lazy='dynamic')
     matches = db.relationship('TournamentMatch', backref='tournament', lazy='dynamic')
 
-    STAKES = [5, 10, 25, 50, 100]
-
-    PAYOUTS = {
-        1: 0.50,
-        2: 0.25,
-        3: 0.15,
-        4: 0.10,
-    }
+    STAKES = [500, 1000, 2500, 5000, 10000]
+    PLAYER_SIZES = [8, 16, 32, 64, 128]
 
 
 class TournamentEntry(db.Model):
@@ -218,3 +225,140 @@ class TournamentMatch(db.Model):
     player2 = db.relationship('User', foreign_keys=[player2_id])
     winner = db.relationship('User', foreign_keys=[winner_id])
     game_match = db.relationship('Match', foreign_keys=[match_id])
+
+
+class RakeTransaction(db.Model):
+    __tablename__ = 'rake_transactions'
+    id = db.Column(db.Integer, primary_key=True)
+    source_type = db.Column(db.String(20), nullable=False)
+    source_id = db.Column(db.Integer, nullable=False)
+    amount = db.Column(db.Integer, nullable=False)
+    stake_amount = db.Column(db.Integer, nullable=True)
+    rake_percent = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class AdminConfig(db.Model):
+    __tablename__ = 'admin_config'
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @staticmethod
+    def get(key, default=None):
+        config = AdminConfig.query.filter_by(key=key).first()
+        if config:
+            try:
+                return json.loads(config.value)
+            except (json.JSONDecodeError, TypeError):
+                return config.value
+        return default
+
+    @staticmethod
+    def set(key, value):
+        config = AdminConfig.query.filter_by(key=key).first()
+        val_str = json.dumps(value) if not isinstance(value, str) else value
+        if config:
+            config.value = val_str
+            config.updated_at = datetime.utcnow()
+        else:
+            config = AdminConfig(key=key, value=val_str)
+            db.session.add(config)
+        db.session.flush()
+
+
+class RakebackProgress(db.Model):
+    __tablename__ = 'rakeback_progress'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    total_rake_paid = db.Column(db.Float, default=0.0)
+    tier = db.Column(db.String(20), default='Bronze')
+    period_start = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('rakeback_progress_rel', uselist=False))
+
+    def check_reset(self):
+        reset_days = AdminConfig.get('rakeback_reset_days', 60)
+        if self.period_start and datetime.utcnow() > self.period_start + timedelta(days=reset_days):
+            self.total_rake_paid = 0.0
+            self.tier = 'Bronze'
+            self.period_start = datetime.utcnow()
+
+    def add_rake(self, amount):
+        self.check_reset()
+        self.total_rake_paid += amount
+        self.update_tier()
+
+    def update_tier(self):
+        tiers = AdminConfig.get('rakeback_tiers', [
+            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
+            {'name': 'Silver', 'threshold': 500, 'percent': 5},
+            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
+            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
+        ])
+        for tier in reversed(tiers):
+            if self.total_rake_paid >= tier['threshold']:
+                self.tier = tier['name']
+                break
+
+    @property
+    def rakeback_percent(self):
+        self.check_reset()
+        tiers = AdminConfig.get('rakeback_tiers', [
+            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
+            {'name': 'Silver', 'threshold': 500, 'percent': 5},
+            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
+            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
+        ])
+        for tier in reversed(tiers):
+            if tier['name'] == self.tier:
+                return tier['percent']
+        return 0
+
+    @property
+    def next_tier_info(self):
+        tiers = AdminConfig.get('rakeback_tiers', [
+            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
+            {'name': 'Silver', 'threshold': 500, 'percent': 5},
+            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
+            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
+        ])
+        for tier in tiers:
+            if tier['threshold'] > self.total_rake_paid:
+                return tier
+        return None
+
+
+def get_lobby_rake_percent(stake):
+    tiers = AdminConfig.get('lobby_rake_tiers', [
+        {'min': 0, 'max': 250, 'percent': 1},
+        {'min': 250, 'max': 1000, 'percent': 2},
+        {'min': 1000, 'max': 5000, 'percent': 3},
+        {'min': 5000, 'max': 999999, 'percent': 5},
+    ])
+    for tier in tiers:
+        if tier['min'] <= stake < tier['max']:
+            return tier['percent']
+    return 1
+
+
+def get_tournament_rake_percent(stake, max_players):
+    key = f'tournament_rake_{stake}_{max_players}'
+    return AdminConfig.get(key, 5)
+
+
+def get_tournament_payouts(max_players):
+    key = f'tournament_payouts_{max_players}'
+    default_payouts = {
+        8: {1: 50, 2: 25, 3: 15, 4: 10},
+        16: {1: 45, 2: 25, 3: 15, 4: 10, 5: 5},
+        32: {1: 40, 2: 22, 3: 15, 4: 10, 5: 5, 6: 4, 7: 2, 8: 2},
+        64: {1: 35, 2: 20, 3: 15, 4: 10, 5: 5, 6: 5, 7: 5, 8: 5},
+        128: {1: 30, 2: 18, 3: 13, 4: 10, 5: 7, 6: 7, 7: 5, 8: 5, 9: 5},
+    }
+    result = AdminConfig.get(key, default_payouts.get(max_players, default_payouts[8]))
+    if isinstance(result, dict):
+        return {int(k): v for k, v in result.items()}
+    return result

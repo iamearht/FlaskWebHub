@@ -9,8 +9,12 @@ def migrate():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(120) UNIQUE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_code VARCHAR(20) UNIQUE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by_id INTEGER REFERENCES users(id)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
             "ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_spectatable BOOLEAN DEFAULT TRUE",
             "ALTER TABLE matches ADD COLUMN IF NOT EXISTS tournament_match_id INTEGER",
+            "ALTER TABLE matches ADD COLUMN IF NOT EXISTS rake_amount INTEGER DEFAULT 0",
+            "ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS max_players INTEGER DEFAULT 8",
+            "ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS rake_amount INTEGER DEFAULT 0",
         ]
         for sql in migrations:
             try:

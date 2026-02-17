@@ -1,0 +1,74 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block admin_content %}
+<div class="admin-grid">
+    <div class="admin-card">
+        <h3>Platform Stats</h3>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-value">{{ total_users }}</span>
+                <span class="stat-label">Users</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ total_matches }}</span>
+                <span class="stat-label">Matches</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ total_tournaments }}</span>
+                <span class="stat-label">Tournaments</span>
+            </div>
+        </div>
+    </div>
+    <div class="admin-card">
+        <h3>Rake Revenue</h3>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-value">{{ rake_today|int }}</span>
+                <span class="stat-label">Today</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ rake_week|int }}</span>
+                <span class="stat-label">This Week</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ rake_month|int }}</span>
+                <span class="stat-label">This Month</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-value">{{ rake_total|int }}</span>
+                <span class="stat-label">All Time</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-top: 20px;">
+    <h3>Recent Rake Transactions</h3>
+    {% if recent_rake %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Stake</th>
+                <th>Rate</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rt in recent_rake %}
+            <tr>
+                <td><span class="tx-type tx-{{ rt.source_type }}">{{ rt.source_type }}</span></td>
+                <td class="text-green">{{ rt.amount }} coins</td>
+                <td>{{ rt.stake_amount or '-' }}</td>
+                <td>{{ rt.rake_percent or '-' }}%</td>
+                <td>{{ rt.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-text">No rake transactions yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

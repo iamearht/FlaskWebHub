@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-page">
+    <div class="admin-header">
+        <h1>Admin Panel</h1>
+        <nav class="admin-nav">
+            <a href="/admin/" class="btn btn-sm {% if request.path == '/admin/' %}btn-primary{% else %}btn-secondary{% endif %}">Dashboard</a>
+            <a href="/admin/rake-stats" class="btn btn-sm {% if 'rake-stats' in request.path %}btn-primary{% else %}btn-secondary{% endif %}">Rake Stats</a>
+            <a href="/admin/lobby-rake" class="btn btn-sm {% if 'lobby-rake' in request.path %}btn-primary{% else %}btn-secondary{% endif %}">Lobby Rake</a>
+            <a href="/admin/tournament-rake" class="btn btn-sm {% if 'tournament-rake' in request.path %}btn-primary{% else %}btn-secondary{% endif %}">Tournament Rake</a>
+            <a href="/admin/tournament-payouts" class="btn btn-sm {% if 'tournament-payouts' in request.path %}btn-primary{% else %}btn-secondary{% endif %}">Payouts</a>
+            <a href="/admin/coins" class="btn btn-sm {% if 'coins' in request.path %}btn-primary{% else %}btn-secondary{% endif %}">Coins</a>
+            <a href="/admin/rakeback" class="btn btn-sm {% if 'rakeback' in request.path %}btn-primary{% else %}btn-secondary{% endif %}">Rakeback</a>
+        </nav>
+    </div>
+    {% block admin_content %}{% endblock %}
+</div>
+{% endblock %}

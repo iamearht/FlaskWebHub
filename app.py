@@ -7,6 +7,7 @@ from wallet import wallet_bp
 from account import account_bp
 from tournament import tournament_bp
 from affiliate import affiliate_bp
+from admin import admin_bp
 
 def create_app():
     app = Flask(__name__)
@@ -27,6 +28,7 @@ def create_app():
     app.register_blueprint(account_bp)
     app.register_blueprint(tournament_bp)
     app.register_blueprint(affiliate_bp)
+    app.register_blueprint(admin_bp)
 
     @app.context_processor
     def inject_user():

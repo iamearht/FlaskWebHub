@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from sqlalchemy.orm.attributes import flag_modified
-from models import db, User, Match, Tournament, TournamentMatch, VIPProgress
+from models import (db, User, Match, Tournament, TournamentMatch, VIPProgress,
+                     RakeTransaction, RakebackProgress, get_lobby_rake_percent)
 from auth import login_required, get_current_user
 from engine import (
     init_game_state, enter_turn, place_bets, handle_insurance,
@@ -55,19 +56,54 @@ def _set_timer_for_phase(match, state):
 
 def _settle_match(match, state):
     result = state['match_result']
+    total_pot = match.stake * 2
+    is_tournament = match.tournament_match_id is not None
+
+    if is_tournament or match.stake == 0:
+        rake = 0
+    else:
+        rake_pct = get_lobby_rake_percent(match.stake)
+        rake = int(total_pot * rake_pct / 100)
+
+    match.rake_amount = rake
+    winnings = total_pot - rake
+
+    if rake > 0:
+        rt = RakeTransaction(
+            source_type='match',
+            source_id=match.id,
+            amount=rake,
+            stake_amount=match.stake,
+            rake_percent=get_lobby_rake_percent(match.stake),
+        )
+        db.session.add(rt)
+
+        for pid in [match.player1_id, match.player2_id]:
+            if pid:
+                user = User.query.get(pid)
+                if user:
+                    rp = user.get_rakeback_progress()
+                    rb_pct = rp.rakeback_percent
+                    rp.add_rake(rake / 2)
+                    if rb_pct > 0:
+                        rb_credit = int((rake / 2) * rb_pct / 100)
+                        if rb_credit > 0:
+                            user.coins += rb_credit
+
     if result['winner'] == 1:
         p1 = User.query.get(match.player1_id)
-        p1.coins += match.stake * 2
+        p1.coins += winnings
         match.winner_id = match.player1_id
     elif result['winner'] == 2:
         p2 = User.query.get(match.player2_id)
-        p2.coins += match.stake * 2
+        p2.coins += winnings
         match.winner_id = match.player2_id
     else:
         p1 = User.query.get(match.player1_id)
         p2 = User.query.get(match.player2_id)
-        p1.coins += match.stake
-        p2.coins += match.stake
+        share = winnings // 2
+        p1.coins += share
+        p2.coins += share
         match.winner_id = None
     match.status = 'finished'
 
@@ -120,10 +156,30 @@ def _check_tournament_advancement(match):
 @login_required
 def lobby():
     user = get_current_user()
-    waiting = Match.query.filter_by(status='waiting').filter(
+
+    min_stake = request.args.get('min_stake', '', type=str)
+    max_stake = request.args.get('max_stake', '', type=str)
+    sort_order = request.args.get('sort', 'newest')
+
+    waiting_q = Match.query.filter_by(status='waiting').filter(
         Match.player1_id != user.id,
         Match.tournament_match_id.is_(None),
-    ).all()
+    )
+
+    if min_stake and min_stake.isdigit():
+        waiting_q = waiting_q.filter(Match.stake >= int(min_stake))
+    if max_stake and max_stake.isdigit():
+        waiting_q = waiting_q.filter(Match.stake <= int(max_stake))
+
+    if sort_order == 'low_high':
+        waiting_q = waiting_q.order_by(Match.stake.asc())
+    elif sort_order == 'high_low':
+        waiting_q = waiting_q.order_by(Match.stake.desc())
+    else:
+        waiting_q = waiting_q.order_by(Match.created_at.desc())
+
+    waiting = waiting_q.all()
+
     my_matches = Match.query.filter(
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
         Match.status.in_(['waiting', 'active'])
@@ -141,10 +197,12 @@ def lobby():
     ).order_by(Match.created_at.desc()).limit(10).all()
 
     vip = user.get_vip_progress()
+    rakeback = user.get_rakeback_progress()
     db.session.commit()
 
     return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
-                           history=history, live_games=live_games, vip=vip)
+                           history=history, live_games=live_games, vip=vip, rakeback=rakeback,
+                           min_stake=min_stake, max_stake=max_stake, sort_order=sort_order)
 
 
 @game_bp.route('/create_match', methods=['POST'])

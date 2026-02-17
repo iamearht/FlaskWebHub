@@ -1,0 +1,74 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Rakeback Config{% endblock %}
+{% block admin_content %}
+<div class="admin-card">
+    <h3>Rakeback Reset Period</h3>
+    <form method="POST">
+        <div style="display: flex; gap: 12px; align-items: flex-end;">
+            <div class="form-group" style="width: 200px;">
+                <label>Reset Every (days)</label>
+                <input type="number" name="reset_days" value="{{ reset_days }}" min="1" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-bottom: 16px;">Save</button>
+        </div>
+        <p style="color: #888; font-size: 0.85em;">All premium tiers reset to Bronze after this many days. Default: 60 days (2 months).</p>
+    </form>
+</div>
+
+<div class="admin-card" style="margin-top: 20px;">
+    <h3>Rakeback Tiers</h3>
+    <p style="color: #888; margin-bottom: 16px;">Configure tier names, rake paid thresholds (in coins), and rakeback percentages.</p>
+    <form method="POST" id="rakeback-form">
+        <div id="tiers-container">
+            {% for tier in tiers %}
+            <div class="tier-row" style="display: flex; gap: 12px; margin-bottom: 8px; align-items: flex-end;">
+                <div class="form-group" style="width: 150px;">
+                    <label>Tier Name</label>
+                    <input type="text" name="tier_name_{{ loop.index0 }}" value="{{ tier.name }}" required>
+                </div>
+                <div class="form-group" style="width: 150px;">
+                    <label>Rake Paid Threshold</label>
+                    <input type="number" name="tier_threshold_{{ loop.index0 }}" value="{{ tier.threshold }}" min="0" required>
+                </div>
+                <div class="form-group" style="width: 120px;">
+                    <label>Rakeback %</label>
+                    <input type="number" name="tier_percent_{{ loop.index0 }}" value="{{ tier.percent }}" min="0" max="100" step="0.1" required>
+                </div>
+                <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.tier-row').remove()" style="margin-bottom: 16px;">Remove</button>
+            </div>
+            {% endfor %}
+        </div>
+        <div style="margin-top: 12px; display: flex; gap: 12px;">
+            <button type="button" class="btn btn-secondary" onclick="addTier()">Add Tier</button>
+            <button type="submit" class="btn btn-primary">Save Tiers</button>
+        </div>
+    </form>
+</div>
+
+<script>
+let tierIdx = {{ tiers|length }};
+function addTier() {
+    const c = document.getElementById('tiers-container');
+    const div = document.createElement('div');
+    div.className = 'tier-row';
+    div.style = 'display: flex; gap: 12px; margin-bottom: 8px; align-items: flex-end;';
+    div.innerHTML = `
+        <div class="form-group" style="width: 150px;">
+            <label>Tier Name</label>
+            <input type="text" name="tier_name_${tierIdx}" value="" required>
+        </div>
+        <div class="form-group" style="width: 150px;">
+            <label>Rake Paid Threshold</label>
+            <input type="number" name="tier_threshold_${tierIdx}" value="0" min="0" required>
+        </div>
+        <div class="form-group" style="width: 120px;">
+            <label>Rakeback %</label>
+            <input type="number" name="tier_percent_${tierIdx}" value="0" min="0" max="100" step="0.1" required>
+        </div>
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.tier-row').remove()" style="margin-bottom: 16px;">Remove</button>
+    `;
+    c.appendChild(div);
+    tierIdx++;
+}
+</script>
+{% endblock %}

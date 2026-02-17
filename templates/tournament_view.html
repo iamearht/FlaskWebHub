@@ -2,102 +2,67 @@
 {% block title %}Tournament #{{ tournament.id }} - Blackjack Platform{% endblock %}
 {% block content %}
 <div class="tournament-view">
-    <h1>${{ tournament.stake_amount }} Tournament #{{ tournament.id }}</h1>
+    <h1>Tournament #{{ tournament.id }}</h1>
     <div class="tournament-meta">
+        <span class="match-stake">Entry: {{ tournament.stake_amount }} coins (${{ tournament.stake_amount // 100 }})</span>
+        <span>{{ tournament.max_players }}-Player</span>
         <span class="status-badge status-{{ tournament.status }}">{{ tournament.status|capitalize }}</span>
-        <span>Prize Pool: ${{ tournament.prize_pool }}</span>
+        <span>Prize Pool: {{ tournament.prize_pool }} coins</span>
+        {% if tournament.rake_amount > 0 %}
+        <span style="color: #888;">Rake: {{ tournament.rake_amount }} coins</span>
+        {% endif %}
         {% if tournament.started_at %}
         <span>Started: {{ tournament.started_at.strftime('%Y-%m-%d %H:%M') }}</span>
         {% endif %}
     </div>
 
     {% if tournament.status == 'waiting' %}
-    <div class="waiting-section">
-        <h3>Waiting for players...</h3>
-        <div class="entries-list">
+    <div class="tournament-section">
+        <h2>Waiting for Players</h2>
+        <div class="entry-progress-bar" style="margin-bottom: 12px;">
+            <div class="entry-progress-fill" style="width: {{ (entries|length / tournament.max_players * 100)|int }}%"></div>
+        </div>
+        <span class="entry-count">{{ entries|length }}/{{ tournament.max_players }} players</span>
+        <div class="entries-list" style="margin-top: 12px;">
             {% for e in entries %}
             <span class="entry-badge">{{ e.user.username }}</span>
             {% endfor %}
         </div>
     </div>
-    {% else %}
-    <div class="bracket-display">
-        <div class="bracket-round">
-            <h3>Quarterfinals</h3>
-            {% for m in bracket.get('quarterfinal', []) %}
-            <div class="bracket-match {% if m.status == 'active' %}bracket-active{% elif m.status == 'completed' %}bracket-completed{% endif %}">
-                <div class="bracket-player {% if m.winner_id == m.player1_id %}bracket-winner{% endif %}">
-                    {{ m.player1.username if m.player1 else 'TBD' }}
-                </div>
-                <span class="bracket-vs">vs</span>
-                <div class="bracket-player {% if m.winner_id == m.player2_id %}bracket-winner{% endif %}">
-                    {{ m.player2.username if m.player2 else 'TBD' }}
-                </div>
-                {% if m.match_id and m.status == 'active' %}
-                <a href="/match/{{ m.match_id }}" class="btn btn-sm btn-info">Watch</a>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
+    {% endif %}
 
-        <div class="bracket-round">
-            <h3>Semifinals</h3>
-            {% for m in bracket.get('semifinal', []) %}
-            <div class="bracket-match {% if m.status == 'active' %}bracket-active{% elif m.status == 'completed' %}bracket-completed{% endif %}">
-                <div class="bracket-player {% if m.winner_id == m.player1_id %}bracket-winner{% endif %}">
-                    {{ m.player1.username if m.player1 else 'TBD' }}
+    {% if tournament.status in ('active', 'completed') %}
+    <div class="tournament-section">
+        <h2>Bracket</h2>
+        <div class="bracket-display">
+            {% for round_name in round_order %}
+            {% if bracket.get(round_name) %}
+            <div class="bracket-round">
+                <h3>{{ round_display.get(round_name, round_name) }}</h3>
+                {% for m in bracket[round_name] %}
+                {% if m.status != 'cancelled' %}
+                <div class="bracket-match {% if m.status == 'active' %}bracket-active{% elif m.status == 'completed' %}bracket-completed{% endif %} {% if round_name == 'final' %}bracket-final{% endif %}">
+                    <div class="bracket-player {% if m.winner_id == m.player1_id %}bracket-winner{% endif %}">
+                        {{ m.player1.username if m.player1 else 'TBD' }}
+                    </div>
+                    <span class="bracket-vs">vs</span>
+                    <div class="bracket-player {% if m.winner_id == m.player2_id %}bracket-winner{% endif %}">
+                        {{ m.player2.username if m.player2 else 'TBD' }}
+                    </div>
+                    {% if m.match_id and m.status == 'active' %}
+                    <a href="/match/{{ m.match_id }}" class="btn btn-sm btn-info" style="margin-top: 6px;">
+                        {% if user.id in (m.player1_id, m.player2_id) %}Play{% else %}Watch{% endif %}
+                    </a>
+                    {% endif %}
                 </div>
-                <span class="bracket-vs">vs</span>
-                <div class="bracket-player {% if m.winner_id == m.player2_id %}bracket-winner{% endif %}">
-                    {{ m.player2.username if m.player2 else 'TBD' }}
-                </div>
-                {% if m.match_id and m.status == 'active' %}
-                <a href="/match/{{ m.match_id }}" class="btn btn-sm btn-info">Watch</a>
                 {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-
-        <div class="bracket-round">
-            <h3>Final</h3>
-            {% for m in bracket.get('final', []) %}
-            <div class="bracket-match bracket-final {% if m.status == 'active' %}bracket-active{% elif m.status == 'completed' %}bracket-completed{% endif %}">
-                <div class="bracket-player {% if m.winner_id == m.player1_id %}bracket-winner{% endif %}">
-                    {{ m.player1.username if m.player1 else 'TBD' }}
-                </div>
-                <span class="bracket-vs">vs</span>
-                <div class="bracket-player {% if m.winner_id == m.player2_id %}bracket-winner{% endif %}">
-                    {{ m.player2.username if m.player2 else 'TBD' }}
-                </div>
-                {% if m.match_id and m.status == 'active' %}
-                <a href="/match/{{ m.match_id }}" class="btn btn-sm btn-info">Watch</a>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-
-        {% if bracket.get('third_place') %}
-        <div class="bracket-round">
-            <h3>3rd Place Match</h3>
-            {% for m in bracket.get('third_place', []) %}
-            {% if m.status != 'cancelled' %}
-            <div class="bracket-match {% if m.status == 'active' %}bracket-active{% elif m.status == 'completed' %}bracket-completed{% endif %}">
-                <div class="bracket-player {% if m.winner_id == m.player1_id %}bracket-winner{% endif %}">
-                    {{ m.player1.username if m.player1 else 'TBD' }}
-                </div>
-                <span class="bracket-vs">vs</span>
-                <div class="bracket-player {% if m.winner_id == m.player2_id %}bracket-winner{% endif %}">
-                    {{ m.player2.username if m.player2 else 'TBD' }}
-                </div>
-                {% if m.match_id and m.status == 'active' %}
-                <a href="/match/{{ m.match_id }}" class="btn btn-sm btn-info">Watch</a>
-                {% endif %}
+                {% endfor %}
             </div>
             {% endif %}
             {% endfor %}
         </div>
-        {% endif %}
     </div>
+    {% endif %}
 
     {% if tournament.status == 'completed' %}
     <div class="tournament-results">
@@ -105,14 +70,20 @@
         <div class="standings-list">
             {% for e in entries|sort(attribute='placement') if e.placement %}
             <div class="standing-item standing-{{ e.placement }}">
-                <span class="placement">#{{ e.placement }}</span>
-                <span class="player-name">{{ e.user.username }}</span>
-                <span class="prize">${{ (tournament.prize_pool * {1: 0.5, 2: 0.25, 3: 0.15, 4: 0.10}.get(e.placement, 0))|int }}</span>
+                <span>
+                    <span class="placement">
+                        #{{ e.placement }}
+                    </span>
+                    {{ e.user.username }}
+                </span>
+                <span class="prize">
+                    {% set payout_pct = payouts.get(e.placement, 0) %}
+                    {{ (tournament.prize_pool * payout_pct / 100)|int }} coins ({{ payout_pct }}%)
+                </span>
             </div>
             {% endfor %}
         </div>
     </div>
-    {% endif %}
     {% endif %}
 
     <a href="/tournaments" class="btn btn-secondary" style="margin-top:20px">Back to Tournaments</a>

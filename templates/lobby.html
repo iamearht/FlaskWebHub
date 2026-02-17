@@ -25,11 +25,23 @@
     </div>
     {% endif %}
 
+    {% if rakeback %}
+    <div class="lobby-section vip-section">
+        <div class="vip-display">
+            <span class="vip-tier vip-{{ rakeback.tier|lower }}">Rakeback: {{ rakeback.tier }}</span>
+            <span class="vip-next">{{ rakeback.rakeback_percent }}% rakeback | Rake paid: {{ rakeback.total_rake_paid|int }} coins</span>
+            {% if rakeback.next_tier_info %}
+            <span class="vip-next">Next: {{ rakeback.next_tier_info.name }} ({{ rakeback.next_tier_info.threshold|int }} rake)</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="lobby-section">
         <h2>Create a Match</h2>
         <form method="POST" action="/create_match" class="create-match-form">
             <div class="form-group">
-                <label for="stake">Stake Amount (min 10)</label>
+                <label for="stake">Stake Amount (min 10 coins)</label>
                 <input type="number" id="stake" name="stake" min="10" max="{{ user.coins }}" value="50" required>
             </div>
             <button type="submit" class="btn btn-primary">Create Match</button>
@@ -69,10 +81,31 @@
     </div>
     {% endif %}
 
-    {% if waiting %}
     <div class="lobby-section">
         <h2>Available Matches</h2>
-        <div class="match-list">
+        <form method="GET" action="/lobby" class="filter-bar">
+            <div class="form-group" style="display:inline-block; width: 120px;">
+                <label>Min Stake</label>
+                <input type="number" name="min_stake" value="{{ min_stake }}" placeholder="Min" min="0">
+            </div>
+            <div class="form-group" style="display:inline-block; width: 120px;">
+                <label>Max Stake</label>
+                <input type="number" name="max_stake" value="{{ max_stake }}" placeholder="Max" min="0">
+            </div>
+            <div class="form-group" style="display:inline-block; width: 160px;">
+                <label>Sort By</label>
+                <select name="sort">
+                    <option value="newest" {% if sort_order == 'newest' %}selected{% endif %}>Newest First</option>
+                    <option value="low_high" {% if sort_order == 'low_high' %}selected{% endif %}>Stake: Low to High</option>
+                    <option value="high_low" {% if sort_order == 'high_low' %}selected{% endif %}>Stake: High to Low</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 24px;">Filter</button>
+            <a href="/lobby" class="btn btn-secondary btn-sm" style="margin-top: 24px;">Clear</a>
+        </form>
+
+        {% if waiting %}
+        <div class="match-list" style="margin-top: 12px;">
             {% for m in waiting %}
             <div class="match-card">
                 <div class="match-info">
@@ -87,8 +120,10 @@
             </div>
             {% endfor %}
         </div>
+        {% else %}
+        <p class="empty-text" style="margin-top: 12px;">No matches found matching your filters.</p>
+        {% endif %}
     </div>
-    {% endif %}
 
     {% if live_games %}
     <div class="lobby-section">

@@ -1,0 +1,54 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Manage Coins{% endblock %}
+{% block admin_content %}
+<div class="admin-card">
+    <h3>Manage User Coins</h3>
+    <form method="POST">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+            <div class="form-group" style="flex: 1; min-width: 150px;">
+                <label>Username</label>
+                <input type="text" name="username" required placeholder="Enter username">
+            </div>
+            <div class="form-group" style="width: 150px;">
+                <label>Action</label>
+                <select name="action">
+                    <option value="add">Add Coins</option>
+                    <option value="remove">Remove Coins</option>
+                    <option value="set">Set Balance</option>
+                </select>
+            </div>
+            <div class="form-group" style="width: 150px;">
+                <label>Amount</label>
+                <input type="number" name="amount" min="1" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-bottom: 16px;">Apply</button>
+        </div>
+    </form>
+</div>
+
+<div class="admin-card" style="margin-top: 20px;">
+    <h3>All Users</h3>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Coins</th>
+                <th>Admin</th>
+                <th>Joined</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.username }}</td>
+                <td>{{ u.email or '-' }}</td>
+                <td class="text-green">{{ u.coins }}</td>
+                <td>{{ 'Yes' if u.is_admin else 'No' }}</td>
+                <td>{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

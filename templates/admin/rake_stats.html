@@ -1,0 +1,58 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Rake Stats{% endblock %}
+{% block admin_content %}
+<div class="admin-card">
+    <h3>Rake Statistics</h3>
+    <div class="filter-bar" style="margin-bottom: 16px;">
+        <a href="?period=24h" class="btn btn-sm {% if period == '24h' %}btn-primary{% else %}btn-secondary{% endif %}">24h</a>
+        <a href="?period=7d" class="btn btn-sm {% if period == '7d' %}btn-primary{% else %}btn-secondary{% endif %}">7 Days</a>
+        <a href="?period=30d" class="btn btn-sm {% if period == '30d' %}btn-primary{% else %}btn-secondary{% endif %}">30 Days</a>
+        <a href="?period=90d" class="btn btn-sm {% if period == '90d' %}btn-primary{% else %}btn-secondary{% endif %}">90 Days</a>
+        <a href="?period=all" class="btn btn-sm {% if period == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">All Time</a>
+    </div>
+    <div class="stats-grid">
+        <div class="stat-item">
+            <span class="stat-value">{{ match_rake|int }}</span>
+            <span class="stat-label">Lobby Rake</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value">{{ tournament_rake|int }}</span>
+            <span class="stat-label">Tournament Rake</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value">{{ total_rake|int }}</span>
+            <span class="stat-label">Total Rake</span>
+        </div>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-top: 20px;">
+    <h3>Transactions</h3>
+    {% if transactions %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Stake</th>
+                <th>Rate</th>
+                <th>Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rt in transactions %}
+            <tr>
+                <td><span class="tx-type tx-{{ rt.source_type }}">{{ rt.source_type }}</span></td>
+                <td class="text-green">{{ rt.amount }} coins</td>
+                <td>{{ rt.stake_amount or '-' }}</td>
+                <td>{{ rt.rake_percent or '-' }}%</td>
+                <td>{{ rt.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-text">No transactions for this period.</p>
+    {% endif %}
+</div>
+{% endblock %}

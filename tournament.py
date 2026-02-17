@@ -1,22 +1,48 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
-from models import db, User, Match, Tournament, TournamentEntry, TournamentMatch
+from models import (db, User, Match, Tournament, TournamentEntry, TournamentMatch,
+                     RakeTransaction, AdminConfig, get_tournament_rake_percent, get_tournament_payouts)
 from auth import login_required, get_current_user
 from engine import init_game_state
 from datetime import datetime
 import secrets
+import math
 
 tournament_bp = Blueprint('tournament', __name__)
 
-REQUIRED_PLAYERS = 8
+
+def get_round_name(round_num, total_rounds):
+    if round_num == total_rounds:
+        return 'final'
+    elif round_num == total_rounds - 1:
+        return 'semifinal'
+    elif round_num == total_rounds - 2:
+        return 'quarterfinal'
+    return f'round_{round_num}'
 
 
-def get_or_create_waiting_tournament(stake):
+def get_round_display_name(round_name, total_rounds=None):
+    display_names = {
+        'final': 'Final',
+        'third_place': '3rd Place',
+        'semifinal': 'Semifinal',
+        'quarterfinal': 'Quarterfinal',
+    }
+    if round_name in display_names:
+        return display_names[round_name]
+    if round_name.startswith('round_'):
+        num = round_name.replace('round_', '')
+        return f'Round {num}'
+    return round_name.replace('_', ' ').title()
+
+
+def get_or_create_waiting_tournament(stake, max_players):
     tournament = Tournament.query.filter_by(
         stake_amount=stake,
+        max_players=max_players,
         status='waiting'
     ).first()
     if not tournament:
-        tournament = Tournament(stake_amount=stake, status='waiting', prize_pool=0)
+        tournament = Tournament(stake_amount=stake, max_players=max_players, status='waiting', prize_pool=0)
         db.session.add(tournament)
         db.session.flush()
     return tournament
@@ -24,7 +50,8 @@ def get_or_create_waiting_tournament(stake):
 
 def start_tournament(tournament):
     entries = TournamentEntry.query.filter_by(tournament_id=tournament.id).all()
-    if len(entries) < REQUIRED_PLAYERS:
+    required = tournament.max_players
+    if len(entries) < required:
         return
 
     shuffled = list(entries)
@@ -35,11 +62,29 @@ def start_tournament(tournament):
     for i, entry in enumerate(shuffled):
         entry.seed = i + 1
 
+    rake_percent = get_tournament_rake_percent(tournament.stake_amount, required)
+    total_entry = tournament.stake_amount * required
+    rake = int(total_entry * rake_percent / 100)
+    tournament.rake_amount = rake
+    tournament.prize_pool = total_entry - rake
+
+    if rake > 0:
+        rt = RakeTransaction(
+            source_type='tournament',
+            source_id=tournament.id,
+            amount=rake,
+            stake_amount=tournament.stake_amount,
+            rake_percent=rake_percent,
+        )
+        db.session.add(rt)
+
     tournament.status = 'active'
     tournament.started_at = datetime.utcnow()
-    tournament.prize_pool = tournament.stake_amount * REQUIRED_PLAYERS
 
-    for i in range(0, REQUIRED_PLAYERS, 2):
+    total_rounds = int(math.log2(required))
+    first_round = get_round_name(1, total_rounds)
+
+    for i in range(0, required, 2):
         bracket_pos = i // 2
         p1 = shuffled[i]
         p2 = shuffled[i + 1]
@@ -57,7 +102,7 @@ def start_tournament(tournament):
 
         tm = TournamentMatch(
             tournament_id=tournament.id,
-            round='quarterfinal',
+            round=first_round,
             bracket_position=bracket_pos,
             player1_id=p1.user_id,
             player2_id=p2.user_id,
@@ -66,22 +111,17 @@ def start_tournament(tournament):
         )
         db.session.add(tm)
 
-    for i in range(4):
-        tm = TournamentMatch(
-            tournament_id=tournament.id,
-            round='semifinal',
-            bracket_position=i // 2,
-            status='pending',
-        )
-        db.session.add(tm)
-
-    tm_final = TournamentMatch(
-        tournament_id=tournament.id,
-        round='final',
-        bracket_position=0,
-        status='pending',
-    )
-    db.session.add(tm_final)
+    for r in range(2, total_rounds + 1):
+        round_name = get_round_name(r, total_rounds)
+        matches_in_round = required // (2 ** r)
+        for pos in range(matches_in_round):
+            tm = TournamentMatch(
+                tournament_id=tournament.id,
+                round=round_name,
+                bracket_position=pos,
+                status='pending',
+            )
+            db.session.add(tm)
 
     tm_third = TournamentMatch(
         tournament_id=tournament.id,
@@ -112,21 +152,59 @@ def advance_tournament(tournament, completed_match_id, winner_id, loser_id):
     if entry:
         entry.eliminated_at = datetime.utcnow()
 
-    if tm.round == 'quarterfinal':
-        sf_pos = tm.bracket_position // 2
-        sf_match = TournamentMatch.query.filter_by(
-            tournament_id=tournament.id,
-            round='semifinal',
-            bracket_position=sf_pos,
-        ).first()
-        if sf_match:
-            if tm.bracket_position % 2 == 0:
-                sf_match.player1_id = winner_id
-            else:
-                sf_match.player2_id = winner_id
+    total_rounds = int(math.log2(tournament.max_players))
 
-            if sf_match.player1_id and sf_match.player2_id:
-                _create_match_for_tournament(sf_match, tournament)
+    all_rounds = []
+    for r in range(1, total_rounds + 1):
+        all_rounds.append(get_round_name(r, total_rounds))
+
+    current_round_idx = None
+    for idx, rn in enumerate(all_rounds):
+        if tm.round == rn:
+            current_round_idx = idx
+            break
+
+    if current_round_idx is not None and current_round_idx < len(all_rounds) - 1:
+        next_round = all_rounds[current_round_idx + 1]
+        next_pos = tm.bracket_position // 2
+        next_match = TournamentMatch.query.filter_by(
+            tournament_id=tournament.id,
+            round=next_round,
+            bracket_position=next_pos,
+        ).first()
+        if next_match:
+            if tm.bracket_position % 2 == 0:
+                next_match.player1_id = winner_id
+            else:
+                next_match.player2_id = winner_id
+
+            if next_match.player1_id and next_match.player2_id:
+                _create_match_for_tournament(next_match, tournament)
+
+        if next_round == 'final':
+            third_match = TournamentMatch.query.filter_by(
+                tournament_id=tournament.id,
+                round='third_place',
+                bracket_position=0,
+            ).first()
+            if third_match:
+                sf_matches = TournamentMatch.query.filter_by(
+                    tournament_id=tournament.id,
+                    round=tm.round,
+                ).all()
+                completed_sf = [m for m in sf_matches if m.status == 'completed']
+                losers = []
+                for m in completed_sf:
+                    loser = m.player1_id if m.winner_id == m.player2_id else m.player2_id
+                    losers.append((m.bracket_position, loser))
+                losers.sort(key=lambda x: x[0])
+                for pos, lid in losers:
+                    if pos == 0 and not third_match.player1_id:
+                        third_match.player1_id = lid
+                    elif pos == 1 and not third_match.player2_id:
+                        third_match.player2_id = lid
+                if third_match.player1_id and third_match.player2_id:
+                    _create_match_for_tournament(third_match, tournament)
 
     elif tm.round == 'semifinal':
         final_match = TournamentMatch.query.filter_by(
@@ -134,27 +212,24 @@ def advance_tournament(tournament, completed_match_id, winner_id, loser_id):
             round='final',
             bracket_position=0,
         ).first()
-        third_match = TournamentMatch.query.filter_by(
-            tournament_id=tournament.id,
-            round='third_place',
-            bracket_position=0,
-        ).first()
-
         if final_match:
             if tm.bracket_position == 0:
                 final_match.player1_id = winner_id
             else:
                 final_match.player2_id = winner_id
-
             if final_match.player1_id and final_match.player2_id:
                 _create_match_for_tournament(final_match, tournament)
 
+        third_match = TournamentMatch.query.filter_by(
+            tournament_id=tournament.id,
+            round='third_place',
+            bracket_position=0,
+        ).first()
         if third_match:
             if tm.bracket_position == 0:
                 third_match.player1_id = loser_id
             else:
                 third_match.player2_id = loser_id
-
             if third_match.player1_id and third_match.player2_id:
                 _create_match_for_tournament(third_match, tournament)
 
@@ -206,9 +281,11 @@ def _check_tournament_complete(tournament):
     elif third and not third.player1_id and not third.player2_id:
         third.status = 'cancelled'
 
+    payouts = get_tournament_payouts(tournament.max_players)
+
     for place, user_id in placements.items():
-        payout_rate = Tournament.PAYOUTS.get(place, 0)
-        payout = int(tournament.prize_pool * payout_rate)
+        payout_pct = payouts.get(place, 0)
+        payout = int(tournament.prize_pool * payout_pct / 100)
         if payout > 0:
             user = User.query.get(user_id)
             if user:
@@ -228,32 +305,50 @@ def _check_tournament_complete(tournament):
 @login_required
 def tournaments_page():
     user = get_current_user()
-    active_tournaments = Tournament.query.filter(
-        Tournament.status.in_(['waiting', 'active'])
-    ).order_by(Tournament.stake_amount).all()
 
     my_entries = TournamentEntry.query.filter_by(user_id=user.id).all()
     my_tournament_ids = {e.tournament_id for e in my_entries}
 
     tournament_data = []
     for stake in Tournament.STAKES:
-        waiting = Tournament.query.filter_by(stake_amount=stake, status='waiting').first()
-        entry_count = 0
-        user_joined = False
-        if waiting:
-            entry_count = TournamentEntry.query.filter_by(tournament_id=waiting.id).count()
-            user_joined = waiting.id in my_tournament_ids
+        stake_variants = []
+        for size in Tournament.PLAYER_SIZES:
+            waiting = Tournament.query.filter_by(
+                stake_amount=stake, max_players=size, status='waiting'
+            ).first()
+            entry_count = 0
+            user_joined = False
+            waiting_id = None
+            if waiting:
+                entry_count = TournamentEntry.query.filter_by(tournament_id=waiting.id).count()
+                user_joined = waiting.id in my_tournament_ids
+                waiting_id = waiting.id
 
-        active_list = Tournament.query.filter_by(
-            stake_amount=stake, status='active'
-        ).order_by(Tournament.started_at.desc()).limit(3).all()
+            active_list = Tournament.query.filter_by(
+                stake_amount=stake, max_players=size, status='active'
+            ).order_by(Tournament.started_at.desc()).limit(2).all()
+
+            rake_pct = get_tournament_rake_percent(stake, size)
+            payouts = get_tournament_payouts(size)
+            total_entry = stake * size
+            rake = int(total_entry * rake_pct / 100)
+            pool = total_entry - rake
+
+            stake_variants.append({
+                'size': size,
+                'entry_count': entry_count,
+                'user_joined': user_joined,
+                'waiting_id': waiting_id,
+                'active': active_list,
+                'rake_pct': rake_pct,
+                'pool': pool,
+                'payouts': payouts,
+            })
 
         tournament_data.append({
             'stake': stake,
-            'waiting': waiting,
-            'entry_count': entry_count,
-            'user_joined': user_joined,
-            'active': active_list,
+            'stake_display': stake // 100,
+            'variants': stake_variants,
         })
 
     completed = Tournament.query.filter_by(status='completed')\
@@ -263,19 +358,23 @@ def tournaments_page():
                            tournament_data=tournament_data, completed=completed)
 
 
-@tournament_bp.route('/tournament/join/<int:stake>', methods=['POST'])
+@tournament_bp.route('/tournament/join/<int:stake>/<int:size>', methods=['POST'])
 @login_required
-def join_tournament(stake):
+def join_tournament(stake, size):
     user = get_current_user()
     if stake not in Tournament.STAKES:
         flash('Invalid tournament stake.', 'error')
+        return redirect(url_for('tournament.tournaments_page'))
+
+    if size not in Tournament.PLAYER_SIZES:
+        flash('Invalid tournament size.', 'error')
         return redirect(url_for('tournament.tournaments_page'))
 
     if stake > user.coins:
         flash('Not enough coins to join this tournament.', 'error')
         return redirect(url_for('tournament.tournaments_page'))
 
-    tournament = get_or_create_waiting_tournament(stake)
+    tournament = get_or_create_waiting_tournament(stake, size)
 
     existing = TournamentEntry.query.filter_by(
         tournament_id=tournament.id,
@@ -291,10 +390,36 @@ def join_tournament(stake):
     db.session.commit()
 
     entry_count = TournamentEntry.query.filter_by(tournament_id=tournament.id).count()
-    if entry_count >= REQUIRED_PLAYERS:
+    if entry_count >= size:
         start_tournament(tournament)
 
-    flash(f'Joined ${stake} tournament! ({entry_count}/{REQUIRED_PLAYERS} players)', 'success')
+    flash(f'Joined {stake} coin tournament! ({entry_count}/{size} players)', 'success')
+    return redirect(url_for('tournament.tournaments_page'))
+
+
+@tournament_bp.route('/tournament/unregister/<int:tournament_id>', methods=['POST'])
+@login_required
+def unregister_tournament(tournament_id):
+    user = get_current_user()
+    tournament = Tournament.query.get_or_404(tournament_id)
+
+    if tournament.status != 'waiting':
+        flash('Cannot unregister from a tournament that has already started.', 'error')
+        return redirect(url_for('tournament.tournaments_page'))
+
+    entry = TournamentEntry.query.filter_by(
+        tournament_id=tournament.id,
+        user_id=user.id,
+    ).first()
+    if not entry:
+        flash('You are not registered for this tournament.', 'error')
+        return redirect(url_for('tournament.tournaments_page'))
+
+    user.coins += tournament.stake_amount
+    db.session.delete(entry)
+    db.session.commit()
+
+    flash(f'Unregistered from tournament. {tournament.stake_amount} coins refunded.', 'success')
     return redirect(url_for('tournament.tournaments_page'))
 
 
@@ -308,9 +433,21 @@ def view_tournament(tournament_id):
     entries = TournamentEntry.query.filter_by(tournament_id=tournament_id)\
         .order_by(TournamentEntry.seed).all()
 
-    bracket = {'quarterfinal': [], 'semifinal': [], 'final': [], 'third_place': []}
+    total_rounds = int(math.log2(tournament.max_players))
+    round_order = []
+    for r in range(1, total_rounds + 1):
+        round_order.append(get_round_name(r, total_rounds))
+    round_order.append('third_place')
+
+    bracket = {}
+    for rn in round_order:
+        bracket[rn] = []
     for m in matches:
         bracket.setdefault(m.round, []).append(m)
 
+    round_display = {rn: get_round_display_name(rn, total_rounds) for rn in round_order}
+    payouts = get_tournament_payouts(tournament.max_players)
+
     return render_template('tournament_view.html', user=user, tournament=tournament,
-                           bracket=bracket, entries=entries)
+                           bracket=bracket, entries=entries, round_order=round_order,
+                           round_display=round_display, payouts=payouts)

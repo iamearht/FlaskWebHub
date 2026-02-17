@@ -3,44 +3,59 @@
 {% block content %}
 <div class="tournaments-page">
     <h1>Tournaments</h1>
-    <p class="subtitle">8-player single elimination. Join a stake tier and compete for the prize pool!</p>
+    <p class="subtitle">Single elimination tournaments. $1 = 100 coins. Join a stake tier and compete for the prize pool!</p>
 
-    <div class="tournament-stakes">
-        {% for td in tournament_data %}
-        <div class="tournament-stake-card">
-            <div class="stake-header">
-                <h3>${{ td.stake }} Tournament</h3>
-                <span class="prize-pool">Prize Pool: ${{ td.stake * 8 }}</span>
-            </div>
-            <div class="stake-info">
-                <span class="entry-count">{{ td.entry_count }}/8 players</span>
-                <div class="entry-progress-bar">
-                    <div class="entry-progress-fill" style="width: {{ (td.entry_count / 8 * 100)|int }}%"></div>
+    {% for td in tournament_data %}
+    <div class="tournament-section">
+        <h2>${{ td.stake_display }} Tournament ({{ td.stake }} coins entry)</h2>
+        <div class="tournament-variants">
+            {% for v in td.variants %}
+            <div class="tournament-variant-card">
+                <div class="variant-header">
+                    <h4>{{ v.size }}-Player</h4>
+                    <span class="prize-pool">Prize Pool: {{ v.pool }} coins</span>
                 </div>
-            </div>
-            <div class="payout-info">
-                <span>1st: {{ (td.stake * 8 * 0.5)|int }} | 2nd: {{ (td.stake * 8 * 0.25)|int }} | 3rd: {{ (td.stake * 8 * 0.15)|int }} | 4th: {{ (td.stake * 8 * 0.10)|int }}</span>
-            </div>
-            {% if td.user_joined %}
-                <span class="joined-badge">Registered</span>
-            {% else %}
-                <form method="POST" action="/tournament/join/{{ td.stake }}">
-                    <button type="submit" class="btn btn-primary" {% if td.stake > user.coins %}disabled title="Not enough coins"{% endif %}>
-                        Join (${{ td.stake }})
-                    </button>
-                </form>
-            {% endif %}
+                <div class="stake-info">
+                    <span class="entry-count">{{ v.entry_count }}/{{ v.size }} players</span>
+                    <div class="entry-progress-bar">
+                        <div class="entry-progress-fill" style="width: {{ (v.entry_count / v.size * 100)|int }}%"></div>
+                    </div>
+                </div>
+                <div class="payout-info">
+                    {% for place, pct in v.payouts.items()|sort %}
+                    <span>{{ place }}{{ 'st' if place == 1 else ('nd' if place == 2 else ('rd' if place == 3 else 'th')) }}: {{ pct }}%</span>{% if not loop.last %} | {% endif %}
+                    {% endfor %}
+                </div>
+                <div class="variant-meta">
+                    <span style="color: #888; font-size: 0.8em;">Rake: {{ v.rake_pct }}%</span>
+                </div>
+                {% if v.user_joined %}
+                    <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+                        <span class="joined-badge">Registered</span>
+                        <form method="POST" action="/tournament/unregister/{{ v.waiting_id }}" onsubmit="return confirm('Unregister from this tournament? Your entry fee will be refunded.')">
+                            <button type="submit" class="btn btn-danger btn-sm">Unregister</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <form method="POST" action="/tournament/join/{{ td.stake }}/{{ v.size }}" style="margin-top: 8px;">
+                        <button type="submit" class="btn btn-primary btn-sm" {% if td.stake > user.coins %}disabled title="Not enough coins"{% endif %}>
+                            Join ({{ td.stake }} coins)
+                        </button>
+                    </form>
+                {% endif %}
 
-            {% if td.active %}
-            <div class="active-tournaments">
-                {% for t in td.active %}
-                <a href="/tournament/{{ t.id }}" class="btn btn-info btn-sm">View Active #{{ t.id }}</a>
-                {% endfor %}
+                {% if v.active %}
+                <div class="active-tournaments">
+                    {% for t in v.active %}
+                    <a href="/tournament/{{ t.id }}" class="btn btn-info btn-sm">View Active #{{ t.id }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
+    {% endfor %}
 
     {% if completed %}
     <div class="tournament-section">
@@ -49,7 +64,7 @@
             {% for t in completed %}
             <div class="match-card">
                 <div class="match-info">
-                    <span class="match-stake">${{ t.stake_amount }} Tournament</span>
+                    <span class="match-stake">{{ t.stake_amount }} coins ({{ t.max_players }}-player)</span>
                     <span>Completed: {{ t.completed_at.strftime('%Y-%m-%d') if t.completed_at else '-' }}</span>
                 </div>
                 <a href="/tournament/{{ t.id }}" class="btn btn-sm">View Bracket</a>

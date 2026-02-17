@@ -1,0 +1,26 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Tournament Payouts{% endblock %}
+{% block admin_content %}
+<div class="admin-card">
+    <h3>Tournament Payout Configuration</h3>
+    <p style="color: #888; margin-bottom: 16px;">Set payout percentages for each placement by tournament size. Values should sum to 100%.</p>
+
+    {% for size in sizes %}
+    <div class="payout-section" style="margin-bottom: 24px; padding: 16px; background: #0d1220; border-radius: 8px;">
+        <h4 style="color: #4caf50; margin-bottom: 12px;">{{ size }}-Player Tournament</h4>
+        <form method="POST">
+            <input type="hidden" name="size" value="{{ size }}">
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;">
+                {% for place, pct in all_payouts[size].items()|sort %}
+                <div class="form-group" style="width: 100px;">
+                    <label>{{ place }}{{ 'st' if place == 1 else ('nd' if place == 2 else ('rd' if place == 3 else 'th')) }}</label>
+                    <input type="number" name="place_{{ place }}" value="{{ pct }}" min="0" max="100" step="0.1">
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom: 16px;">Save</button>
+            </div>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1042,6 +1042,102 @@ body {
     text-shadow: 0 0 6px rgba(255, 69, 0, 0.6);
 }
 
+.card-joker.joker-unassigned {
+    animation: jokerPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes jokerPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.4); }
+    50% { box-shadow: 0 0 16px rgba(255, 215, 0, 0.8); }
+}
+
+.card-joker.joker-assigned {
+    position: relative;
+}
+
+.card-joker .joker-value {
+    display: block;
+    font-size: 1.3em;
+    font-weight: 900;
+    color: #1a1a2e;
+    line-height: 1;
+    margin: 2px 0;
+}
+
+#joker-choice-area, #dealer-joker-choice-area {
+    text-align: center;
+}
+
+#joker-choice-area h3, #dealer-joker-choice-area h3 {
+    color: #ffd700;
+}
+
+.joker-selector-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+}
+
+.joker-selector-label {
+    color: #ffd700;
+    font-weight: 700;
+    font-size: 1em;
+    min-width: 60px;
+}
+
+.joker-value-grid {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.joker-val-btn {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #444;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-size: 1em;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.joker-val-btn:hover {
+    border-color: #ffd700;
+    color: #ffd700;
+    background: #2a2a4e;
+}
+
+.joker-val-btn.selected {
+    background: linear-gradient(135deg, #ffd700, #ff6b00);
+    color: #000;
+    border-color: #ffd700;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    transform: scale(1.1);
+}
+
+#joker-choice-hand, #dealer-joker-hand {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 10px 0 16px;
+}
+
+#btn-joker-confirm, #btn-dealer-joker-confirm {
+    margin-top: 12px;
+}
+
+#btn-joker-confirm:disabled, #btn-dealer-joker-confirm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .jackpot-banner-section { margin-bottom: 0 !important; }
 
 .jackpot-banner {

@@ -45,13 +45,21 @@ def _is_classic_mode(game_mode):
     return game_mode in ('classic', 'classic_joker')
 
 
-def hand_value(cards):
+def _has_unassigned_jokers(cards):
+    return any(c['rank'] == 'JOKER' and 'chosen_value' not in c for c in cards)
+
+
+def _get_unassigned_joker_indices(cards):
+    return [i for i, c in enumerate(cards) if c['rank'] == 'JOKER' and 'chosen_value' not in c]
+
+
+def _auto_assign_jokers(cards):
     total = 0
     aces = 0
-    jokers = 0
     for c in cards:
         if c['rank'] == 'JOKER':
-            jokers += 1
+            if 'chosen_value' in c:
+                total += c['chosen_value']
             continue
         total += CARD_VALUES[c['rank']]
         if c['rank'] == 'A':
@@ -59,7 +67,35 @@ def hand_value(cards):
     while total > 21 and aces > 0:
         total -= 10
         aces -= 1
-    for _ in range(jokers):
+    for c in cards:
+        if c['rank'] == 'JOKER' and 'chosen_value' not in c:
+            best = 21 - total
+            if best > 11:
+                best = 11
+            if best < 1:
+                best = 1
+            c['chosen_value'] = best
+            total += best
+
+
+def hand_value(cards):
+    total = 0
+    aces = 0
+    jokers_auto = 0
+    for c in cards:
+        if c['rank'] == 'JOKER':
+            if 'chosen_value' in c:
+                total += c['chosen_value']
+            else:
+                jokers_auto += 1
+            continue
+        total += CARD_VALUES[c['rank']]
+        if c['rank'] == 'A':
+            aces += 1
+    while total > 21 and aces > 0:
+        total -= 10
+        aces -= 1
+    for _ in range(jokers_auto):
         best = 21 - total
         if best > 11:
             best = 11
@@ -70,6 +106,8 @@ def hand_value(cards):
 
 
 def is_blackjack(cards):
+    if _has_unassigned_jokers(cards):
+        return False
     return len(cards) == 2 and hand_value(cards) == 21
 
 
@@ -388,11 +426,20 @@ def handle_insurance(state, decisions):
 def _advance_to_active(state):
     ts = state['turn_state']
     rnd = ts['round']
+    game_mode = state.get('game_mode', 'classic')
     while rnd['current_box'] < len(rnd['boxes']):
         box = rnd['boxes'][rnd['current_box']]
         while rnd['current_hand'] < len(box['hands']):
             hand = box['hands'][rnd['current_hand']]
             if hand['status'] == 'active':
+                if _is_joker_mode(game_mode) and _has_unassigned_jokers(hand['cards']):
+                    state['phase'] = 'JOKER_CHOICE'
+                    ts['joker_choice'] = {
+                        'box': rnd['current_box'],
+                        'hand': rnd['current_hand'],
+                        'indices': _get_unassigned_joker_indices(hand['cards']),
+                    }
+                    return
                 return
             rnd['current_hand'] += 1
         rnd['current_box'] += 1
@@ -403,6 +450,7 @@ def _advance_to_active(state):
 def player_action(state, action):
     ts = state['turn_state']
     rnd = ts['round']
+    game_mode = state.get('game_mode', 'classic')
     if state['phase'] != 'PLAYER_TURN':
         return state, 'Not in player turn phase'
 
@@ -416,10 +464,20 @@ def player_action(state, action):
     deck = ts['deck']
 
     if action == 'hit':
-        hand['cards'].append(deck[ts['cards_dealt']])
+        card = deck[ts['cards_dealt']]
+        hand['cards'].append(card)
         ts['cards_dealt'] += 1
         if ts['cards_dealt'] >= CUT_CARD_POSITION:
             ts['cut_card_reached'] = True
+        if _is_joker_mode(game_mode) and card['rank'] == 'JOKER' and 'chosen_value' not in card:
+            state['phase'] = 'JOKER_CHOICE'
+            ts['joker_choice'] = {
+                'box': rnd['current_box'],
+                'hand': rnd['current_hand'],
+                'indices': [len(hand['cards']) - 1],
+            }
+            ts['pending_after_joker'] = 'hit'
+            return state, None
         val = hand_value(hand['cards'])
         if val > 21:
             hand['status'] = 'bust'
@@ -439,10 +497,20 @@ def player_action(state, action):
         ts['chips'] -= hand['bet']
         hand['bet'] *= 2
         hand['is_doubled'] = True
-        hand['cards'].append(deck[ts['cards_dealt']])
+        card = deck[ts['cards_dealt']]
+        hand['cards'].append(card)
         ts['cards_dealt'] += 1
         if ts['cards_dealt'] >= CUT_CARD_POSITION:
             ts['cut_card_reached'] = True
+        if _is_joker_mode(game_mode) and card['rank'] == 'JOKER' and 'chosen_value' not in card:
+            state['phase'] = 'JOKER_CHOICE'
+            ts['joker_choice'] = {
+                'box': rnd['current_box'],
+                'hand': rnd['current_hand'],
+                'indices': [len(hand['cards']) - 1],
+            }
+            ts['pending_after_joker'] = 'double'
+            return state, None
         if hand_value(hand['cards']) > 21:
             hand['status'] = 'bust'
         else:
@@ -474,6 +542,53 @@ def player_action(state, action):
         box['hands'].insert(rnd['current_hand'] + 1, new_hand)
     else:
         return state, f'Unknown action: {action}'
+
+    return state, None
+
+
+def assign_joker_values(state, values):
+    ts = state['turn_state']
+    rnd = ts['round']
+    jc = ts.get('joker_choice')
+    if not jc or state['phase'] != 'JOKER_CHOICE':
+        return state, 'Not in joker choice phase'
+
+    box = rnd['boxes'][jc['box']]
+    hand = box['hands'][jc['hand']]
+    indices = jc['indices']
+
+    if len(values) != len(indices):
+        return state, f'Expected {len(indices)} value(s), got {len(values)}'
+
+    for i, idx in enumerate(indices):
+        val = int(values[i])
+        if val < 1 or val > 11:
+            return state, 'Joker value must be between 1 and 11'
+        hand['cards'][idx]['chosen_value'] = val
+
+    del ts['joker_choice']
+    pending = ts.pop('pending_after_joker', None)
+
+    hv = hand_value(hand['cards'])
+
+    if pending == 'double':
+        if hv > 21:
+            hand['status'] = 'bust'
+        else:
+            hand['status'] = 'stand'
+        _next_hand(state)
+    elif is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
+        hand['status'] = 'blackjack'
+        _next_hand(state)
+    elif hv > 21:
+        hand['status'] = 'bust'
+        hand['result'] = None
+        _next_hand(state)
+    elif hv == 21:
+        hand['status'] = 'stand'
+        _next_hand(state)
+    else:
+        state['phase'] = 'PLAYER_TURN'
 
     return state, None
 
@@ -512,13 +627,24 @@ def _play_dealer(state):
         _resolve_hands(state)
         return
 
+    if _is_joker_mode(game_mode) and _has_unassigned_jokers(dc):
+        if _is_classic_mode(game_mode):
+            _auto_assign_jokers(dc)
+        else:
+            state['phase'] = 'DEALER_JOKER_CHOICE'
+            ts['dealer_joker_indices'] = _get_unassigned_joker_indices(dc)
+            return
+
     if _is_classic_mode(game_mode):
         deck = ts['deck']
         while hand_value(dc) < 17:
-            dc.append(deck[ts['cards_dealt']])
+            card = deck[ts['cards_dealt']]
+            dc.append(card)
             ts['cards_dealt'] += 1
             if ts['cards_dealt'] >= CUT_CARD_POSITION:
                 ts['cut_card_reached'] = True
+            if _is_joker_mode(game_mode) and card['rank'] == 'JOKER' and 'chosen_value' not in card:
+                _auto_assign_jokers(dc)
         _resolve_hands(state)
     else:
         dealer_val = hand_value(dc)
@@ -536,15 +662,22 @@ def dealer_action(state, action):
     rnd = ts['round']
     deck = ts['deck']
     dc = rnd['dealer_cards']
+    game_mode = state.get('game_mode', 'classic')
 
     if action == 'stand':
         _resolve_hands(state)
         return state, None
     elif action == 'hit':
-        dc.append(deck[ts['cards_dealt']])
+        card = deck[ts['cards_dealt']]
+        dc.append(card)
         ts['cards_dealt'] += 1
         if ts['cards_dealt'] >= CUT_CARD_POSITION:
             ts['cut_card_reached'] = True
+
+        if _is_joker_mode(game_mode) and card['rank'] == 'JOKER' and 'chosen_value' not in card:
+            state['phase'] = 'DEALER_JOKER_CHOICE'
+            ts['dealer_joker_indices'] = [len(dc) - 1]
+            return state, None
 
         dealer_val = hand_value(dc)
         if dealer_val > 21 or dealer_val == 21:
@@ -555,6 +688,36 @@ def dealer_action(state, action):
         return state, None
     else:
         return state, f'Unknown dealer action: {action}'
+
+
+def assign_dealer_joker_values(state, values):
+    ts = state['turn_state']
+    rnd = ts['round']
+    dc = rnd['dealer_cards']
+    indices = ts.get('dealer_joker_indices', [])
+
+    if state['phase'] != 'DEALER_JOKER_CHOICE':
+        return state, 'Not in dealer joker choice phase'
+
+    if len(values) != len(indices):
+        return state, f'Expected {len(indices)} value(s)'
+
+    for i, idx in enumerate(indices):
+        val = int(values[i])
+        if val < 1 or val > 11:
+            return state, 'Value must be 1-11'
+        dc[idx]['chosen_value'] = val
+
+    if 'dealer_joker_indices' in ts:
+        del ts['dealer_joker_indices']
+
+    dealer_val = hand_value(dc)
+    if dealer_val > 21 or dealer_val == 21:
+        _resolve_hands(state)
+    else:
+        state['phase'] = 'DEALER_TURN'
+
+    return state, None
 
 
 def _resolve_hands(state):
@@ -683,6 +846,47 @@ def apply_timeout(state, match):
         match.is_waiting_decision = False
         return state, True
 
+    elif phase == 'JOKER_CHOICE':
+        jc = ts.get('joker_choice')
+        if jc:
+            rnd = ts['round']
+            box = rnd['boxes'][jc['box']]
+            hand = box['hands'][jc['hand']]
+            _auto_assign_jokers(hand['cards'])
+            del ts['joker_choice']
+            pending = ts.pop('pending_after_joker', None)
+            hv = hand_value(hand['cards'])
+            if pending == 'double':
+                hand['status'] = 'bust' if hv > 21 else 'stand'
+                _next_hand(state)
+            elif is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
+                hand['status'] = 'blackjack'
+                _next_hand(state)
+            elif hv > 21:
+                hand['status'] = 'bust'
+                hand['result'] = None
+                _next_hand(state)
+            elif hv == 21:
+                hand['status'] = 'stand'
+                _next_hand(state)
+            else:
+                state['phase'] = 'PLAYER_TURN'
+        match.is_waiting_decision = False
+        return state, True
+
+    elif phase == 'DEALER_JOKER_CHOICE':
+        dc = ts['round']['dealer_cards']
+        _auto_assign_jokers(dc)
+        if 'dealer_joker_indices' in ts:
+            del ts['dealer_joker_indices']
+        dealer_val = hand_value(dc)
+        if dealer_val > 21 or dealer_val == 21:
+            _resolve_hands(state)
+        else:
+            state['phase'] = 'DEALER_TURN'
+        match.is_waiting_decision = False
+        return state, True
+
     elif phase == 'DEALER_TURN':
         state, _ = dealer_action(state, 'stand')
         match.is_waiting_decision = False
@@ -743,8 +947,8 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
         if spectator:
             cs['i_am_dealer'] = False
             cs['is_my_turn'] = False
-            cs['is_dealer_turn'] = state['phase'] == 'DEALER_TURN'
-        elif state['phase'] == 'DEALER_TURN':
+            cs['is_dealer_turn'] = state['phase'] in ('DEALER_TURN', 'DEALER_JOKER_CHOICE')
+        elif state['phase'] in ('DEALER_TURN', 'DEALER_JOKER_CHOICE'):
             cs['i_am_dealer'] = (ti['dealer_role'] == user_player_num)
             cs['is_my_turn'] = (ti['dealer_role'] == user_player_num)
             cs['is_dealer_turn'] = True
@@ -779,7 +983,7 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
             'insurance_offered': rnd['insurance_offered'],
             'resolved': rnd['resolved'],
         }
-        show_all_dealer = rnd['resolved'] or state['phase'] == 'DEALER_TURN'
+        show_all_dealer = rnd['resolved'] or state['phase'] in ('DEALER_TURN', 'DEALER_JOKER_CHOICE')
         is_dealer = False
         if state.get('turns') and state['current_turn'] < len(state['turns']):
             ti = state['turns'][state['current_turn']]
@@ -805,8 +1009,20 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
                     'value': hand_value(hand['cards']),
                     'can_split': can_split(hand, ts['chips']) if hand['status'] == 'active' else False,
                     'can_double': can_double(hand, ts['chips']) if hand['status'] == 'active' else False,
+                    'has_unassigned_jokers': _has_unassigned_jokers(hand['cards']),
                 }
                 box_data['hands'].append(hand_data)
             cs['round']['boxes'].append(box_data)
+
+    if state['phase'] == 'JOKER_CHOICE' and ts and ts.get('joker_choice'):
+        jc = ts['joker_choice']
+        cs['joker_choice'] = {
+            'box': jc['box'],
+            'hand': jc['hand'],
+            'indices': jc['indices'],
+        }
+
+    if state['phase'] == 'DEALER_JOKER_CHOICE' and ts:
+        cs['dealer_joker_indices'] = ts.get('dealer_joker_indices', [])
 
     return cs

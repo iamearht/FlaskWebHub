@@ -43,6 +43,12 @@ var currentState = null;
 
 function cardHtml(card) {
     if (card.rank === '?') return '<div class="card card-back">?</div>';
+    if (card.rank === 'JOKER' || card.suit === 'joker') {
+        if (card.chosen_value !== undefined && card.chosen_value !== null) {
+            return '<div class="card card-joker joker-assigned">JKR<span class="joker-value">' + card.chosen_value + '</span><span class="suit">&#9733;</span></div>';
+        }
+        return '<div class="card card-joker joker-unassigned">JKR<span class="suit">&#9733;</span></div>';
+    }
     var suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
     var color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
     return '<div class="card card-' + color + '">' + card.rank + '<span class="suit">' + suitSymbols[card.suit] + '</span></div>';

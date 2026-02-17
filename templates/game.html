@@ -73,6 +73,22 @@
             <div id="table-bottom-section"></div>
         </div>
 
+        <div id="joker-choice-area" class="game-area" style="display:none">
+            <h3>Choose Joker Value</h3>
+            <p id="joker-choice-desc">Pick a value (1-11) for your Joker:</p>
+            <div id="joker-choice-hand" class="card-row"></div>
+            <div id="joker-value-selectors"></div>
+            <button class="btn btn-primary" id="btn-joker-confirm" disabled>Confirm</button>
+        </div>
+
+        <div id="dealer-joker-choice-area" class="game-area" style="display:none">
+            <h3>Dealer: Choose Joker Value</h3>
+            <p>Pick a value (1-11) for the dealer's Joker:</p>
+            <div id="dealer-joker-hand" class="card-row"></div>
+            <div id="dealer-joker-value-selectors"></div>
+            <button class="btn btn-primary" id="btn-dealer-joker-confirm" disabled>Confirm</button>
+        </div>
+
         <div id="action-area" class="action-area" style="display:none">
             <button class="btn btn-primary" id="btn-hit">Hit</button>
             <button class="btn btn-warning" id="btn-stand">Stand</button>
@@ -123,7 +139,10 @@ const GAME_MODE = document.getElementById('game').dataset.gameMode;
 function cardHtml(card) {
     if (card.rank === '?') return '<div class="card card-back">?</div>';
     if (card.rank === 'JOKER' || card.suit === 'joker') {
-        return '<div class="card card-joker">JKR<span class="suit">&#9733;</span></div>';
+        if (card.chosen_value !== undefined && card.chosen_value !== null) {
+            return '<div class="card card-joker joker-assigned">JKR<span class="joker-value">' + card.chosen_value + '</span><span class="suit">&#9733;</span></div>';
+        }
+        return '<div class="card card-joker joker-unassigned">JKR<span class="suit">&#9733;</span></div>';
     }
     const suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
     const color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
@@ -190,7 +209,7 @@ async function fetchState() {
 }
 
 function hideAll() {
-    var els = document.querySelectorAll('.game-area, #action-area, #dealer-action-area');
+    var els = document.querySelectorAll('.game-area, #action-area, #dealer-action-area, #joker-choice-area, #dealer-joker-choice-area');
     for (var i = 0; i < els.length; i++) els[i].style.display = 'none';
 }
 
@@ -281,6 +300,14 @@ function renderState(s) {
         phaseEl.textContent = 'Insurance';
         showTable(s);
         showInsurance(s);
+    } else if (s.phase === 'JOKER_CHOICE') {
+        phaseEl.textContent = 'Choose Joker Value';
+        showTable(s);
+        showJokerChoice(s);
+    } else if (s.phase === 'DEALER_JOKER_CHOICE') {
+        phaseEl.textContent = 'Dealer: Choose Joker Value';
+        showTable(s);
+        showDealerJokerChoice(s);
     } else if (s.phase === 'PLAYER_TURN') {
         phaseEl.textContent = 'Your Turn';
         showTable(s);
@@ -501,6 +528,84 @@ function showDealerActions(s) {
     document.getElementById('dealer-action-label').innerHTML = 'Your hand is at <strong>' + s.round.dealer_value + '</strong> — Hit or Stand?';
 }
 
+var jokerSelectedValues = [];
+
+function buildJokerValueSelector(numJokers, containerId, prefix) {
+    var container = document.getElementById(containerId);
+    var html = '';
+    for (var ji = 0; ji < numJokers; ji++) {
+        var label = numJokers > 1 ? 'Joker ' + (ji + 1) + ':' : 'Value:';
+        html += '<div class="joker-selector-row">';
+        html += '<span class="joker-selector-label">' + label + '</span>';
+        html += '<div class="joker-value-grid">';
+        for (var v = 1; v <= 11; v++) {
+            html += '<button class="joker-val-btn" data-prefix="' + prefix + '" data-joker="' + ji + '" data-val="' + v + '">' + v + '</button>';
+        }
+        html += '</div></div>';
+    }
+    container.innerHTML = html;
+    return new Array(numJokers).fill(null);
+}
+
+function showJokerChoice(s) {
+    var area = document.getElementById('joker-choice-area');
+    area.style.display = 'block';
+    var jc = s.joker_choice;
+    if (!jc) return;
+
+    var box = s.round.boxes[jc.box];
+    var hand = box.hands[jc.hand];
+    document.getElementById('joker-choice-hand').innerHTML = hand.cards.map(cardHtml).join('');
+
+    var numJokers = jc.indices.length;
+    document.getElementById('joker-choice-desc').textContent = numJokers > 1
+        ? 'Pick values (1-11) for your ' + numJokers + ' Jokers:'
+        : 'Pick a value (1-11) for your Joker:';
+
+    jokerSelectedValues = buildJokerValueSelector(numJokers, 'joker-value-selectors', 'player');
+    document.getElementById('btn-joker-confirm').disabled = true;
+
+    document.querySelectorAll('.joker-val-btn[data-prefix="player"]').forEach(function(btn) {
+        btn.onclick = function() {
+            var ji = parseInt(this.dataset.joker);
+            var val = parseInt(this.dataset.val);
+            jokerSelectedValues[ji] = val;
+            document.querySelectorAll('.joker-val-btn[data-prefix="player"][data-joker="' + ji + '"]').forEach(function(b) {
+                b.classList.remove('selected');
+            });
+            this.classList.add('selected');
+            document.getElementById('btn-joker-confirm').disabled = jokerSelectedValues.some(function(v) { return v === null; });
+        };
+    });
+}
+
+var dealerJokerSelectedValues = [];
+
+function showDealerJokerChoice(s) {
+    var area = document.getElementById('dealer-joker-choice-area');
+    area.style.display = 'block';
+
+    var indices = s.dealer_joker_indices || [];
+    document.getElementById('dealer-joker-hand').innerHTML = s.round.dealer_cards.map(cardHtml).join('');
+
+    var numJokers = indices.length;
+    dealerJokerSelectedValues = buildJokerValueSelector(numJokers, 'dealer-joker-value-selectors', 'dealer');
+    document.getElementById('btn-dealer-joker-confirm').disabled = true;
+
+    document.querySelectorAll('.joker-val-btn[data-prefix="dealer"]').forEach(function(btn) {
+        btn.onclick = function() {
+            var ji = parseInt(this.dataset.joker);
+            var val = parseInt(this.dataset.val);
+            dealerJokerSelectedValues[ji] = val;
+            document.querySelectorAll('.joker-val-btn[data-prefix="dealer"][data-joker="' + ji + '"]').forEach(function(b) {
+                b.classList.remove('selected');
+            });
+            this.classList.add('selected');
+            document.getElementById('btn-dealer-joker-confirm').disabled = dealerJokerSelectedValues.some(function(v) { return v === null; });
+        };
+    });
+}
+
 function showRoundResult(s) {
     document.getElementById('round-result-area').style.display = 'block';
     var msg = 'Chips remaining: ' + s.chips;
@@ -602,6 +707,18 @@ document.getElementById('btn-dealer-hit').addEventListener('click', async functi
 
 document.getElementById('btn-dealer-stand').addEventListener('click', async function() {
     var data = await apiCall('dealer_action', 'POST', {action: 'stand'});
+    if (data) renderState(data);
+});
+
+document.getElementById('btn-joker-confirm').addEventListener('click', async function() {
+    if (jokerSelectedValues.some(function(v) { return v === null; })) return;
+    var data = await apiCall('joker_choice', 'POST', {values: jokerSelectedValues});
+    if (data) renderState(data);
+});
+
+document.getElementById('btn-dealer-joker-confirm').addEventListener('click', async function() {
+    if (dealerJokerSelectedValues.some(function(v) { return v === null; })) return;
+    var data = await apiCall('dealer_joker_choice', 'POST', {values: dealerJokerSelectedValues});
     if (data) renderState(data);
 });
 

@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.ext.mutable import MutableDict
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
@@ -26,7 +27,7 @@ class Match(db.Model):
     stake = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(20), default='waiting')
     winner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    game_state = db.Column(db.JSON, nullable=True)
+    game_state = db.Column(MutableDict.as_mutable(db.JSON), nullable=True)
     decision_started_at = db.Column(db.Float, nullable=True)
     decision_type = db.Column(db.String(20), nullable=True)
     is_waiting_decision = db.Column(db.Boolean, default=False)

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Spectating Match #{{ match.id }} - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="game-container spectate-mode" id="game" data-match-id="{{ match.id }}">
+    <div class="game-header">
+        <div class="player-info p1">
+            <span class="player-name">{{ p1.username }}</span>
+            <span class="player-score" id="p1-score"></span>
+        </div>
+        <div class="game-meta">
+            <span class="spectate-badge">SPECTATING</span>
+            <span class="stake-info">Stake: {{ match.stake }} coins</span>
+            <span class="turn-info" id="turn-info"></span>
+        </div>
+        <div class="player-info p2">
+            <span class="player-name">{{ p2.username }}</span>
+            <span class="player-score" id="p2-score"></span>
+        </div>
+    </div>
+
+    <div class="game-board" id="game-board">
+        <div id="phase-display" class="phase-display"></div>
+        <div id="table-area" class="game-area" style="display:none">
+            <div id="table-top-section"></div>
+            <div id="table-bottom-section"></div>
+        </div>
+        <div id="waiting-opponent" class="game-area" style="display:none">
+            <div class="spinner"></div>
+            <p id="waiting-opponent-desc">Waiting for action...</p>
+        </div>
+        <div id="match-over-area" class="game-area" style="display:none">
+            <h2 id="match-over-title"></h2>
+            <div id="match-over-details"></div>
+            <a href="/lobby" class="btn btn-primary">Back to Lobby</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var MATCH_ID = {{ match.id }};
+var currentState = null;
+
+function cardHtml(card) {
+    if (card.rank === '?') return '<div class="card card-back">?</div>';
+    var suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
+    var color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
+    return '<div class="card card-' + color + '">' + card.rank + '<span class="suit">' + suitSymbols[card.suit] + '</span></div>';
+}
+
+function getPlayerScoreText(s, playerKey) {
+    var t1 = s.results[playerKey + '_turn1'];
+    var t2 = s.results[playerKey + '_turn2'];
+    if (t2 !== null && t2 !== undefined) return 'Final: ' + t2;
+    if (t1 !== null && t1 !== undefined) return 'R1: ' + t1;
+    return '-';
+}
+
+async function fetchState() {
+    try {
+        var r = await fetch('/api/match/' + MATCH_ID + '/state');
+        var data = await r.json();
+        if (data && !data.error) renderState(data);
+    } catch(e) {}
+}
+
+function renderState(s) {
+    currentState = s;
+    document.getElementById('p1-score').textContent = getPlayerScoreText(s, 'player1');
+    document.getElementById('p2-score').textContent = getPlayerScoreText(s, 'player2');
+
+    var phaseEl = document.getElementById('phase-display');
+    document.getElementById('table-area').style.display = 'none';
+    document.getElementById('waiting-opponent').style.display = 'none';
+    document.getElementById('match-over-area').style.display = 'none';
+
+    if (s.match_over || s.phase === 'MATCH_OVER') {
+        phaseEl.textContent = 'Match Over';
+        document.getElementById('match-over-area').style.display = 'block';
+        var r = s.match_result;
+        var title = document.getElementById('match-over-title');
+        var details = document.getElementById('match-over-details');
+        if (r.forfeit) {
+            title.textContent = 'Match ended by forfeit';
+        } else if (r.winner === 0) {
+            title.textContent = "It's a Tie!";
+        } else {
+            title.textContent = 'Player ' + r.winner + ' Wins!';
+        }
+        details.innerHTML = '<p>P1: ' + r.player1_total + ' | P2: ' + r.player2_total + '</p>';
+        return;
+    }
+
+    var turnText = (s.phase === 'CARD_DRAW' || s.phase === 'CHOICE') ?
+        'Setup' : 'Turn ' + Math.min(s.current_turn + 1, 4) + '/4';
+    document.getElementById('turn-info').textContent = turnText;
+
+    if (s.round) {
+        phaseEl.textContent = s.phase.replace('_', ' ');
+        document.getElementById('table-area').style.display = 'block';
+        var dealerHtml = '<div class="dealer-section"><h3>Dealer</h3><div class="card-row">' +
+            s.round.dealer_cards.map(cardHtml).join('') + '</div>' +
+            '<span class="hand-value">Value: ' + s.round.dealer_value + '</span></div>';
+
+        var boxesHtml = '<div class="boxes-section"><h3>Player Hands</h3>';
+        for (var bi = 0; bi < s.round.boxes.length; bi++) {
+            var box = s.round.boxes[bi];
+            boxesHtml += '<div class="box-container">';
+            for (var hi = 0; hi < box.hands.length; hi++) {
+                var hand = box.hands[hi];
+                boxesHtml += '<div class="hand-container' + (hand.result ? ' result-' + hand.result : '') + '">' +
+                    '<div class="hand-header">Box ' + (bi+1) + ' (Bet: ' + hand.bet + ')</div>' +
+                    '<div class="card-row">' + hand.cards.map(cardHtml).join('') + '</div>' +
+                    '<div class="hand-value">Value: ' + hand.value + '</div></div>';
+            }
+            boxesHtml += '</div>';
+        }
+        boxesHtml += '</div>';
+
+        document.getElementById('table-top-section').innerHTML = dealerHtml;
+        document.getElementById('table-bottom-section').innerHTML = boxesHtml;
+    } else {
+        phaseEl.textContent = s.phase.replace('_', ' ');
+        document.getElementById('waiting-opponent').style.display = 'block';
+        document.getElementById('waiting-opponent-desc').textContent = 'Game in progress...';
+    }
+}
+
+fetchState();
+setInterval(fetchState, 2000);
+</script>
+{% endblock %}

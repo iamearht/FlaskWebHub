@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Affiliate Dashboard - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="affiliate-page">
+    <h1>Affiliate Dashboard</h1>
+
+    <div class="affiliate-grid">
+        <div class="affiliate-card">
+            <h3>Your Referral Code</h3>
+            <div class="referral-code-display">
+                <span class="code-text">{{ user.affiliate_code }}</span>
+            </div>
+            <p class="affiliate-tip">Share this code with friends. They enter it during registration.</p>
+            <p class="affiliate-tip">You earn <strong>5%</strong> commission on every match stake your referrals play!</p>
+        </div>
+
+        <div class="affiliate-card">
+            <h3>Earnings Summary</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">{{ referrals|length }}</span>
+                    <span class="stat-label">Referrals</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">${{ '%.2f'|format(total_earned) }}</span>
+                    <span class="stat-label">Total Earned</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if referrals %}
+    <div class="affiliate-section">
+        <h2>Your Referrals</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Joined</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in referrals %}
+                <tr>
+                    <td>{{ r.username }}</td>
+                    <td>{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if commissions %}
+    <div class="affiliate-section">
+        <h2>Commission History</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in commissions %}
+                <tr>
+                    <td>{{ c.created_at.strftime('%Y-%m-%d %H:%M') if c.created_at else '-' }}</td>
+                    <td class="text-green">${{ '%.2f'|format(c.amount) }}</td>
+                    <td><span class="status-badge status-{{ c.status }}">{{ c.status }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <a href="/account" class="btn btn-secondary" style="margin-top:20px">Back to Account</a>
+</div>
+{% endblock %}

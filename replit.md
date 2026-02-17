@@ -1,7 +1,7 @@
-# Blackjack 1v1
+# Blackjack Platform
 
 ## Overview
-A 1v1 competitive Blackjack web application built with Flask. Players register, login, and compete in matches with persistent coin balances.
+A multiplayer competitive Blackjack web platform built with Flask. Players register, manage wallets, compete in 1v1 matches and tournaments, earn VIP progress, and participate in affiliate referral programs.
 
 ## Tech Stack
 - **Backend**: Flask, Flask-SQLAlchemy
@@ -10,13 +10,35 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 - **Frontend**: Jinja2 templates, vanilla JavaScript, CSS
 
 ## Project Structure
-- `app.py` - Flask app factory, configuration
-- `models.py` - SQLAlchemy models (User, Match)
+- `app.py` - Flask app factory, configuration, blueprint registration
+- `models.py` - SQLAlchemy models (User, Match, WalletTransaction, VIPProgress, AffiliateCommission, Tournament, TournamentEntry, TournamentMatch)
 - `auth.py` - Authentication blueprint (register/login/logout)
-- `game.py` - Game routes and API endpoints
-- `engine.py` - Core blackjack game engine
+- `game.py` - Game routes, API endpoints, match lifecycle, spectating
+- `engine.py` - Core blackjack game engine (untouched)
+- `wallet.py` - Wallet blueprint (deposit/withdraw, transaction history)
+- `account.py` - Account blueprint (profile, stats, VIP, game/transaction history)
+- `tournament.py` - Tournament blueprint (lobby, join, bracket, advancement)
+- `affiliate.py` - Affiliate blueprint (referral tracking, commission dashboard)
 - `templates/` - Jinja2 HTML templates
-- `static/style.css` - Styling
+- `static/style.css` - Comprehensive styling for all pages
+
+## Blueprints
+- `auth_bp` - /login, /register, /logout
+- `game_bp` - /lobby, /match/<id>, /api/match/*, /spectate/<id>
+- `wallet_bp` - /wallet, /wallet/deposit, /wallet/withdraw, /wallet/history
+- `account_bp` - /account, /account/game-history, /account/transactions
+- `tournament_bp` - /tournaments, /tournament/<id>, /tournaments/join/<id>
+- `affiliate_bp` - /affiliate
+
+## Database Models
+- **User**: username, email, password_hash, coins, affiliate_code, referred_by, vip_tier, created_at
+- **Match**: player1_id, player2_id, stake, status, winner_id, game_state (JSON), is_spectatable, tournament_match_id
+- **WalletTransaction**: user_id, type (deposit/withdrawal/match_stake/match_win/tournament_entry/tournament_prize/affiliate_commission), amount, status, crypto_address, crypto_network, created_at
+- **VIPProgress**: user_id, total_wagered, tier, updated_at
+- **AffiliateCommission**: referrer_id, referred_id, match_id, amount, created_at
+- **Tournament**: stake, status (waiting/active/completed), prize_pool, bracket (JSON), standings (JSON), created_at, started_at, completed_at
+- **TournamentEntry**: tournament_id, user_id, joined_at
+- **TournamentMatch**: tournament_id, match_id, round_name
 
 ## RNG Security
 - Uses Python's `secrets` module (CSPRNG) for all deck shuffling
@@ -36,54 +58,66 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 - Winner = highest final chip count after all 4 turns
 - 30-second decision timer (server-side enforced) with auto-fallback actions
 - 5-second round result display before auto-advancing
-- Bank player can see opponent's turn in real-time (spectating) with swapped perspective (dealer cards at bottom)
+- Bank player can see opponent's turn in real-time (spectating) with swapped perspective
 - Bank player can hit or stand on ANY dealer hand value 1-20 (full manual control)
-- No auto-draw to 17; dealer makes all decisions manually
-- Forfeit option available for active matches (opponent gets both stakes)
+- Forfeit option available for active matches
 
-## Insurance
-- Offered when dealer upcard is an Ace
-- Per-hand individual insurance decisions (checkbox for each hand)
-- Insurance costs half of each hand's bet
-- Pays 2:1 if dealer has blackjack (player gets back insurance amount * 3)
-- If dealer doesn't have blackjack, insurance bet is lost
+## Tournament System
+- 5 stake levels: $5, $10, $25, $50, $100
+- 8 players required to start (single elimination)
+- Bracket: Quarterfinals → Semifinals → Final + 3rd place match
+- Prize distribution: 1st (50%), 2nd (25%), 3rd (15%), 4th (10%)
+- Auto-start when 8 players join
+- Auto bracket progression when matches complete
+- Tournament matches use existing match engine
+
+## VIP System
+- 5 tiers: Bronze (0), Silver (500), Gold (2000), Platinum (5000), Diamond (15000)
+- Tracked via total wagered amount in VIPProgress model
+- Progress bar displayed in lobby
+- Tier badge shown on account page
+
+## Affiliate System
+- Each user gets unique affiliate code on registration
+- 5% commission on match stakes when referred user plays
+- Referral link: /register?ref=CODE
+- Dashboard shows referral count, total/pending commissions
+
+## Spectating
+- Non-participants can watch live games
+- Spectator-safe client state (spectator=True flag in get_client_state)
+- No action buttons shown to spectators
+- Dealer hole card hidden from spectators until revealed
+
+## Wallet System
+- Deposit/withdraw with crypto address and network tracking
+- Transaction types: deposit, withdrawal, match_stake, match_win, tournament_entry, tournament_prize, affiliate_commission
+- User.coins is authoritative balance; WalletTransaction is audit trail
+- Status tracking: pending, approved, rejected, completed
 
 ## Game Phases
-- CARD_DRAW (auto) → CHOICE → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN (any value 1-20) → ROUND_RESULT (auto-advance) → (next round or end turn)
-- CARD_DRAW: auto-performed at match init; cards shown with 3-sec reveal delay
-- CHOICE: draw winner picks Player or Bank first
-- TURN_START skipped: turns auto-enter after choice/turn transitions
-- DEALER_TURN: bank player decides hit/stand on any value 1-20; no auto-draw
-- ROUND_RESULT: auto-advances after 3 seconds client-side; 5-second server timeout
-
-## Perspective
-- When you're the Player: dealer cards at top, your boxes at bottom
-- When you're the Bank: opponent's boxes at top, your dealer cards at bottom (facing you)
+- CARD_DRAW (auto) → CHOICE → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN → ROUND_RESULT (auto-advance) → (next round or end turn)
 
 ## State Persistence
 - game_state stored as JSON in Match model (MutableDict + flag_modified via _save_match helper)
-- All game state mutations go through _save_match(match) to ensure SQLAlchemy detects nested changes
-
-## Results Tracking
-- results: {player1_turn1, player1_turn2, player2_turn1, player2_turn2}
-- Final score = player's turn2 chips (which started with turn1 leftover + 100)
-- Winner determined by comparing final chip counts
-
-## Recent Changes (Feb 2026)
-- Auto card draw at match start with 3-sec suspense reveal (no Draw Card button)
-- Auto turn start (no Start Turn button; turns enter immediately after choice/transitions)
-- Per-hand individual insurance decisions
-- Round result auto-advances after 3 seconds (5-second server timeout)
-- Polling interval reduced to 1.5 seconds for faster updates
-- Polling always runs in background for real-time updates
-- Bank player can hit/stand on any value 1-20 (full manual control)
-- Swapped perspective for bank player
-- CSPRNG deck shuffling with secrets module
+- All game state mutations go through _save_match(match)
 
 ## Running
 - `python app.py` starts Flask dev server on port 5000
-- Production: `gunicorn --bind=0.0.0.0:5000 --reuse-port app:app` where app factory is `create_app()`
+- Production: `gunicorn --bind=0.0.0.0:5000 --reuse-port app:app`
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string
 - `SESSION_SECRET` - Flask session secret key
+
+## Recent Changes (Feb 2026)
+- Expanded into full multiplayer platform
+- Added wallet system with crypto deposit/withdraw
+- Added tournament system (5 stakes, 8-player single elimination)
+- Added VIP progress system (5 tiers)
+- Added affiliate/referral system with 5% commission
+- Added live game spectating with spectator-safe state
+- Added account page with profile, stats, game/transaction history
+- Updated registration with email and referral code support
+- Exception handling: tournament advancement raises on failure, affiliate/VIP errors logged
+- Comprehensive CSS for all new platform components

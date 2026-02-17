@@ -669,7 +669,7 @@ def get_timer_remaining(match):
     return max(0, remaining)
 
 
-def get_client_state(state, user_player_num, match=None):
+def get_client_state(state, user_player_num, match=None, spectator=False):
     cs = {
         'current_turn': state['current_turn'],
         'phase': state['phase'],
@@ -692,24 +692,32 @@ def get_client_state(state, user_player_num, match=None):
         ti = state['turns'][state['current_turn']]
         cs['current_player_role'] = ti['player_role']
         cs['current_dealer_role'] = ti['dealer_role']
-        cs['i_am_dealer'] = (ti['dealer_role'] == user_player_num)
-        if state['phase'] == 'DEALER_TURN':
+        if spectator:
+            cs['i_am_dealer'] = False
+            cs['is_my_turn'] = False
+            cs['is_dealer_turn'] = state['phase'] == 'DEALER_TURN'
+        elif state['phase'] == 'DEALER_TURN':
+            cs['i_am_dealer'] = (ti['dealer_role'] == user_player_num)
             cs['is_my_turn'] = (ti['dealer_role'] == user_player_num)
             cs['is_dealer_turn'] = True
         elif state['phase'] in ('CARD_DRAW', 'CHOICE'):
+            cs['i_am_dealer'] = (ti['dealer_role'] == user_player_num)
             if state['phase'] == 'CHOICE':
                 cs['is_my_turn'] = (state['chooser'] == user_player_num)
             else:
                 cs['is_my_turn'] = True
             cs['is_dealer_turn'] = False
         else:
+            cs['i_am_dealer'] = (ti['dealer_role'] == user_player_num)
             cs['is_my_turn'] = (ti['player_role'] == user_player_num)
             cs['is_dealer_turn'] = False
     elif state['phase'] in ('CARD_DRAW', 'CHOICE'):
         cs['current_player_role'] = None
         cs['current_dealer_role'] = None
         cs['i_am_dealer'] = False
-        if state['phase'] == 'CHOICE':
+        if spectator:
+            cs['is_my_turn'] = False
+        elif state['phase'] == 'CHOICE':
             cs['is_my_turn'] = (state['chooser'] == user_player_num)
         else:
             cs['is_my_turn'] = True

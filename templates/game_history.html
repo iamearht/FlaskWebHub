@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Game History - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="history-page">
+    <h1>Game History</h1>
+    <a href="/account" class="btn btn-secondary btn-sm" style="margin-bottom:16px;display:inline-block">Back to Account</a>
+
+    {% if matches.items %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Opponent</th>
+                <th>Stake</th>
+                <th>Result</th>
+                <th>Winnings</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in matches.items %}
+            {% set opponent = m.player2 if m.player1_id == user.id else m.player1 %}
+            <tr>
+                <td>{{ m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else '-' }}</td>
+                <td>{{ opponent.username if opponent else 'Unknown' }}</td>
+                <td>{{ m.stake }} coins</td>
+                <td>
+                    {% if m.winner_id == user.id %}
+                        <span class="result-win">Won</span>
+                    {% elif m.winner_id %}
+                        <span class="result-lose">Lost</span>
+                    {% else %}
+                        <span class="result-tie">Tie</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if m.winner_id == user.id %}
+                        <span class="text-green">+{{ m.stake }}</span>
+                    {% elif m.winner_id %}
+                        <span class="text-red">-{{ m.stake }}</span>
+                    {% else %}
+                        <span>0</span>
+                    {% endif %}
+                </td>
+                <td><a href="/match/{{ m.id }}" class="btn btn-sm">View</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="pagination">
+        {% if matches.has_prev %}
+        <a href="?page={{ matches.prev_num }}" class="btn btn-sm">Previous</a>
+        {% endif %}
+        <span class="page-info">Page {{ matches.page }} of {{ matches.pages }}</span>
+        {% if matches.has_next %}
+        <a href="?page={{ matches.next_num }}" class="btn btn-sm">Next</a>
+        {% endif %}
+    </div>
+    {% else %}
+    <p class="empty-text">No games played yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

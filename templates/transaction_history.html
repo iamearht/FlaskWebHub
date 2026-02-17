@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Transaction History - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="history-page">
+    <h1>Transaction History</h1>
+    <a href="/account" class="btn btn-secondary btn-sm" style="margin-bottom:16px;display:inline-block">Back to Account</a>
+
+    {% if txns.items %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for tx in txns.items %}
+            <tr>
+                <td>{{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else '-' }}</td>
+                <td><span class="tx-type tx-{{ tx.type }}">{{ tx.type|capitalize }}</span></td>
+                <td class="{% if tx.type == 'deposit' %}text-green{% else %}text-red{% endif %}">
+                    {% if tx.type == 'deposit' %}+{% else %}-{% endif %}${{ '%.2f'|format(tx.amount) }}
+                </td>
+                <td><span class="status-badge status-{{ tx.status }}">{{ tx.status }}</span></td>
+                <td>{{ tx.description or '-' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="pagination">
+        {% if txns.has_prev %}
+        <a href="?page={{ txns.prev_num }}" class="btn btn-sm">Previous</a>
+        {% endif %}
+        <span class="page-info">Page {{ txns.page }} of {{ txns.pages }}</span>
+        {% if txns.has_next %}
+        <a href="?page={{ txns.next_num }}" class="btn btn-sm">Next</a>
+        {% endif %}
+    </div>
+    {% else %}
+    <p class="empty-text">No transactions found.</p>
+    {% endif %}
+</div>
+{% endblock %}

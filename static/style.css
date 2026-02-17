@@ -525,10 +525,374 @@ body {
     accent-color: #4caf50;
 }
 
+.nav-brand {
+    text-decoration: none;
+}
+
+.form-group select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #2a3450;
+    border-radius: 8px;
+    background: #0a0e17;
+    color: #e0e0e0;
+    font-size: 1em;
+}
+.form-group select:focus { outline: none; border-color: #4caf50; }
+
+.wallet-page h1, .account-page h1, .tournaments-page h1,
+.affiliate-page h1, .history-page h1 { color: #4caf50; margin-bottom: 20px; }
+
+.wallet-balance {
+    background: #151b2b;
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+    text-align: center;
+    margin-bottom: 24px;
+}
+.balance-label { color: #888; display: block; font-size: 0.9em; margin-bottom: 8px; }
+.balance-amount { font-size: 2em; color: #ffd700; font-weight: bold; }
+
+.wallet-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+.wallet-card {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+}
+.wallet-card h3 { color: #4caf50; margin-bottom: 16px; }
+.wallet-section {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+}
+.wallet-section h2 { color: #4caf50; margin-bottom: 16px; }
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+.data-table th {
+    text-align: left;
+    padding: 10px 12px;
+    color: #888;
+    border-bottom: 1px solid #2a3450;
+    font-weight: 600;
+}
+.data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1e2a40;
+}
+.text-green { color: #4caf50; }
+.text-red { color: #ef5350; }
+
+.tx-type { padding: 2px 8px; border-radius: 4px; font-size: 0.85em; text-transform: uppercase; }
+.tx-deposit { background: #1b5e20; color: #a5d6a7; }
+.tx-withdrawal { background: #5d4037; color: #ffcc80; }
+
+.status-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.8em; text-transform: capitalize; }
+.status-pending { background: #5d4037; color: #ffcc80; }
+.status-approved { background: #1b5e20; color: #a5d6a7; }
+.status-rejected { background: #b71c1c; color: #ef9a9a; }
+.status-completed { background: #1b5e20; color: #a5d6a7; }
+
+.empty-text { color: #666; text-align: center; padding: 20px; font-style: italic; }
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    margin-top: 20px;
+}
+.page-info { color: #888; }
+
+.account-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+.account-card {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+}
+.account-card h3 { color: #4caf50; margin-bottom: 16px; }
+.profile-info { margin-bottom: 16px; }
+.info-row { padding: 6px 0; border-bottom: 1px solid #1e2a40; display: flex; justify-content: space-between; }
+.info-row .label { color: #888; }
+.update-form { margin-top: 12px; }
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.stat-item {
+    text-align: center;
+    background: #0d1220;
+    padding: 12px;
+    border-radius: 8px;
+}
+.stat-value { display: block; font-size: 1.4em; font-weight: bold; color: #ffd700; }
+.stat-label { display: block; font-size: 0.8em; color: #888; margin-top: 4px; }
+
+.account-tabs {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.vip-section { padding: 14px 20px; }
+.vip-display {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.vip-tier {
+    padding: 4px 14px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+.vip-bronze { background: #795548; color: #fff; }
+.vip-silver { background: #607d8b; color: #fff; }
+.vip-gold { background: #f9a825; color: #000; }
+.vip-platinum { background: #7b1fa2; color: #fff; }
+.vip-diamond { background: #00bcd4; color: #000; }
+
+.vip-progress-bar {
+    flex: 1;
+    min-width: 120px;
+    height: 8px;
+    background: #1e2a40;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.vip-progress-bar.large { height: 12px; margin: 12px 0; }
+.vip-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #8bc34a);
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+.vip-next { color: #888; font-size: 0.85em; }
+.vip-tier-large { font-size: 1.4em; display: block; margin-bottom: 8px; }
+.vip-card-display { text-align: center; }
+.vip-details { color: #888; font-size: 0.85em; }
+.vip-details span { display: block; margin-top: 4px; }
+
+.affiliate-code {
+    font-family: monospace;
+    font-size: 1.2em;
+    color: #ffd700;
+    background: #0d1220;
+    padding: 4px 12px;
+    border-radius: 6px;
+}
+.affiliate-tip { color: #888; font-size: 0.85em; margin-top: 8px; }
+.affiliate-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+.affiliate-card {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+}
+.affiliate-card h3 { color: #4caf50; margin-bottom: 16px; }
+.affiliate-section {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+    margin-bottom: 20px;
+}
+.affiliate-section h2 { color: #4caf50; margin-bottom: 16px; }
+.referral-code-display {
+    text-align: center;
+    padding: 16px;
+    background: #0d1220;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+.code-text { font-family: monospace; font-size: 1.8em; color: #ffd700; letter-spacing: 3px; }
+
+.tournament-stakes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.tournament-stake-card {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+    text-align: center;
+}
+.stake-header h3 { color: #4caf50; margin-bottom: 6px; }
+.prize-pool { color: #ffd700; font-weight: 600; }
+.stake-info { margin: 12px 0; }
+.entry-count { color: #aaa; font-size: 0.9em; display: block; margin-bottom: 6px; }
+.entry-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #1e2a40;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+.entry-progress-fill {
+    height: 100%;
+    background: #4caf50;
+    border-radius: 4px;
+    transition: width 0.3s;
+}
+.payout-info { color: #888; font-size: 0.75em; margin-bottom: 12px; }
+.joined-badge {
+    display: inline-block;
+    background: #1b5e20;
+    color: #a5d6a7;
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+}
+.active-tournaments { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.tournament-section {
+    background: #151b2b;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+    margin-bottom: 20px;
+}
+.tournament-section h2 { color: #4caf50; margin-bottom: 16px; }
+.subtitle { color: #888; margin-bottom: 20px; }
+
+.tournament-view h1 { color: #4caf50; margin-bottom: 12px; }
+.tournament-meta {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    color: #aaa;
+}
+.bracket-display {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding-bottom: 16px;
+}
+.bracket-round {
+    min-width: 200px;
+    flex-shrink: 0;
+}
+.bracket-round h3 {
+    color: #8bc34a;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+    text-align: center;
+}
+.bracket-match {
+    background: #0d1220;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #1e2a40;
+    margin-bottom: 12px;
+    text-align: center;
+}
+.bracket-match.bracket-active { border-color: #4caf50; box-shadow: 0 0 8px rgba(76,175,80,0.3); }
+.bracket-match.bracket-completed { opacity: 0.8; }
+.bracket-match.bracket-final { border-color: #ffd700; }
+.bracket-player {
+    padding: 4px 0;
+    font-size: 0.95em;
+}
+.bracket-player.bracket-winner { color: #4caf50; font-weight: bold; }
+.bracket-vs { color: #666; font-size: 0.8em; }
+.entries-list { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.entry-badge {
+    background: #1e2a40;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+.standings-list { display: flex; flex-direction: column; gap: 8px; }
+.standing-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #0d1220;
+    border-radius: 8px;
+    align-items: center;
+}
+.standing-1 { border-left: 4px solid #ffd700; }
+.standing-2 { border-left: 4px solid #b0bec5; }
+.standing-3 { border-left: 4px solid #795548; }
+.standing-4 { border-left: 4px solid #546e7a; }
+.placement { font-weight: bold; color: #ffd700; }
+.prize { color: #4caf50; font-weight: 600; }
+.tournament-results { margin-top: 24px; }
+.tournament-results h3 { color: #4caf50; margin-bottom: 16px; }
+
+.live-card { border-color: #4caf50; }
+.live-indicator {
+    background: #ef5350;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: bold;
+    animation: pulse 1.5s infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+.spectate-badge {
+    display: inline-block;
+    background: #7b1fa2;
+    color: #fff;
+    padding: 4px 14px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 0.9em;
+}
+.spectate-mode .game-board { border-color: #7b1fa2; }
+
+.history-page {
+    background: #151b2b;
+    padding: 24px;
+    border-radius: 12px;
+    border: 1px solid #2a3450;
+}
+
+@media (max-width: 768px) {
+    .wallet-actions { grid-template-columns: 1fr; }
+    .account-grid { grid-template-columns: 1fr; }
+    .affiliate-grid { grid-template-columns: 1fr; }
+    .bracket-display { flex-direction: column; }
+    .nav-links { flex-wrap: wrap; gap: 8px; }
+}
+
 @media (max-width: 600px) {
     .game-header { flex-direction: column; gap: 8px; }
     .create-match-form { flex-direction: column; }
     .bet-boxes { flex-direction: column; align-items: center; }
     .result-players { flex-direction: column; }
     .card { width: 48px; height: 68px; font-size: 1em; }
+    .tournament-stakes { grid-template-columns: 1fr; }
 }

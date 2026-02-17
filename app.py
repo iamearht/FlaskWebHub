@@ -3,6 +3,10 @@ from flask import Flask
 from models import db
 from auth import auth_bp, get_current_user
 from game import game_bp
+from wallet import wallet_bp
+from account import account_bp
+from tournament import tournament_bp
+from affiliate import affiliate_bp
 
 def create_app():
     app = Flask(__name__)
@@ -19,6 +23,10 @@ def create_app():
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(game_bp)
+    app.register_blueprint(wallet_bp)
+    app.register_blueprint(account_bp)
+    app.register_blueprint(tournament_bp)
+    app.register_blueprint(affiliate_bp)
 
     @app.context_processor
     def inject_user():

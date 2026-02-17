@@ -33,29 +33,49 @@ def index():
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
+    ref_code = request.args.get('ref', '')
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
+        referral_code = request.form.get('referral_code', '').strip()
         if not username or not password:
             flash('Username and password are required.', 'error')
-            return render_template('register.html')
+            return render_template('register.html', ref_code=ref_code)
         if len(username) < 3:
             flash('Username must be at least 3 characters.', 'error')
-            return render_template('register.html')
+            return render_template('register.html', ref_code=ref_code)
         if len(password) < 4:
             flash('Password must be at least 4 characters.', 'error')
-            return render_template('register.html')
+            return render_template('register.html', ref_code=ref_code)
         if User.query.filter_by(username=username).first():
             flash('Username already taken.', 'error')
-            return render_template('register.html')
+            return render_template('register.html', ref_code=ref_code)
+        if email:
+            if User.query.filter_by(email=email).first():
+                flash('Email already in use.', 'error')
+                return render_template('register.html', ref_code=ref_code)
+
         user = User(username=username)
+        if email:
+            user.email = email
         user.set_password(password)
+
+        if referral_code:
+            referrer = User.query.filter_by(affiliate_code=referral_code).first()
+            if referrer:
+                user.referred_by_id = referrer.id
+            else:
+                flash('Invalid referral code, registration continues without it.', 'error')
+
         db.session.add(user)
+        db.session.flush()
+        user.ensure_affiliate_code()
         db.session.commit()
         session['user_id'] = user.id
         flash('Registration successful! You start with 1000 coins.', 'success')
         return redirect(url_for('game.lobby'))
-    return render_template('register.html')
+    return render_template('register.html', ref_code=ref_code)
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():

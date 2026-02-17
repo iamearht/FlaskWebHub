@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Tournaments - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="tournaments-page">
+    <h1>Tournaments</h1>
+    <p class="subtitle">8-player single elimination. Join a stake tier and compete for the prize pool!</p>
+
+    <div class="tournament-stakes">
+        {% for td in tournament_data %}
+        <div class="tournament-stake-card">
+            <div class="stake-header">
+                <h3>${{ td.stake }} Tournament</h3>
+                <span class="prize-pool">Prize Pool: ${{ td.stake * 8 }}</span>
+            </div>
+            <div class="stake-info">
+                <span class="entry-count">{{ td.entry_count }}/8 players</span>
+                <div class="entry-progress-bar">
+                    <div class="entry-progress-fill" style="width: {{ (td.entry_count / 8 * 100)|int }}%"></div>
+                </div>
+            </div>
+            <div class="payout-info">
+                <span>1st: {{ (td.stake * 8 * 0.5)|int }} | 2nd: {{ (td.stake * 8 * 0.25)|int }} | 3rd: {{ (td.stake * 8 * 0.15)|int }} | 4th: {{ (td.stake * 8 * 0.10)|int }}</span>
+            </div>
+            {% if td.user_joined %}
+                <span class="joined-badge">Registered</span>
+            {% else %}
+                <form method="POST" action="/tournament/join/{{ td.stake }}">
+                    <button type="submit" class="btn btn-primary" {% if td.stake > user.coins %}disabled title="Not enough coins"{% endif %}>
+                        Join (${{ td.stake }})
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if td.active %}
+            <div class="active-tournaments">
+                {% for t in td.active %}
+                <a href="/tournament/{{ t.id }}" class="btn btn-info btn-sm">View Active #{{ t.id }}</a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if completed %}
+    <div class="tournament-section">
+        <h2>Recent Completed Tournaments</h2>
+        <div class="match-list">
+            {% for t in completed %}
+            <div class="match-card">
+                <div class="match-info">
+                    <span class="match-stake">${{ t.stake_amount }} Tournament</span>
+                    <span>Completed: {{ t.completed_at.strftime('%Y-%m-%d') if t.completed_at else '-' }}</span>
+                </div>
+                <a href="/tournament/{{ t.id }}" class="btn btn-sm">View Bracket</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

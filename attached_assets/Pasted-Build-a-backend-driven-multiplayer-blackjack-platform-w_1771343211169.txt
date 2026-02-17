@@ -1,0 +1,19 @@
+Build a backend-driven multiplayer blackjack platform with a clean, scalable architecture. The system must support user accounts, wallet management, live games, tournaments, affiliate tracking, and full transaction history. Focus on structure, clarity, and database design. No unnecessary UI complexity, just clear modular logic.
+
+The platform must include authentication with username, email, and password. Each user has a wallet balance and a full transaction ledger. The wallet must support deposits and withdrawals. A withdrawal requires cryptocurrency, blockchain network (chain), wallet address, and amount. All transactions must be recorded in a transaction history table with status tracking (pending, approved, rejected). Deposits and withdrawals must not directly modify balance without being recorded in the ledger first.
+
+Users must have an account page containing username, email, wallet balance, affiliate code, and statistics. There must be a transaction history tab that displays all deposits and withdrawals. There must also be a separate game history tab showing all games played, including stake, result, winnings or losses, and timestamps.
+
+The lobby must include a VIP progress system that tracks total wagered or total activity and assigns tier levels. There must also be a live games spectating option where users can watch active games in real time without participating.
+
+In the game lobby, include a Tournaments section. There are exactly five tournament stakes: 5, 10, 25, 50, and 100 dollars. Each stake has its own lobby. Each tournament requires exactly 8 players to start. Players join a tournament by paying the stake amount, which is deducted from their wallet and placed into a prize pool. When 8 players join, the tournament begins automatically.
+
+Tournament format is single-elimination knockout. Eight players are seeded into quarterfinals. Each match is one game only. The loser is eliminated immediately. Winners advance to semifinals. Semifinal winners advance to the final. The final determines first and second place. Optionally include a third-place match between semifinal losers to determine third and fourth place. Once the tournament ends, distribute the prize pool according to predefined payout percentages.
+
+Tournament progression must be automated. Matches should be created automatically per bracket stage. When a match completes, the winner advances in the bracket. The system must prevent duplicate advancement and ensure transactional integrity.
+
+Include an affiliate system where each user has a unique referral code. New users can register using a referral code. Affiliates receive a percentage of referred users’ rake or fees. Affiliate earnings must be tracked separately from wallet balance until claimed.
+
+All systems must be backend-first with clean database models. Separate models for Users, WalletTransactions, Games, Matches, Tournaments, TournamentEntries, AffiliateCommissions, and VIPProgress. Ensure no circular imports and maintain modular design. Use Flask with SQLAlchemy and design for scalability.
+
+The final system must be stable, minimal in structure, and logically organized for production expansion.

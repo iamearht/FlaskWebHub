@@ -8,14 +8,17 @@
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">Blackjack 1v1</div>
+        <a href="/lobby" class="nav-brand">Blackjack Platform</a>
         <div class="nav-links">
             {% if session.get('user_id') %}
                 {% set nav_user = get_current_user() %}
                 {% if nav_user %}
-                <span class="nav-coins">{{ nav_user.username }} | {{ nav_user.coins }} coins</span>
+                <span class="nav-coins">{{ nav_user.coins }} coins</span>
                 {% endif %}
                 <a href="/lobby" class="nav-link">Lobby</a>
+                <a href="/tournaments" class="nav-link">Tournaments</a>
+                <a href="/wallet" class="nav-link">Wallet</a>
+                <a href="/account" class="nav-link">Account</a>
                 <a href="/logout" class="nav-link">Logout</a>
             {% else %}
                 <a href="/login" class="nav-link">Login</a>

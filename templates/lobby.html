@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Lobby - Blackjack 1v1{% endblock %}
+{% block title %}Lobby - Blackjack Platform{% endblock %}
 {% block content %}
 <div class="lobby">
     <div class="lobby-header">
@@ -8,6 +8,22 @@
             <span class="coins-display">Your Coins: <strong>{{ user.coins }}</strong></span>
         </div>
     </div>
+
+    {% if vip %}
+    <div class="lobby-section vip-section">
+        <div class="vip-display">
+            <span class="vip-tier vip-{{ vip.tier|lower }}">{{ vip.tier }}</span>
+            <div class="vip-progress-bar">
+                <div class="vip-progress-fill" style="width: {{ vip.progress_percent }}%"></div>
+            </div>
+            {% if vip.next_tier[0] %}
+            <span class="vip-next">Next: {{ vip.next_tier[0] }} ({{ vip.total_wagered|int }}/{{ vip.next_tier[1]|int }})</span>
+            {% else %}
+            <span class="vip-next">Max tier reached!</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="lobby-section">
         <h2>Create a Match</h2>
@@ -68,6 +84,26 @@
                         Join ({{ m.stake }} coins)
                     </button>
                 </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if live_games %}
+    <div class="lobby-section">
+        <h2>Live Games - Watch Now</h2>
+        <div class="match-list">
+            {% for m in live_games %}
+            <div class="match-card live-card">
+                <div class="match-info">
+                    <span class="live-indicator">LIVE</span>
+                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
+                </div>
+                <div class="match-players">
+                    {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
+                </div>
+                <a href="/match/{{ m.id }}" class="btn btn-info btn-sm">Spectate</a>
             </div>
             {% endfor %}
         </div>

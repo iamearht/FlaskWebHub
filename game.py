@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from sqlalchemy.orm.attributes import flag_modified
-from models import db, User, Match
+from models import db, User, Match, Tournament, TournamentMatch, VIPProgress
 from auth import login_required, get_current_user
 from engine import (
     init_game_state, enter_turn, place_bets, handle_insurance,
@@ -71,12 +71,59 @@ def _settle_match(match, state):
         match.winner_id = None
     match.status = 'finished'
 
+    if match.stake > 0:
+        _track_vip_and_affiliate(match)
+
+    _check_tournament_advancement(match)
+
+
+def _track_vip_and_affiliate(match):
+    import logging
+    logger = logging.getLogger(__name__)
+    for pid in [match.player1_id, match.player2_id]:
+        if not pid:
+            continue
+        user = User.query.get(pid)
+        if user:
+            vp = user.get_vip_progress()
+            vp.add_wager(match.stake)
+
+    from affiliate import process_affiliate_commission
+    try:
+        process_affiliate_commission(match)
+    except Exception as e:
+        logger.error(f"Affiliate commission error for match {match.id}: {e}")
+
+
+def _check_tournament_advancement(match):
+    import logging
+    logger = logging.getLogger(__name__)
+    tm = TournamentMatch.query.filter_by(match_id=match.id).first()
+    if not tm:
+        return
+
+    tournament = Tournament.query.get(tm.tournament_id)
+    if not tournament:
+        return
+
+    if match.winner_id:
+        loser_id = match.player2_id if match.winner_id == match.player1_id else match.player1_id
+        from tournament import advance_tournament
+        try:
+            advance_tournament(tournament, match.id, match.winner_id, loser_id)
+        except Exception as e:
+            logger.error(f"Tournament advancement error for match {match.id}, tournament {tournament.id}: {e}")
+            raise
+
 
 @game_bp.route('/lobby')
 @login_required
 def lobby():
     user = get_current_user()
-    waiting = Match.query.filter_by(status='waiting').filter(Match.player1_id != user.id).all()
+    waiting = Match.query.filter_by(status='waiting').filter(
+        Match.player1_id != user.id,
+        Match.tournament_match_id.is_(None),
+    ).all()
     my_matches = Match.query.filter(
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
         Match.status.in_(['waiting', 'active'])
@@ -85,7 +132,19 @@ def lobby():
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
         Match.status == 'finished'
     ).order_by(Match.created_at.desc()).limit(10).all()
-    return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches, history=history)
+
+    live_games = Match.query.filter_by(
+        status='active', is_spectatable=True
+    ).filter(
+        Match.player1_id != user.id,
+        Match.player2_id != user.id,
+    ).order_by(Match.created_at.desc()).limit(10).all()
+
+    vip = user.get_vip_progress()
+    db.session.commit()
+
+    return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
+                           history=history, live_games=live_games, vip=vip)
 
 
 @game_bp.route('/create_match', methods=['POST'])
@@ -142,29 +201,45 @@ def join_match(match_id):
 def play(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
-    if user.id not in (match.player1_id, match.player2_id):
-        flash('Not your match.', 'error')
+
+    is_player = user.id in (match.player1_id, match.player2_id)
+    is_spectator = not is_player
+
+    if is_spectator and not match.is_spectatable:
+        flash('This match is not available for spectating.', 'error')
         return redirect(url_for('game.lobby'))
+
     if match.status == 'waiting':
-        return render_template('waiting.html', match=match, user=user)
+        if is_player:
+            return render_template('waiting.html', match=match, user=user)
+        flash('Match has not started yet.', 'error')
+        return redirect(url_for('game.lobby'))
 
     state = match.game_state
     if state and 'turns' not in state and state.get('phase') not in ('CARD_DRAW', 'CHOICE'):
-        match.status = 'finished'
-        match.game_state = state
-        if match.winner_id is None:
-            p1u = User.query.get(match.player1_id)
-            p2u = User.query.get(match.player2_id)
-            if p1u:
-                p1u.coins += match.stake
-            if p2u and match.player2_id:
-                p2u.coins += match.stake
-        _save_match(match)
-        flash('This match used an old format and has been closed. Stakes refunded.', 'error')
+        if is_player:
+            match.status = 'finished'
+            match.game_state = state
+            if match.winner_id is None:
+                p1u = User.query.get(match.player1_id)
+                p2u = User.query.get(match.player2_id)
+                if p1u:
+                    p1u.coins += match.stake
+                if p2u and match.player2_id:
+                    p2u.coins += match.stake
+            _save_match(match)
+            flash('This match used an old format and has been closed. Stakes refunded.', 'error')
         return redirect(url_for('game.lobby'))
 
-    if match.status == 'active':
+    if match.status == 'active' and is_player:
         _check_and_handle_timeout(match)
+
+    if is_spectator:
+        state = match.game_state
+        cs = get_client_state(state, 1, match, spectator=True)
+        p1 = User.query.get(match.player1_id)
+        p2 = User.query.get(match.player2_id)
+        return render_template('spectate.html', match=match, user=user, cs=cs, p1=p1, p2=p2)
 
     player_num = _get_player_num(user, match)
     state = match.game_state
@@ -184,13 +259,26 @@ def play(match_id):
 def api_state(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
-    if user.id not in (match.player1_id, match.player2_id):
-        return jsonify({'error': 'Not your match'}), 403
+
+    is_player = user.id in (match.player1_id, match.player2_id)
+    is_spectator = not is_player
+
+    if is_spectator and not match.is_spectatable:
+        return jsonify({'error': 'Not available for spectating'}), 403
+
     state = match.game_state
     if state and 'turns' not in state and state.get('phase') not in ('CARD_DRAW', 'CHOICE'):
         return jsonify({'error': 'Old match format', 'status': 'finished'}), 400
-    if match.status == 'active':
+
+    if match.status == 'active' and is_player:
         _check_and_handle_timeout(match)
+
+    if is_spectator:
+        cs = get_client_state(match.game_state, 1, match, spectator=True)
+        cs['is_spectator'] = True
+        cs['status'] = match.status
+        return jsonify(cs)
+
     player_num = _get_player_num(user, match)
     cs = get_client_state(match.game_state, player_num, match)
     cs['user_coins'] = User.query.get(user.id).coins
@@ -494,6 +582,11 @@ def forfeit_match(match_id):
         'forfeit': True,
     }
     match.game_state = state
+
+    if match.stake > 0:
+        _track_vip_and_affiliate(match)
+    _check_tournament_advancement(match)
+
     _save_match(match)
     flash('You forfeited the match. Your stake goes to your opponent.', 'error')
     return redirect(url_for('game.lobby'))

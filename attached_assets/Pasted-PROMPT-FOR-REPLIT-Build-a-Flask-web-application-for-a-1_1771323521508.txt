@@ -1,0 +1,316 @@
+PROMPT FOR REPLIT
+
+Build a Flask web application for a 1v1 competitive Blackjack game with authentication and persistent coin balances.
+
+Use the following game logic exactly as described below, but modify it to support:
+
+Full user authentication (register/login/logout)
+
+Persistent coin balances per user
+
+Real betting between two players
+
+Coins transferring between players based on match result
+
+🔐 AUTHENTICATION & USER SYSTEM
+
+Implement:
+
+User Model
+
+id
+
+username (unique)
+
+password_hash
+
+coins (integer, default 1000 starting balance)
+
+created_at
+
+Use:
+
+werkzeug.security for password hashing
+
+Flask sessions for login management
+
+Users must:
+
+Register with username + password
+
+Login with username + password
+
+Logout
+
+Only access lobby and matches when authenticated
+
+Coins must persist in database.
+
+🎮 GAME STRUCTURE (1v1 Blackjack)
+
+The game is a 1v1 competitive blackjack match between two players.
+
+Each match has:
+
+Player 1 (room creator)
+
+Player 2 (joiner)
+
+4 total player-turns
+
+Each player plays twice as “Player” and twice as “Bank”
+
+Winner determined by sum of chips earned during their player-turns
+
+🃏 CORE BLACKJACK RULES
+
+Use EXACTLY this structure:
+
+Deck
+
+2 standard decks (104 cards)
+
+Shuffle at start of each player-turn
+
+Cut card at 65th card
+
+If cut card reached → end player-turn
+
+Player-turn
+
+Each player-turn:
+
+Starts with 100 chips (this is temporary turn bankroll)
+
+Can play multiple rounds until:
+
+Cut card reached OR
+
+Player chips <= 0
+
+At end of player-turn:
+
+Record final chips for that turn
+
+Add to that player’s results array
+
+Switch roles
+
+After 4 total turns → match ends
+
+🏦 MATCH RESULT
+
+After 4 turns:
+
+Sum Player 1 results
+
+Sum Player 2 results
+
+Higher total wins
+
+Now modify:
+
+NEW REQUIREMENT:
+
+At match start:
+
+Both players must agree on a wager amount (match stake)
+
+Stake is deducted from both players' persistent coin balances
+
+At match end:
+
+Winner receives BOTH stakes
+
+Loser loses their stake
+
+On tie → return stake to both players
+
+Coins update in database.
+
+🃏 MULTI-BOX BLACKJACK RULES
+
+Each round allows up to 3 betting boxes.
+
+Boxes:
+
+[
+  { bet: int, hands: [] },
+  { bet: int, hands: [] },
+  { bet: int, hands: [] }
+]
+
+
+Rules:
+
+Player may place bets on 1–3 boxes
+
+Minimum bet per box = 1
+
+Total bet ≤ current turn chips
+
+Deduct total bet from turn chips
+
+Deal:
+
+2 cards per active box
+
+2 dealer cards
+
+🎲 INSURANCE
+
+If dealer upcard is Ace:
+
+Offer insurance
+
+Insurance amount = half of total initial bet
+
+Deduct from player turn chips if taken
+
+Pays 2:1 if dealer has blackjack
+
+If dealer blackjack:
+
+Immediately resolve round
+
+✂️ SPLIT RULES
+
+Split allowed if:
+
+First action
+
+Two cards
+
+Same rank OR both 10-value cards
+
+Player has enough chips for second bet
+
+On split:
+
+Deduct additional bet
+
+Create two hands
+
+Deal one extra card to each
+
+💰 DOUBLE RULES
+
+Double allowed if:
+
+First action
+
+Two cards
+
+Enough chips for additional bet
+
+On double:
+
+Deduct additional bet
+
+Double hand bet
+
+Deal one card
+
+Hand automatically stands
+
+🎯 DEALER RULES
+
+Dealer:
+
+Hits until total >= 17
+
+Only draws if at least one player hand is not bust
+
+💵 PAYOUT RULES
+
+Use exactly:
+
+Bust → loss (0 returned)
+
+Push → bet returned
+
+Win → 2× bet returned
+
+Blackjack → bet + floor(3/2 × bet)
+
+Dealer blackjack vs player blackjack → push
+
+🔄 ROUND FLOW
+
+Phases:
+
+WAITING_BETS
+
+INSURANCE
+
+PLAYER_TURN
+
+ROUND_RESULT
+
+MATCH_OVER
+
+After ROUND_RESULT:
+
+If cut card reached OR chips <= 0 → end player-turn
+
+Else → allow next round
+
+🏆 FINAL MATCH RESOLUTION
+
+After 4 turns:
+
+If Player 1 total > Player 2 total:
+
+Player 1 wins match stake
+
+If Player 2 total > Player 1 total:
+
+Player 2 wins match stake
+
+If tie:
+
+Refund both stakes
+
+Persist coin changes in database.
+
+🔐 SECURITY REQUIREMENTS
+
+Only current player can act
+
+Prevent double submissions
+
+Validate all bets server-side
+
+Never trust frontend for chip values
+
+Ensure coins cannot go negative
+
+Use transactions when transferring stakes
+
+🧱 TECH STACK
+
+Flask
+
+Flask-SQLAlchemy
+
+SQLite (or Postgres)
+
+JSON APIs for game actions
+
+Jinja templates for UI
+
+🧠 IMPORTANT
+
+Keep all existing blackjack mechanics exactly as defined above.
+
+Only extend:
+
+Authentication
+
+Persistent coins
+
+Match stake betting
+
+Balance settlement at end
+
+Do not simplify game logic.

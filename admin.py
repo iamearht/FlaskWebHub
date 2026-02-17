@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from models import (db, User, AdminConfig, RakeTransaction, RakebackProgress,
                      Tournament, Match, get_lobby_rake_percent, get_tournament_rake_percent,
-                     get_tournament_payouts)
+                     get_tournament_payouts, JackpotPool, JackpotEntry,
+                     get_jackpot_rake_percent, get_jackpot_payouts)
 from auth import login_required, get_current_user
 from datetime import datetime, timedelta
 from functools import wraps
@@ -264,3 +265,119 @@ def rakeback_config():
 
     return render_template('admin/rakeback.html', user=user,
                            tiers=current_tiers, reset_days=reset_days)
+
+
+@admin_bp.route('/jackpot', methods=['GET', 'POST'])
+@admin_required
+def jackpot_config():
+    user = get_current_user()
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'set_percent':
+            try:
+                pct = int(request.form.get('jackpot_percent', 20))
+                AdminConfig.set('jackpot_rake_percent', pct)
+                db.session.commit()
+                flash(f'Jackpot rake percentage set to {pct}%.', 'success')
+            except (ValueError, TypeError):
+                flash('Invalid percentage.', 'error')
+
+        elif action == 'set_payouts':
+            payouts = {}
+            i = 1
+            while f'place_{i}' in request.form:
+                try:
+                    val = int(request.form.get(f'place_{i}', 0))
+                    if val > 0:
+                        payouts[str(i)] = val
+                except (ValueError, TypeError):
+                    pass
+                i += 1
+            if payouts:
+                AdminConfig.set('jackpot_payouts', payouts)
+                db.session.commit()
+                flash('Jackpot payout structure updated.', 'success')
+
+        elif action == 'set_tiers':
+            pools = JackpotPool.query.filter_by(status='active').all()
+            i = 0
+            for pool in pools:
+                name = request.form.get(f'tier_name_{i}', pool.stake_tier)
+                try:
+                    min_s = int(request.form.get(f'tier_min_{i}', pool.min_stake))
+                    max_s = int(request.form.get(f'tier_max_{i}', pool.max_stake))
+                except (ValueError, TypeError):
+                    i += 1
+                    continue
+                pool.stake_tier = name
+                pool.min_stake = min_s
+                pool.max_stake = max_s
+                i += 1
+            db.session.commit()
+            flash('Jackpot tiers updated.', 'success')
+
+        elif action == 'payout':
+            pool_id = request.form.get('pool_id', type=int)
+            pool = JackpotPool.query.get(pool_id)
+            if pool and pool.pool_amount > 0:
+                payouts = get_jackpot_payouts()
+                payouts_int = {int(k): v for k, v in payouts.items()}
+
+                from sqlalchemy import func as sqlfunc
+                top_entries = db.session.query(
+                    JackpotEntry.user_id,
+                    sqlfunc.max(JackpotEntry.score).label('best_score'),
+                ).filter(JackpotEntry.jackpot_id == pool.id)\
+                 .group_by(JackpotEntry.user_id)\
+                 .order_by(sqlfunc.max(JackpotEntry.score).desc())\
+                 .limit(max(payouts_int.keys()) if payouts_int else 4).all()
+
+                paid_out = 0
+                for rank, entry in enumerate(top_entries, 1):
+                    if rank in payouts_int:
+                        prize = int(pool.pool_amount * payouts_int[rank] / 100)
+                        if prize > 0:
+                            winner = User.query.get(entry.user_id)
+                            if winner:
+                                winner.coins += prize
+                                paid_out += prize
+
+                pool.status = 'paid'
+                pool.paid_out_at = datetime.utcnow()
+                db.session.commit()
+                flash(f'{pool.stake_tier} jackpot paid out! {paid_out} coins distributed.', 'success')
+
+                new_pool = JackpotPool(
+                    stake_tier=pool.stake_tier,
+                    min_stake=pool.min_stake,
+                    max_stake=pool.max_stake,
+                    pool_amount=0,
+                    status='active',
+                )
+                db.session.add(new_pool)
+                db.session.commit()
+            else:
+                flash('Pool is empty or not found.', 'error')
+
+        elif action == 'reset':
+            pool_id = request.form.get('pool_id', type=int)
+            pool = JackpotPool.query.get(pool_id)
+            if pool:
+                JackpotEntry.query.filter_by(jackpot_id=pool.id).delete()
+                pool.pool_amount = 0
+                pool.period_start = datetime.utcnow()
+                db.session.commit()
+                flash(f'{pool.stake_tier} jackpot reset.', 'success')
+
+        return redirect(url_for('admin.jackpot_config'))
+
+    pools = JackpotPool.get_or_create_pools()
+    db.session.commit()
+    jackpot_percent = get_jackpot_rake_percent()
+    payouts = get_jackpot_payouts()
+    payouts_int = {int(k): v for k, v in payouts.items()}
+
+    return render_template('admin/jackpot.html', user=user,
+                           pools=pools, jackpot_percent=jackpot_percent,
+                           payouts=payouts_int)

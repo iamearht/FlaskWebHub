@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Jackpots & Leaderboard{% endblock %}
+{% block content %}
+<div class="jackpot-page">
+    <div class="lobby-header">
+        <h1>Jackpots & Leaderboard</h1>
+        <p class="subtitle">Score = Finishing Chips × Match Stake. Top scores win a share of the jackpot!</p>
+    </div>
+
+    <div class="jackpot-pools-overview">
+        {% for jd in jackpot_data %}
+        <div class="jackpot-pool-card">
+            <div class="jackpot-pool-header">
+                <span class="jackpot-tier-name">{{ jd.pool.stake_tier }}</span>
+                <span class="jackpot-stake-range">{{ jd.pool.min_stake }} - {{ jd.pool.max_stake if jd.pool.max_stake < 999999 else '∞' }} coins</span>
+            </div>
+            <div class="jackpot-amount">{{ jd.pool.pool_amount }} <span class="jackpot-coins-label">coins</span></div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="payout-structure">
+        <h3>Payout Structure</h3>
+        <div class="payout-table">
+            {% for place, pct in payouts|dictsort %}
+            <div class="payout-item">
+                <span class="payout-place">#{{ place }}</span>
+                <span class="payout-pct">{{ pct }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% for jd in jackpot_data %}
+    <div class="lobby-section jackpot-leaderboard-section">
+        <h2>
+            <span class="jackpot-tier-badge">{{ jd.pool.stake_tier }}</span>
+            Leaderboard
+            <span class="jackpot-pool-display">Jackpot: {{ jd.pool.pool_amount }} coins</span>
+        </h2>
+
+        {% if user_scores.get(jd.pool.id) %}
+        <div class="your-score-banner">
+            Your Best Score: <strong>{{ user_scores[jd.pool.id].best_score }}</strong>
+            ({{ user_scores[jd.pool.id].games }} games played)
+        </div>
+        {% endif %}
+
+        {% if jd.leaderboard %}
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Best Score</th>
+                    <th>Games</th>
+                    <th>Prize Share</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in jd.leaderboard %}
+                <tr class="{% if entry.user_id == user.id %}my-row{% endif %} {% if loop.index <= payouts|length %}prize-row{% endif %}">
+                    <td>
+                        {% if loop.index == 1 %}🥇
+                        {% elif loop.index == 2 %}🥈
+                        {% elif loop.index == 3 %}🥉
+                        {% else %}#{{ loop.index }}
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.username }}{% if entry.user_id == user.id %} <span class="you-tag">(You)</span>{% endif %}</td>
+                    <td class="text-green">{{ entry.best_score }}</td>
+                    <td>{{ entry.games_played }}</td>
+                    <td>
+                        {% if loop.index in payouts %}
+                        <span class="prize-amount">{{ (jd.pool.pool_amount * payouts[loop.index] / 100)|int }} coins ({{ payouts[loop.index] }}%)</span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-text">No entries yet. Play lobby matches to get on the leaderboard!</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

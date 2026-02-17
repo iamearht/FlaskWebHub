@@ -11,7 +11,7 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 
 ## Project Structure
 - `app.py` - Flask app factory, configuration, blueprint registration
-- `models.py` - SQLAlchemy models (User, Match, WalletTransaction, VIPProgress, AffiliateCommission, Tournament, TournamentEntry, TournamentMatch, RakeTransaction, AdminConfig, RakebackProgress)
+- `models.py` - SQLAlchemy models (User, Match, WalletTransaction, VIPProgress, AffiliateCommission, Tournament, TournamentEntry, TournamentMatch, RakeTransaction, AdminConfig, RakebackProgress, JackpotPool, JackpotEntry)
 - `auth.py` - Authentication blueprint (register/login/logout)
 - `game.py` - Game routes, API endpoints, match lifecycle, spectating, rake deduction
 - `engine.py` - Core blackjack game engine (4 game modes, joker support, auto/manual dealer)
@@ -19,7 +19,8 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - `account.py` - Account blueprint (profile, stats, VIP, game/transaction history)
 - `tournament.py` - Tournament blueprint (lobby, join/unregister, bracket, advancement)
 - `affiliate.py` - Affiliate blueprint (referral tracking, commission dashboard)
-- `admin.py` - Admin blueprint (rake config, coin management, rakeback, payouts, stats)
+- `admin.py` - Admin blueprint (rake config, coin management, rakeback, payouts, stats, jackpot config)
+- `jackpot.py` - Jackpot blueprint (leaderboard, jackpot pools, API)
 - `migrate.py` - Database migration script
 - `templates/` - Jinja2 HTML templates
 - `templates/admin/` - Admin panel templates
@@ -90,11 +91,23 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - Jokers: optimal value 1-11, Joker+10-value = blackjack, split jokers prevent blackjack
 - Game mode selectable via tabs in lobby and tournaments, stored per match/tournament
 
+## Jackpot System
+- 4 stake tiers: Micro (10-250), Low (250-1000), Mid (1000-5000), High (5000+)
+- Configurable % of lobby match rake goes to jackpot pool (default 20%)
+- Score = finishing chips × match stake (higher stakes + better play = higher score)
+- Leaderboard per tier showing top 20 players by best score
+- Configurable payout structure (default: 1st 50%, 2nd 25%, 3rd 15%, 4th 10%)
+- Admin can: set jackpot %, set payouts, configure tiers, pay out, reset
+- Jackpot pools displayed on lobby page and dedicated /jackpots page
+- JackpotPool model tracks pool_amount per stake tier
+- JackpotEntry model records each player's score per match
+
 ## Lobby Features
 - Game mode tabs (Classic, Interactive, Classic Joker, Interactive Joker)
 - Filter by min/max stake
 - Sort: newest, lowest to highest stake, highest to lowest stake
 - Rakeback tier display
+- Jackpot pools banner with live amounts
 
 ## Running
 - `python app.py` starts Flask dev server on port 5000
@@ -115,3 +128,5 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - Rakeback system: 4 tiers with configurable thresholds and periodic reset
 - Lobby filters: min/max stake, sorting options
 - Currency conversion: $1 = 100 coins throughout
+- Jackpot system: per-stake-tier pools funded by % of lobby rake, leaderboard by score, admin payout/reset
+- Case-insensitive login and registration

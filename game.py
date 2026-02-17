@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from sqlalchemy.orm.attributes import flag_modified
 from models import (db, User, Match, Tournament, TournamentMatch, VIPProgress,
                      RakeTransaction, RakebackProgress, get_lobby_rake_percent,
+                     JackpotPool, JackpotEntry, get_jackpot_rake_percent,
                      GAME_MODES, GAME_MODE_LIST)
 from auth import login_required, get_current_user
 from engine import (
@@ -83,6 +84,13 @@ def _settle_match(match, state):
         )
         db.session.add(rt)
 
+        jackpot_pct = get_jackpot_rake_percent()
+        jackpot_contribution = int(rake * jackpot_pct / 100)
+        if jackpot_contribution > 0:
+            pool = JackpotPool.get_pool_for_stake(match.stake)
+            if pool:
+                pool.pool_amount += jackpot_contribution
+
         for pid in [match.player1_id, match.player2_id]:
             if pid:
                 user = User.query.get(pid)
@@ -94,6 +102,9 @@ def _settle_match(match, state):
                         rb_credit = int((rake / 2) * rb_pct / 100)
                         if rb_credit > 0:
                             user.coins += rb_credit
+
+    if not is_tournament and match.stake > 0:
+        _record_jackpot_scores(match, state)
 
     if result['winner'] == 1:
         p1 = User.query.get(match.player1_id)
@@ -116,6 +127,34 @@ def _settle_match(match, state):
         _track_vip_and_affiliate(match)
 
     _check_tournament_advancement(match)
+
+
+def _record_jackpot_scores(match, state):
+    pool = JackpotPool.get_pool_for_stake(match.stake)
+    if not pool:
+        return
+
+    results = state.get('results', {})
+    for player_num, pid in [(1, match.player1_id), (2, match.player2_id)]:
+        if not pid:
+            continue
+        turn1_key = f'player{player_num}_turn1'
+        turn2_key = f'player{player_num}_turn2'
+        t1 = results.get(turn1_key) or 0
+        t2 = results.get(turn2_key) or 0
+        total_chips = t1 + t2
+        if total_chips <= 0:
+            continue
+        score = total_chips * match.stake
+        entry = JackpotEntry(
+            jackpot_id=pool.id,
+            user_id=pid,
+            match_id=match.id,
+            score=score,
+            finishing_chips=total_chips,
+            match_stake=match.stake,
+        )
+        db.session.add(entry)
 
 
 def _track_vip_and_affiliate(match):
@@ -206,12 +245,15 @@ def lobby():
 
     vip = user.get_vip_progress()
     rakeback = user.get_rakeback_progress()
+
+    jackpot_pools = JackpotPool.get_or_create_pools()
     db.session.commit()
 
     return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
                            history=history, live_games=live_games, vip=vip, rakeback=rakeback,
                            min_stake=min_stake, max_stake=max_stake, sort_order=sort_order,
-                           game_mode=game_mode, game_modes=GAME_MODES)
+                           game_mode=game_mode, game_modes=GAME_MODES,
+                           jackpot_pools=jackpot_pools)
 
 
 @game_bp.route('/create_match', methods=['POST'])

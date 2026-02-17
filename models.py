@@ -343,6 +343,78 @@ class RakebackProgress(db.Model):
         return None
 
 
+class JackpotPool(db.Model):
+    __tablename__ = 'jackpot_pools'
+    id = db.Column(db.Integer, primary_key=True)
+    stake_tier = db.Column(db.String(50), nullable=False)
+    min_stake = db.Column(db.Integer, nullable=False, default=0)
+    max_stake = db.Column(db.Integer, nullable=False, default=999999)
+    pool_amount = db.Column(db.Integer, default=0, nullable=False)
+    status = db.Column(db.String(20), default='active', nullable=False)
+    period_start = db.Column(db.DateTime, default=datetime.utcnow)
+    paid_out_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    entries = db.relationship('JackpotEntry', backref='jackpot', lazy='dynamic')
+
+    @staticmethod
+    def get_or_create_pools():
+        default_tiers = [
+            {'name': 'Micro', 'min': 10, 'max': 250},
+            {'name': 'Low', 'min': 250, 'max': 1000},
+            {'name': 'Mid', 'min': 1000, 'max': 5000},
+            {'name': 'High', 'min': 5000, 'max': 999999},
+        ]
+        pools = JackpotPool.query.filter_by(status='active').all()
+        if not pools:
+            for tier in default_tiers:
+                pool = JackpotPool(
+                    stake_tier=tier['name'],
+                    min_stake=tier['min'],
+                    max_stake=tier['max'],
+                    pool_amount=0,
+                    status='active',
+                )
+                db.session.add(pool)
+            db.session.flush()
+            pools = JackpotPool.query.filter_by(status='active').all()
+        return pools
+
+    @staticmethod
+    def get_pool_for_stake(stake):
+        pool = JackpotPool.query.filter(
+            JackpotPool.status == 'active',
+            JackpotPool.min_stake <= stake,
+            JackpotPool.max_stake > stake,
+        ).first()
+        return pool
+
+
+class JackpotEntry(db.Model):
+    __tablename__ = 'jackpot_entries'
+    id = db.Column(db.Integer, primary_key=True)
+    jackpot_id = db.Column(db.Integer, db.ForeignKey('jackpot_pools.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False)
+    score = db.Column(db.Integer, nullable=False, default=0)
+    finishing_chips = db.Column(db.Integer, nullable=False, default=0)
+    match_stake = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='jackpot_entries')
+    match = db.relationship('Match', backref='jackpot_entries')
+
+
+def get_jackpot_rake_percent():
+    return AdminConfig.get('jackpot_rake_percent', 20)
+
+
+def get_jackpot_payouts():
+    return AdminConfig.get('jackpot_payouts', {
+        '1': 50, '2': 25, '3': 15, '4': 10
+    })
+
+
 def get_lobby_rake_percent(stake):
     tiers = AdminConfig.get('lobby_rake_tiers', [
         {'min': 0, 'max': 250, 'percent': 1},

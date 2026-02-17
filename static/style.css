@@ -1041,3 +1041,230 @@ body {
     color: #ff4500 !important;
     text-shadow: 0 0 6px rgba(255, 69, 0, 0.6);
 }
+
+.jackpot-banner-section { margin-bottom: 0 !important; }
+
+.jackpot-banner {
+    background: linear-gradient(135deg, #1a237e, #0d47a1);
+    border: 2px solid #ffd700;
+    border-radius: 12px;
+    padding: 16px 20px;
+    text-align: center;
+}
+
+.jackpot-banner h3 {
+    color: #ffd700;
+    font-size: 1.1em;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.jackpot-banner-pools {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.jackpot-banner-item {
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 120px;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.jackpot-banner-item:hover {
+    background: rgba(255, 215, 0, 0.2);
+    transform: translateY(-2px);
+}
+
+.jackpot-banner-tier {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 0.9em;
+    text-transform: uppercase;
+}
+
+.jackpot-banner-amount {
+    color: #4caf50;
+    font-size: 1.2em;
+    font-weight: bold;
+    margin: 4px 0;
+}
+
+.jackpot-banner-range {
+    color: #888;
+    font-size: 0.75em;
+}
+
+.jackpot-page .subtitle {
+    color: #888;
+    margin-bottom: 20px;
+}
+
+.jackpot-pools-overview {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+}
+
+.jackpot-pool-card {
+    background: linear-gradient(135deg, #1a237e, #0d47a1);
+    border: 2px solid #ffd700;
+    border-radius: 12px;
+    padding: 20px;
+    flex: 1;
+    min-width: 200px;
+    text-align: center;
+}
+
+.jackpot-pool-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.jackpot-tier-name {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 1.1em;
+    text-transform: uppercase;
+}
+
+.jackpot-stake-range {
+    color: #888;
+    font-size: 0.8em;
+}
+
+.jackpot-amount {
+    color: #4caf50;
+    font-size: 2em;
+    font-weight: bold;
+}
+
+.jackpot-coins-label {
+    font-size: 0.5em;
+    color: #888;
+}
+
+.payout-structure {
+    background: #151b2b;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+}
+
+.payout-structure h3 {
+    color: #ffd700;
+    margin-bottom: 12px;
+}
+
+.payout-table {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.payout-item {
+    background: rgba(255, 215, 0, 0.08);
+    border: 1px solid rgba(255, 215, 0, 0.2);
+    border-radius: 8px;
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.payout-place {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.payout-pct {
+    color: #4caf50;
+    font-size: 0.9em;
+}
+
+.jackpot-leaderboard-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.jackpot-tier-badge {
+    background: linear-gradient(135deg, #ffd700, #ff8f00);
+    color: #000;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.jackpot-pool-display {
+    color: #4caf50;
+    font-size: 0.7em;
+    margin-left: auto;
+}
+
+.your-score-banner {
+    background: rgba(33, 150, 243, 0.15);
+    border: 1px solid #2196F3;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    color: #2196F3;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+.leaderboard-table th {
+    background: #1a237e;
+    color: #ffd700;
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 0.85em;
+    text-transform: uppercase;
+}
+
+.leaderboard-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #1e2a3a;
+}
+
+.leaderboard-table tbody tr:hover {
+    background: rgba(255, 215, 0, 0.05);
+}
+
+.leaderboard-table .my-row {
+    background: rgba(33, 150, 243, 0.1);
+}
+
+.leaderboard-table .prize-row td {
+    border-left: 3px solid #ffd700;
+}
+
+.you-tag {
+    color: #2196F3;
+    font-size: 0.8em;
+}
+
+.prize-amount {
+    color: #4caf50;
+    font-weight: bold;
+}

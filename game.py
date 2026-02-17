@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from sqlalchemy.orm.attributes import flag_modified
 from models import db, User, Match
 from auth import login_required, get_current_user
 from engine import (
@@ -8,6 +9,11 @@ from engine import (
 )
 
 game_bp = Blueprint('game', __name__)
+
+
+def _save_match(match):
+    flag_modified(match, 'game_state')
+    db.session.commit()
 
 
 def _get_player_num(user, match):
@@ -24,7 +30,7 @@ def _check_and_handle_timeout(match):
         _set_timer_for_phase(match, state)
         if state.get('match_over'):
             _settle_match(match, state)
-        db.session.commit()
+        _save_match(match)
     return changed
 
 
@@ -120,7 +126,7 @@ def join_match(match_id):
     match.player2_id = user.id
     match.status = 'active'
     match.game_state = init_game_state()
-    db.session.commit()
+    _save_match(match)
     return redirect(url_for('game.play', match_id=match.id))
 
 
@@ -146,7 +152,7 @@ def play(match_id):
                 p1u.coins += match.stake
             if p2u and match.player2_id:
                 p2u.coins += match.stake
-        db.session.commit()
+        _save_match(match)
         flash('This match used an old format and has been closed. Stakes refunded.', 'error')
         return redirect(url_for('game.lobby'))
 
@@ -205,7 +211,7 @@ def api_start_turn(match_id):
     state = enter_turn(state)
     match.game_state = state
     _set_timer_for_phase(match, state)
-    db.session.commit()
+    _save_match(match)
 
     player_num = _get_player_num(user, match)
     return jsonify(get_client_state(state, player_num, match))
@@ -238,7 +244,7 @@ def api_bet(match_id):
     clear_decision_timer(match)
     match.game_state = state
     _set_timer_for_phase(match, state)
-    db.session.commit()
+    _save_match(match)
     return jsonify(get_client_state(state, player_num, match))
 
 
@@ -269,7 +275,7 @@ def api_insurance(match_id):
     clear_decision_timer(match)
     match.game_state = state
     _set_timer_for_phase(match, state)
-    db.session.commit()
+    _save_match(match)
     return jsonify(get_client_state(state, player_num, match))
 
 
@@ -303,7 +309,7 @@ def api_action(match_id):
     clear_decision_timer(match)
     match.game_state = state
     _set_timer_for_phase(match, state)
-    db.session.commit()
+    _save_match(match)
     return jsonify(get_client_state(state, player_num, match))
 
 
@@ -331,7 +337,7 @@ def api_next_round(match_id):
         _set_timer_for_phase(match, state)
 
     match.game_state = state
-    db.session.commit()
+    _save_match(match)
     return jsonify(get_client_state(state, player_num, match))
 
 

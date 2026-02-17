@@ -346,7 +346,7 @@ class RakebackProgress(db.Model):
 class JackpotPool(db.Model):
     __tablename__ = 'jackpot_pools'
     id = db.Column(db.Integer, primary_key=True)
-    stake_tier = db.Column(db.String(50), nullable=False)
+    stake_tier = db.Column(db.String(50), nullable=False, default='Main')
     min_stake = db.Column(db.Integer, nullable=False, default=0)
     max_stake = db.Column(db.Integer, nullable=False, default=999999)
     pool_amount = db.Column(db.Integer, default=0, nullable=False)
@@ -358,35 +358,18 @@ class JackpotPool(db.Model):
     entries = db.relationship('JackpotEntry', backref='jackpot', lazy='dynamic')
 
     @staticmethod
-    def get_or_create_pools():
-        default_tiers = [
-            {'name': 'Micro', 'min': 10, 'max': 250},
-            {'name': 'Low', 'min': 250, 'max': 1000},
-            {'name': 'Mid', 'min': 1000, 'max': 5000},
-            {'name': 'High', 'min': 5000, 'max': 999999},
-        ]
-        pools = JackpotPool.query.filter_by(status='active').all()
-        if not pools:
-            for tier in default_tiers:
-                pool = JackpotPool(
-                    stake_tier=tier['name'],
-                    min_stake=tier['min'],
-                    max_stake=tier['max'],
-                    pool_amount=0,
-                    status='active',
-                )
-                db.session.add(pool)
+    def get_active_pool():
+        pool = JackpotPool.query.filter_by(status='active').first()
+        if not pool:
+            pool = JackpotPool(
+                stake_tier='Main',
+                min_stake=0,
+                max_stake=999999,
+                pool_amount=0,
+                status='active',
+            )
+            db.session.add(pool)
             db.session.flush()
-            pools = JackpotPool.query.filter_by(status='active').all()
-        return pools
-
-    @staticmethod
-    def get_pool_for_stake(stake):
-        pool = JackpotPool.query.filter(
-            JackpotPool.status == 'active',
-            JackpotPool.min_stake <= stake,
-            JackpotPool.max_stake > stake,
-        ).first()
         return pool
 
 

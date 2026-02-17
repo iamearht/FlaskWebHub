@@ -47,65 +47,32 @@
     </div>
 
     <div class="admin-card" style="margin-bottom: 24px;">
-        <h4>Jackpot Pool Tiers</h4>
-        <p style="color: #888; margin-bottom: 12px;">Configure the stake ranges for each jackpot tier.</p>
-        <form method="POST" action="/admin/jackpot">
-            <input type="hidden" name="action" value="set_tiers">
-            <table class="admin-table">
-                <thead>
-                    <tr>
-                        <th>Tier Name</th>
-                        <th>Min Stake</th>
-                        <th>Max Stake</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for pool in pools %}
-                    <tr>
-                        <td><input type="text" name="tier_name_{{ loop.index0 }}" value="{{ pool.stake_tier }}" style="width: 120px;"></td>
-                        <td><input type="number" name="tier_min_{{ loop.index0 }}" value="{{ pool.min_stake }}" min="0" style="width: 100px;"></td>
-                        <td><input type="number" name="tier_max_{{ loop.index0 }}" value="{{ pool.max_stake }}" min="0" style="width: 100px;"></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 12px;">Save Tiers</button>
-        </form>
-    </div>
-
-    <div class="admin-card" style="margin-bottom: 24px;">
-        <h4>Current Jackpot Pools</h4>
+        <h4>Current Jackpot Pool</h4>
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Tier</th>
-                    <th>Stakes</th>
                     <th>Pool Amount</th>
                     <th>Entries</th>
+                    <th>Started</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {% for pool in pools %}
                 <tr>
-                    <td><strong>{{ pool.stake_tier }}</strong></td>
-                    <td>{{ pool.min_stake }} - {{ pool.max_stake if pool.max_stake < 999999 else '∞' }}</td>
-                    <td class="text-green">{{ pool.pool_amount }} coins</td>
+                    <td class="text-green"><strong>{{ pool.pool_amount }} coins</strong></td>
                     <td>{{ pool.entries.count() }}</td>
+                    <td>{{ pool.period_start.strftime('%Y-%m-%d') if pool.period_start else 'N/A' }}</td>
                     <td>
                         <form method="POST" action="/admin/jackpot" style="display:inline;">
                             <input type="hidden" name="action" value="payout">
-                            <input type="hidden" name="pool_id" value="{{ pool.id }}">
-                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Pay out the {{ pool.stake_tier }} jackpot ({{ pool.pool_amount }} coins)?')">Pay Out</button>
+                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Pay out the jackpot ({{ pool.pool_amount }} coins)?')">Pay Out</button>
                         </form>
                         <form method="POST" action="/admin/jackpot" style="display:inline;">
                             <input type="hidden" name="action" value="reset">
-                            <input type="hidden" name="pool_id" value="{{ pool.id }}">
-                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Reset the {{ pool.stake_tier }} jackpot? This clears the leaderboard and pool.')">Reset</button>
+                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Reset the jackpot? This clears the leaderboard and pool.')">Reset</button>
                         </form>
                     </td>
                 </tr>
-                {% endfor %}
             </tbody>
         </table>
     </div>

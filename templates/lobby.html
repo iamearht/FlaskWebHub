@@ -18,19 +18,18 @@
         {% endfor %}
     </div>
 
-    {% if jackpot_pools %}
+    {% if jackpot_pool %}
     <div class="lobby-section jackpot-banner-section">
         <div class="jackpot-banner">
-            <h3>Active Jackpots</h3>
-            <div class="jackpot-banner-pools">
-                {% for pool in jackpot_pools %}
-                <a href="/jackpots" class="jackpot-banner-item">
-                    <span class="jackpot-banner-tier">{{ pool.stake_tier }}</span>
-                    <span class="jackpot-banner-amount">{{ pool.pool_amount }} coins</span>
-                    <span class="jackpot-banner-range">{{ pool.min_stake }}-{{ pool.max_stake if pool.max_stake < 999999 else '∞' }}</span>
-                </a>
-                {% endfor %}
-            </div>
+            <a href="/jackpots" style="text-decoration:none; color:inherit;">
+                <h3>Jackpot Pool</h3>
+                <div class="jackpot-banner-pools">
+                    <div class="jackpot-banner-item">
+                        <span class="jackpot-banner-amount">{{ jackpot_pool.pool_amount }} coins</span>
+                        <span class="jackpot-banner-range">Play matches to climb the leaderboard!</span>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
     {% endif %}

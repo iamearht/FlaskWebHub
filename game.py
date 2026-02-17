@@ -91,9 +91,8 @@ def _settle_match(match, state):
         jackpot_pct = get_jackpot_rake_percent()
         jackpot_contribution = int(rake * jackpot_pct / 100)
         if jackpot_contribution > 0:
-            pool = JackpotPool.get_pool_for_stake(match.stake)
-            if pool:
-                pool.pool_amount += jackpot_contribution
+            pool = JackpotPool.get_active_pool()
+            pool.pool_amount += jackpot_contribution
 
         for pid in [match.player1_id, match.player2_id]:
             if pid:
@@ -134,9 +133,7 @@ def _settle_match(match, state):
 
 
 def _record_jackpot_scores(match, state):
-    pool = JackpotPool.get_pool_for_stake(match.stake)
-    if not pool:
-        return
+    pool = JackpotPool.get_active_pool()
 
     results = state.get('results', {})
     for player_num, pid in [(1, match.player1_id), (2, match.player2_id)]:
@@ -250,14 +247,14 @@ def lobby():
     vip = user.get_vip_progress()
     rakeback = user.get_rakeback_progress()
 
-    jackpot_pools = JackpotPool.get_or_create_pools()
+    jackpot_pool = JackpotPool.get_active_pool()
     db.session.commit()
 
     return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
                            history=history, live_games=live_games, vip=vip, rakeback=rakeback,
                            min_stake=min_stake, max_stake=max_stake, sort_order=sort_order,
                            game_mode=game_mode, game_modes=GAME_MODES,
-                           jackpot_pools=jackpot_pools)
+                           jackpot_pool=jackpot_pool)
 
 
 @game_bp.route('/create_match', methods=['POST'])

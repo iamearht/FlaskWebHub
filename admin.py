@@ -299,27 +299,8 @@ def jackpot_config():
                 db.session.commit()
                 flash('Jackpot payout structure updated.', 'success')
 
-        elif action == 'set_tiers':
-            pools = JackpotPool.query.filter_by(status='active').all()
-            i = 0
-            for pool in pools:
-                name = request.form.get(f'tier_name_{i}', pool.stake_tier)
-                try:
-                    min_s = int(request.form.get(f'tier_min_{i}', pool.min_stake))
-                    max_s = int(request.form.get(f'tier_max_{i}', pool.max_stake))
-                except (ValueError, TypeError):
-                    i += 1
-                    continue
-                pool.stake_tier = name
-                pool.min_stake = min_s
-                pool.max_stake = max_s
-                i += 1
-            db.session.commit()
-            flash('Jackpot tiers updated.', 'success')
-
         elif action == 'payout':
-            pool_id = request.form.get('pool_id', type=int)
-            pool = JackpotPool.query.get(pool_id)
+            pool = JackpotPool.get_active_pool()
             if pool and pool.pool_amount > 0:
                 payouts = get_jackpot_payouts()
                 payouts_int = {int(k): v for k, v in payouts.items()}
@@ -346,38 +327,37 @@ def jackpot_config():
                 pool.status = 'paid'
                 pool.paid_out_at = datetime.utcnow()
                 db.session.commit()
-                flash(f'{pool.stake_tier} jackpot paid out! {paid_out} coins distributed.', 'success')
+                flash(f'Jackpot paid out! {paid_out} coins distributed.', 'success')
 
                 new_pool = JackpotPool(
-                    stake_tier=pool.stake_tier,
-                    min_stake=pool.min_stake,
-                    max_stake=pool.max_stake,
+                    stake_tier='Main',
+                    min_stake=0,
+                    max_stake=999999,
                     pool_amount=0,
                     status='active',
                 )
                 db.session.add(new_pool)
                 db.session.commit()
             else:
-                flash('Pool is empty or not found.', 'error')
+                flash('Pool is empty.', 'error')
 
         elif action == 'reset':
-            pool_id = request.form.get('pool_id', type=int)
-            pool = JackpotPool.query.get(pool_id)
+            pool = JackpotPool.get_active_pool()
             if pool:
                 JackpotEntry.query.filter_by(jackpot_id=pool.id).delete()
                 pool.pool_amount = 0
                 pool.period_start = datetime.utcnow()
                 db.session.commit()
-                flash(f'{pool.stake_tier} jackpot reset.', 'success')
+                flash('Jackpot reset.', 'success')
 
         return redirect(url_for('admin.jackpot_config'))
 
-    pools = JackpotPool.get_or_create_pools()
+    pool = JackpotPool.get_active_pool()
     db.session.commit()
     jackpot_percent = get_jackpot_rake_percent()
     payouts = get_jackpot_payouts()
     payouts_int = {int(k): v for k, v in payouts.items()}
 
     return render_template('admin/jackpot.html', user=user,
-                           pools=pools, jackpot_percent=jackpot_percent,
+                           pool=pool, jackpot_percent=jackpot_percent,
                            payouts=payouts_int)

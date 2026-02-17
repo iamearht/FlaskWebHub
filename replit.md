@@ -92,14 +92,15 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - Game mode selectable via tabs in lobby and tournaments, stored per match/tournament
 
 ## Jackpot System
-- 4 stake tiers: Micro (10-250), Low (250-1000), Mid (1000-5000), High (5000+)
+- Single unified jackpot pool (no stake tiers)
 - Configurable % of lobby match rake goes to jackpot pool (default 20%)
 - Score = finishing chips × match stake (higher stakes + better play = higher score)
-- Leaderboard per tier showing top 20 players by best score
+- Single leaderboard showing top 20 players by best score
+- Winners decided by leaderboard ranking
 - Configurable payout structure (default: 1st 50%, 2nd 25%, 3rd 15%, 4th 10%)
-- Admin can: set jackpot %, set payouts, configure tiers, pay out, reset
-- Jackpot pools displayed on lobby page and dedicated /jackpots page
-- JackpotPool model tracks pool_amount per stake tier
+- Admin can: set jackpot %, set payouts, pay out, reset
+- Jackpot pool displayed on lobby page and dedicated /jackpots page
+- JackpotPool model tracks single pool_amount
 - JackpotEntry model records each player's score per match
 
 ## Lobby Features
@@ -107,7 +108,7 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - Filter by min/max stake
 - Sort: newest, lowest to highest stake, highest to lowest stake
 - Rakeback tier display
-- Jackpot pools banner with live amounts
+- Jackpot pool banner with live amount
 
 ## Running
 - `python app.py` starts Flask dev server on port 5000
@@ -128,5 +129,6 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - Rakeback system: 4 tiers with configurable thresholds and periodic reset
 - Lobby filters: min/max stake, sorting options
 - Currency conversion: $1 = 100 coins throughout
-- Jackpot system: per-stake-tier pools funded by % of lobby rake, leaderboard by score, admin payout/reset
+- Jackpot system: single unified pool funded by % of lobby rake, leaderboard by score, admin payout/reset
+- Tactical joker value choice: players pick 1-11 for each joker before acting, permanent per hand
 - Case-insensitive login and registration

@@ -765,10 +765,11 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
         cs['is_dealer_turn'] = False
 
     ts = state.get('turn_state')
-    if ts and ts.get('round'):
-        rnd = ts['round']
+    if ts:
         cs['chips'] = ts['chips']
         cs['starting_chips'] = ts['starting_chips']
+    if ts and ts.get('round'):
+        rnd = ts['round']
         cs['cut_card_reached'] = ts['cut_card_reached']
         cs['round'] = {
             'boxes': [],

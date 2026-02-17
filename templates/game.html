@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Match #{{ match.id }} - Blackjack 1v1{% endblock %}
 {% block content %}
-<div class="game-container" id="game" data-match-id="{{ match.id }}" data-player-num="{{ player_num }}">
+<div class="game-container" id="game" data-match-id="{{ match.id }}" data-player-num="{{ player_num }}" data-game-mode="{{ match.game_mode }}">
+    <div class="game-mode-indicator mode-{{ match.game_mode }}">{{ game_modes[match.game_mode].name if match.game_mode in game_modes else match.game_mode }}</div>
     <div class="game-header">
         <div class="player-info p1 {% if player_num == 1 %}you{% endif %}">
             <span class="player-name">{{ p1.username }}{% if player_num == 1 %} (You){% endif %}</span>
@@ -117,8 +118,13 @@ let timerEnd = null;
 let drawAnimationDone = false;
 let roundResultAutoTimer = null;
 
+const GAME_MODE = document.getElementById('game').dataset.gameMode;
+
 function cardHtml(card) {
     if (card.rank === '?') return '<div class="card card-back">?</div>';
+    if (card.rank === 'JOKER' || card.suit === 'joker') {
+        return '<div class="card card-joker">JKR<span class="suit">&#9733;</span></div>';
+    }
     const suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
     const color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
     return '<div class="card card-' + color + '">' + card.rank + '<span class="suit">' + suitSymbols[card.suit] + '</span></div>';
@@ -280,9 +286,14 @@ function renderState(s) {
         showTable(s);
         showActions(s);
     } else if (s.phase === 'DEALER_TURN') {
-        phaseEl.textContent = 'Dealer Decision';
-        showTable(s);
-        showDealerActions(s);
+        if (GAME_MODE === 'classic' || GAME_MODE === 'classic_joker') {
+            phaseEl.textContent = 'Dealer Playing...';
+            showTable(s);
+        } else {
+            phaseEl.textContent = 'Dealer Decision';
+            showTable(s);
+            showDealerActions(s);
+        }
     } else if (s.phase === 'ROUND_RESULT') {
         phaseEl.textContent = 'Round Result';
         showTable(s);

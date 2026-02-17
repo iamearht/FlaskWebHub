@@ -15,6 +15,8 @@ def migrate():
             "ALTER TABLE matches ADD COLUMN IF NOT EXISTS rake_amount INTEGER DEFAULT 0",
             "ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS max_players INTEGER DEFAULT 8",
             "ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS rake_amount INTEGER DEFAULT 0",
+            "ALTER TABLE matches ADD COLUMN IF NOT EXISTS game_mode VARCHAR(30) DEFAULT 'classic'",
+            "ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS game_mode VARCHAR(30) DEFAULT 'classic'",
         ]
         for sql in migrations:
             try:

@@ -5,6 +5,15 @@
     <h1>Tournaments</h1>
     <p class="subtitle">Single elimination tournaments. $1 = 100 coins. Join a stake tier and compete for the prize pool!</p>
 
+    <div class="game-mode-tabs">
+        {% for mode_key, mode_info in game_modes.items() %}
+        <a href="/tournaments?mode={{ mode_key }}" class="mode-tab {% if game_mode == mode_key %}active{% endif %}">
+            <span class="mode-name">{{ mode_info.name }}</span>
+            <span class="mode-desc">{{ mode_info.short }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
     {% for td in tournament_data %}
     <div class="tournament-section">
         <h2>${{ td.stake_display }} Tournament ({{ td.stake }} coins entry)</h2>
@@ -37,7 +46,7 @@
                         </form>
                     </div>
                 {% else %}
-                    <form method="POST" action="/tournament/join/{{ td.stake }}/{{ v.size }}" style="margin-top: 8px;">
+                    <form method="POST" action="/tournament/join/{{ td.stake }}/{{ v.size }}?mode={{ game_mode }}" style="margin-top: 8px;">
                         <button type="submit" class="btn btn-primary btn-sm" {% if td.stake > user.coins %}disabled title="Not enough coins"{% endif %}>
                             Join ({{ td.stake }} coins)
                         </button>
@@ -65,6 +74,7 @@
             <div class="match-card">
                 <div class="match-info">
                     <span class="match-stake">{{ t.stake_amount }} coins ({{ t.max_players }}-player)</span>
+                    <span class="mode-badge mode-{{ t.game_mode }}">{{ game_modes[t.game_mode].name if t.game_mode in game_modes else t.game_mode }}</span>
                     <span>Completed: {{ t.completed_at.strftime('%Y-%m-%d') if t.completed_at else '-' }}</span>
                 </div>
                 <a href="/tournament/{{ t.id }}" class="btn btn-sm">View Bracket</a>

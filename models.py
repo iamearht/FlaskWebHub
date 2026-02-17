@@ -149,12 +149,23 @@ class AffiliateCommission(db.Model):
     referred_user = db.relationship('User', foreign_keys=[referred_user_id])
 
 
+GAME_MODES = {
+    'classic': {'name': 'BJ Classic', 'short': 'Auto dealer, standard deck'},
+    'interactive': {'name': 'BJ Interactive', 'short': 'Manual dealer, standard deck'},
+    'classic_joker': {'name': 'Classic Joker', 'short': 'Auto dealer + 4 jokers'},
+    'interactive_joker': {'name': 'Interactive Joker', 'short': 'Manual dealer + 4 jokers'},
+}
+
+GAME_MODE_LIST = list(GAME_MODES.keys())
+
+
 class Match(db.Model):
     __tablename__ = 'matches'
     id = db.Column(db.Integer, primary_key=True)
     player1_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     player2_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     stake = db.Column(db.Integer, nullable=False)
+    game_mode = db.Column(db.String(30), default='classic', nullable=False)
     status = db.Column(db.String(20), default='waiting')
     winner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     game_state = db.Column(MutableDict.as_mutable(db.JSON), nullable=True)
@@ -176,6 +187,7 @@ class Tournament(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     stake_amount = db.Column(db.Integer, nullable=False)
     max_players = db.Column(db.Integer, default=8, nullable=False)
+    game_mode = db.Column(db.String(30), default='classic', nullable=False)
     status = db.Column(db.String(20), default='waiting')
     current_round = db.Column(db.String(20), default='round_1')
     prize_pool = db.Column(db.Integer, default=0)

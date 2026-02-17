@@ -10,7 +10,7 @@ CARD_VALUES = {
 }
 DRAW_RANK_VALUES = {
     '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8,
-    '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+    '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14, 'JOKER': 15
 }
 CUT_CARD_POSITION = 65
 TURN_STARTING_CHIPS = 100
@@ -24,31 +24,57 @@ def _secure_shuffle(lst):
         lst[i], lst[j] = lst[j], lst[i]
 
 
-def create_deck():
+def create_deck(joker=False):
     deck = []
     for _ in range(2):
         for suit in SUITS:
             for rank in RANKS:
                 deck.append({'rank': rank, 'suit': suit})
+    if joker:
+        for i in range(4):
+            deck.append({'rank': 'JOKER', 'suit': 'joker'})
     _secure_shuffle(deck)
     return deck
+
+
+def _is_joker_mode(game_mode):
+    return game_mode in ('classic_joker', 'interactive_joker')
+
+
+def _is_classic_mode(game_mode):
+    return game_mode in ('classic', 'classic_joker')
 
 
 def hand_value(cards):
     total = 0
     aces = 0
+    jokers = 0
     for c in cards:
+        if c['rank'] == 'JOKER':
+            jokers += 1
+            continue
         total += CARD_VALUES[c['rank']]
         if c['rank'] == 'A':
             aces += 1
     while total > 21 and aces > 0:
         total -= 10
         aces -= 1
+    for _ in range(jokers):
+        best = 21 - total
+        if best > 11:
+            best = 11
+        if best < 1:
+            best = 1
+        total += best
     return total
 
 
 def is_blackjack(cards):
     return len(cards) == 2 and hand_value(cards) == 21
+
+
+def _no_blackjack_after_split(hand):
+    return hand.get('from_split_aces', False) or hand.get('from_split_jokers', False)
 
 
 def is_ten_value(rank):
@@ -60,17 +86,21 @@ def can_split(hand, chips):
     if len(cards) != 2:
         return False
     r1, r2 = cards[0]['rank'], cards[1]['rank']
-    return (r1 == r2 or (is_ten_value(r1) and is_ten_value(r2))) and chips >= hand['bet']
+    same_rank = r1 == r2
+    both_tens = is_ten_value(r1) and is_ten_value(r2)
+    return (same_rank or both_tens) and chips >= hand['bet']
 
 
 def can_double(hand, chips):
     return len(hand['cards']) == 2 and chips >= hand['bet']
 
 
-def init_game_state():
-    draw_deck = create_deck()
+def init_game_state(game_mode='classic'):
+    use_joker = _is_joker_mode(game_mode)
+    draw_deck = create_deck(joker=use_joker)
     state = {
         'phase': 'CARD_DRAW',
+        'game_mode': game_mode,
         'draw_deck': draw_deck,
         'draw_deck_pos': 0,
         'draw_cards': {'player1': [], 'player2': []},
@@ -101,11 +131,13 @@ def do_card_draw(state):
     if state['phase'] != 'CARD_DRAW':
         return state, 'Not in card draw phase'
 
+    game_mode = state.get('game_mode', 'classic')
+    use_joker = _is_joker_mode(game_mode)
     deck = state['draw_deck']
     pos = state['draw_deck_pos']
 
     if pos + 2 > len(deck):
-        state['draw_deck'] = create_deck()
+        state['draw_deck'] = create_deck(joker=use_joker)
         state['draw_deck_pos'] = 0
         deck = state['draw_deck']
         pos = 0
@@ -117,8 +149,8 @@ def do_card_draw(state):
     state['draw_cards']['player1'].append(card1)
     state['draw_cards']['player2'].append(card2)
 
-    val1 = DRAW_RANK_VALUES[card1['rank']]
-    val2 = DRAW_RANK_VALUES[card2['rank']]
+    val1 = DRAW_RANK_VALUES.get(card1['rank'], 0)
+    val2 = DRAW_RANK_VALUES.get(card2['rank'], 0)
 
     if val1 > val2:
         state['draw_winner'] = 1
@@ -163,6 +195,8 @@ def enter_turn(state):
     turn_idx = state['current_turn']
     turn_info = state['turns'][turn_idx]
     player_role = turn_info['player_role']
+    game_mode = state.get('game_mode', 'classic')
+    use_joker = _is_joker_mode(game_mode)
 
     if player_role == 1:
         first_turn_result = state['results']['player1_turn1']
@@ -181,7 +215,7 @@ def enter_turn(state):
     state['turn_state'] = {
         'player_role': player_role,
         'dealer_role': turn_info['dealer_role'],
-        'deck': create_deck(),
+        'deck': create_deck(joker=use_joker),
         'cards_dealt': 0,
         'chips': starting_chips,
         'starting_chips': starting_chips,
@@ -226,7 +260,7 @@ def place_bets(state, bets):
             'hands': [{
                 'cards': [], 'bet': bet_amt, 'status': 'active',
                 'is_split': False, 'is_doubled': False, 'result': None,
-                'from_split_aces': False,
+                'from_split_aces': False, 'from_split_jokers': False,
             }],
         })
 
@@ -264,12 +298,13 @@ def place_bets(state, bets):
         'resolved': False,
     }
 
-    if dealer_cards[0]['rank'] == 'A':
+    dealer_up = dealer_cards[0]['rank']
+    if dealer_up == 'A' or dealer_up == 'JOKER':
         ts['round']['insurance_offered'] = True
         for ih in ts['round']['insurance_per_hand']:
             ih['offered'] = True
         state['phase'] = 'INSURANCE'
-    elif is_ten_value(dealer_cards[0]['rank']) and is_blackjack(dealer_cards):
+    elif (is_ten_value(dealer_up) or dealer_up == 'JOKER') and is_blackjack(dealer_cards):
         _resolve_dealer_blackjack(state)
     else:
         _mark_player_blackjacks(ts['round'])
@@ -284,7 +319,7 @@ def _resolve_dealer_blackjack(state):
     rnd = ts['round']
     for box in rnd['boxes']:
         for hand in box['hands']:
-            if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
+            if is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
                 ts['chips'] += hand['bet']
                 hand['status'] = 'push'
                 hand['result'] = 'push'
@@ -298,7 +333,7 @@ def _resolve_dealer_blackjack(state):
 def _mark_player_blackjacks(rnd):
     for box in rnd['boxes']:
         for hand in box['hands']:
-            if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
+            if is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
                 hand['status'] = 'blackjack'
 
 
@@ -332,7 +367,7 @@ def handle_insurance(state, decisions):
             for hand in box['hands']:
                 if hand_idx < len(iph) and iph[hand_idx]['taken']:
                     ts['chips'] += iph[hand_idx]['amount'] * 3
-                if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
+                if is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
                     ts['chips'] += hand['bet']
                     hand['status'] = 'push'
                     hand['result'] = 'push'
@@ -420,6 +455,7 @@ def player_action(state, action):
         ts['chips'] -= hand['bet']
         card1, card2 = hand['cards'][0], hand['cards'][1]
         split_aces = card1['rank'] == 'A'
+        split_jokers = card1['rank'] == 'JOKER'
         hand['cards'] = [card1, deck[ts['cards_dealt']]]
         ts['cards_dealt'] += 1
         new_hand = {
@@ -427,10 +463,12 @@ def player_action(state, action):
             'bet': hand['bet'], 'status': 'active',
             'is_split': True, 'is_doubled': False, 'result': None,
             'from_split_aces': split_aces or hand.get('from_split_aces', False),
+            'from_split_jokers': split_jokers or hand.get('from_split_jokers', False),
         }
         ts['cards_dealt'] += 1
         hand['is_split'] = True
         hand['from_split_aces'] = split_aces or hand.get('from_split_aces', False)
+        hand['from_split_jokers'] = split_jokers or hand.get('from_split_jokers', False)
         if ts['cards_dealt'] >= CUT_CARD_POSITION:
             ts['cut_card_reached'] = True
         box['hands'].insert(rnd['current_hand'] + 1, new_hand)
@@ -463,6 +501,7 @@ def _play_dealer(state):
     ts = state['turn_state']
     rnd = ts['round']
     dc = rnd['dealer_cards']
+    game_mode = state.get('game_mode', 'classic')
 
     any_standing = any(
         h['status'] in ('stand', 'blackjack')
@@ -473,12 +512,20 @@ def _play_dealer(state):
         _resolve_hands(state)
         return
 
-    dealer_val = hand_value(dc)
-    if dealer_val <= 20:
-        state['phase'] = 'DEALER_TURN'
-        return
-
-    _resolve_hands(state)
+    if _is_classic_mode(game_mode):
+        deck = ts['deck']
+        while hand_value(dc) < 17:
+            dc.append(deck[ts['cards_dealt']])
+            ts['cards_dealt'] += 1
+            if ts['cards_dealt'] >= CUT_CARD_POSITION:
+                ts['cut_card_reached'] = True
+        _resolve_hands(state)
+    else:
+        dealer_val = hand_value(dc)
+        if dealer_val <= 20:
+            state['phase'] = 'DEALER_TURN'
+            return
+        _resolve_hands(state)
 
 
 def dealer_action(state, action):
@@ -682,6 +729,7 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
         'chooser': state.get('chooser'),
         'choice_made': state.get('choice_made', False),
         'draw_timestamp': state.get('draw_timestamp'),
+        'game_mode': state.get('game_mode', 'classic'),
     }
 
     if match:
@@ -712,70 +760,52 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
             cs['is_my_turn'] = (ti['player_role'] == user_player_num)
             cs['is_dealer_turn'] = False
     elif state['phase'] in ('CARD_DRAW', 'CHOICE'):
-        cs['current_player_role'] = None
-        cs['current_dealer_role'] = None
         cs['i_am_dealer'] = False
-        if spectator:
-            cs['is_my_turn'] = False
-        elif state['phase'] == 'CHOICE':
-            cs['is_my_turn'] = (state['chooser'] == user_player_num)
-        else:
-            cs['is_my_turn'] = True
+        cs['is_my_turn'] = True
         cs['is_dealer_turn'] = False
-    else:
-        cs['is_my_turn'] = False
-        cs['is_dealer_turn'] = False
-        cs['i_am_dealer'] = False
-        cs['current_player_role'] = None
-        cs['current_dealer_role'] = None
 
     ts = state.get('turn_state')
-    if ts:
+    if ts and ts.get('round'):
+        rnd = ts['round']
         cs['chips'] = ts['chips']
-        cs['starting_chips'] = ts.get('starting_chips', TURN_STARTING_CHIPS)
+        cs['starting_chips'] = ts['starting_chips']
         cs['cut_card_reached'] = ts['cut_card_reached']
-        rnd = ts.get('round')
-        if rnd:
-            cs['round'] = {
-                'boxes': [],
-                'dealer_cards': [],
-                'current_box': rnd['current_box'],
-                'current_hand': rnd['current_hand'],
-                'insurance_offered': rnd['insurance_offered'],
-                'insurance_per_hand': rnd.get('insurance_per_hand', []),
-                'resolved': rnd['resolved'],
-            }
-            for box in rnd['boxes']:
-                b = {'hands': []}
-                for hand in box['hands']:
-                    h = {
-                        'cards': hand['cards'],
-                        'bet': hand['bet'],
-                        'status': hand['status'],
-                        'is_split': hand.get('is_split', False),
-                        'is_doubled': hand.get('is_doubled', False),
-                        'from_split_aces': hand.get('from_split_aces', False),
-                        'value': hand_value(hand['cards']),
-                        'result': hand.get('result'),
-                        'can_split': can_split(hand, ts['chips']) if hand['status'] == 'active' else False,
-                        'can_double': can_double(hand, ts['chips']) if hand['status'] == 'active' else False,
-                    }
-                    b['hands'].append(h)
-                cs['round']['boxes'].append(b)
+        cs['round'] = {
+            'boxes': [],
+            'dealer_cards': [],
+            'current_box': rnd['current_box'],
+            'current_hand': rnd['current_hand'],
+            'insurance_offered': rnd['insurance_offered'],
+            'resolved': rnd['resolved'],
+        }
+        show_all_dealer = rnd['resolved'] or state['phase'] == 'DEALER_TURN'
+        is_dealer = False
+        if state.get('turns') and state['current_turn'] < len(state['turns']):
+            ti = state['turns'][state['current_turn']]
+            is_dealer = (ti['dealer_role'] == user_player_num) and not spectator
 
-            dc = rnd['dealer_cards']
-            is_dealer_player = (state.get('turns') and state['current_turn'] < len(state.get('turns', [])) and
-                                state['turns'][state['current_turn']]['dealer_role'] == user_player_num)
-            if rnd['resolved'] or state['phase'] == 'DEALER_TURN' or is_dealer_player:
-                cs['round']['dealer_cards'] = dc
-                cs['round']['dealer_value'] = hand_value(dc)
-            else:
-                cs['round']['dealer_cards'] = [dc[0], {'rank': '?', 'suit': '?'}]
-                cs['round']['dealer_value'] = CARD_VALUES.get(dc[0]['rank'], 0)
+        if show_all_dealer or is_dealer:
+            cs['round']['dealer_cards'] = rnd['dealer_cards']
         else:
-            cs['round'] = None
-    else:
-        cs['chips'] = None
-        cs['round'] = None
+            cs['round']['dealer_cards'] = [rnd['dealer_cards'][0], {'rank': '?', 'suit': '?'}]
+
+        cs['round']['dealer_value'] = hand_value(rnd['dealer_cards']) if (show_all_dealer or is_dealer) else hand_value([rnd['dealer_cards'][0]])
+
+        for box in rnd['boxes']:
+            box_data = {'hands': []}
+            for hand in box['hands']:
+                hand_data = {
+                    'cards': hand['cards'],
+                    'bet': hand['bet'],
+                    'status': hand['status'],
+                    'result': hand['result'],
+                    'is_split': hand.get('is_split', False),
+                    'is_doubled': hand.get('is_doubled', False),
+                    'value': hand_value(hand['cards']),
+                    'can_split': can_split(hand, ts['chips']) if hand['status'] == 'active' else False,
+                    'can_double': can_double(hand, ts['chips']) if hand['status'] == 'active' else False,
+                }
+                box_data['hands'].append(hand_data)
+            cs['round']['boxes'].append(box_data)
 
     return cs

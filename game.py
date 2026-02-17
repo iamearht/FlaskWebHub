@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
 from sqlalchemy.orm.attributes import flag_modified
 from models import (db, User, Match, Tournament, TournamentMatch, VIPProgress,
-                     RakeTransaction, RakebackProgress, get_lobby_rake_percent)
+                     RakeTransaction, RakebackProgress, get_lobby_rake_percent,
+                     GAME_MODES, GAME_MODE_LIST)
 from auth import login_required, get_current_user
 from engine import (
     init_game_state, enter_turn, place_bets, handle_insurance,
@@ -38,6 +39,7 @@ def _check_and_handle_timeout(match):
 
 def _set_timer_for_phase(match, state):
     phase = state['phase']
+    game_mode = state.get('game_mode', 'classic')
     if phase == 'CHOICE':
         set_decision_timer(match, 'CHOICE')
     elif phase == 'WAITING_BETS':
@@ -47,7 +49,10 @@ def _set_timer_for_phase(match, state):
     elif phase == 'PLAYER_TURN':
         set_decision_timer(match, 'ACTION')
     elif phase == 'DEALER_TURN':
-        set_decision_timer(match, 'DEALER')
+        if game_mode in ('classic', 'classic_joker'):
+            clear_decision_timer(match)
+        else:
+            set_decision_timer(match, 'DEALER')
     elif phase == 'ROUND_RESULT':
         set_decision_timer(match, 'NEXT')
     elif phase in ('TURN_START', 'MATCH_OVER', 'CARD_DRAW'):
@@ -157,11 +162,14 @@ def _check_tournament_advancement(match):
 def lobby():
     user = get_current_user()
 
+    game_mode = request.args.get('mode', 'classic')
+    if game_mode not in GAME_MODE_LIST:
+        game_mode = 'classic'
     min_stake = request.args.get('min_stake', '', type=str)
     max_stake = request.args.get('max_stake', '', type=str)
     sort_order = request.args.get('sort', 'newest')
 
-    waiting_q = Match.query.filter_by(status='waiting').filter(
+    waiting_q = Match.query.filter_by(status='waiting', game_mode=game_mode).filter(
         Match.player1_id != user.id,
         Match.tournament_match_id.is_(None),
     )
@@ -202,7 +210,8 @@ def lobby():
 
     return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
                            history=history, live_games=live_games, vip=vip, rakeback=rakeback,
-                           min_stake=min_stake, max_stake=max_stake, sort_order=sort_order)
+                           min_stake=min_stake, max_stake=max_stake, sort_order=sort_order,
+                           game_mode=game_mode, game_modes=GAME_MODES)
 
 
 @game_bp.route('/create_match', methods=['POST'])
@@ -214,19 +223,22 @@ def create_match():
     except (ValueError, TypeError):
         flash('Invalid stake amount.', 'error')
         return redirect(url_for('game.lobby'))
+    game_mode = request.form.get('game_mode', 'classic')
+    if game_mode not in GAME_MODE_LIST:
+        game_mode = 'classic'
     if stake < 10:
         flash('Minimum stake is 10 coins.', 'error')
-        return redirect(url_for('game.lobby'))
+        return redirect(url_for('game.lobby', mode=game_mode))
     if stake > user.coins:
         flash('Not enough coins.', 'error')
-        return redirect(url_for('game.lobby'))
+        return redirect(url_for('game.lobby', mode=game_mode))
 
     user.coins -= stake
-    match = Match(player1_id=user.id, stake=stake, status='waiting')
+    match = Match(player1_id=user.id, stake=stake, status='waiting', game_mode=game_mode)
     db.session.add(match)
     db.session.commit()
     flash(f'Match created with {stake} coin stake.', 'success')
-    return redirect(url_for('game.lobby'))
+    return redirect(url_for('game.lobby', mode=game_mode))
 
 
 @game_bp.route('/join_match/<int:match_id>', methods=['POST'])
@@ -247,7 +259,7 @@ def join_match(match_id):
     user.coins -= match.stake
     match.player2_id = user.id
     match.status = 'active'
-    state = init_game_state()
+    state = init_game_state(game_mode=match.game_mode)
     match.game_state = state
     _set_timer_for_phase(match, state)
     _save_match(match)
@@ -309,7 +321,7 @@ def play(match_id):
         return render_template('match_result.html', match=match, user=user, cs=cs, p1=p1, p2=p2)
 
     cs = get_client_state(state, player_num, match)
-    return render_template('game.html', match=match, user=user, cs=cs, player_num=player_num, p1=p1, p2=p2)
+    return render_template('game.html', match=match, user=user, cs=cs, player_num=player_num, p1=p1, p2=p2, game_modes=GAME_MODES)
 
 
 @game_bp.route('/api/match/<int:match_id>/state')

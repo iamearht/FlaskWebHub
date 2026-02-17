@@ -9,6 +9,15 @@
         </div>
     </div>
 
+    <div class="game-mode-tabs">
+        {% for mode_key, mode_info in game_modes.items() %}
+        <a href="/lobby?mode={{ mode_key }}" class="mode-tab {% if game_mode == mode_key %}active{% endif %}">
+            <span class="mode-name">{{ mode_info.name }}</span>
+            <span class="mode-desc">{{ mode_info.short }}</span>
+        </a>
+        {% endfor %}
+    </div>
+
     {% if vip %}
     <div class="lobby-section vip-section">
         <div class="vip-display">
@@ -38,8 +47,9 @@
     {% endif %}
 
     <div class="lobby-section">
-        <h2>Create a Match</h2>
+        <h2>Create a Match <span class="mode-badge mode-{{ game_mode }}">{{ game_modes[game_mode].name }}</span></h2>
         <form method="POST" action="/create_match" class="create-match-form">
+            <input type="hidden" name="game_mode" value="{{ game_mode }}">
             <div class="form-group">
                 <label for="stake">Stake Amount (min 10 coins)</label>
                 <input type="number" id="stake" name="stake" min="10" max="{{ user.coins }}" value="50" required>
@@ -57,6 +67,7 @@
                 <div class="match-info">
                     <span class="match-stake">Stake: {{ m.stake }} coins</span>
                     <span class="match-status status-{{ m.status }}">{{ m.status }}</span>
+                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
                 </div>
                 <div class="match-players">
                     {% if m.player1 %}{{ m.player1.username }}{% endif %}
@@ -82,8 +93,9 @@
     {% endif %}
 
     <div class="lobby-section">
-        <h2>Available Matches</h2>
+        <h2>Available Matches <span class="mode-badge mode-{{ game_mode }}">{{ game_modes[game_mode].name }}</span></h2>
         <form method="GET" action="/lobby" class="filter-bar">
+            <input type="hidden" name="mode" value="{{ game_mode }}">
             <div class="form-group" style="display:inline-block; width: 120px;">
                 <label>Min Stake</label>
                 <input type="number" name="min_stake" value="{{ min_stake }}" placeholder="Min" min="0">
@@ -101,7 +113,7 @@
                 </select>
             </div>
             <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 24px;">Filter</button>
-            <a href="/lobby" class="btn btn-secondary btn-sm" style="margin-top: 24px;">Clear</a>
+            <a href="/lobby?mode={{ game_mode }}" class="btn btn-secondary btn-sm" style="margin-top: 24px;">Clear</a>
         </form>
 
         {% if waiting %}
@@ -134,6 +146,7 @@
                 <div class="match-info">
                     <span class="live-indicator">LIVE</span>
                     <span class="match-stake">Stake: {{ m.stake }} coins</span>
+                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
                 </div>
                 <div class="match-players">
                     {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
@@ -153,6 +166,7 @@
             <div class="match-card history-card">
                 <div class="match-info">
                     <span class="match-stake">Stake: {{ m.stake }} coins</span>
+                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
                     <span>
                         {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
                     </span>

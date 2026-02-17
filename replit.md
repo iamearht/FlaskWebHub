@@ -14,7 +14,7 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - `models.py` - SQLAlchemy models (User, Match, WalletTransaction, VIPProgress, AffiliateCommission, Tournament, TournamentEntry, TournamentMatch, RakeTransaction, AdminConfig, RakebackProgress)
 - `auth.py` - Authentication blueprint (register/login/logout)
 - `game.py` - Game routes, API endpoints, match lifecycle, spectating, rake deduction
-- `engine.py` - Core blackjack game engine (untouched)
+- `engine.py` - Core blackjack game engine (4 game modes, joker support, auto/manual dealer)
 - `wallet.py` - Wallet blueprint (deposit/withdraw, transaction history)
 - `account.py` - Account blueprint (profile, stats, VIP, game/transaction history)
 - `tournament.py` - Tournament blueprint (lobby, join/unregister, bracket, advancement)
@@ -82,7 +82,16 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - Coin Management: add/remove/set coins for any user
 - Rakeback Config: configure tiers, thresholds, percentages, reset period
 
+## Game Modes
+- **BJ Classic**: Automated dealer (hits below 17, stands on 17+), standard 104-card double deck
+- **BJ Interactive**: Manual dealer decisions (player acting as dealer chooses hit/stand), standard deck
+- **Classic Joker**: Automated dealer + 4 jokers added to deck (108-card shoe)
+- **Interactive Joker**: Manual dealer + 4 jokers in deck
+- Jokers: optimal value 1-11, Joker+10-value = blackjack, split jokers prevent blackjack
+- Game mode selectable via tabs in lobby and tournaments, stored per match/tournament
+
 ## Lobby Features
+- Game mode tabs (Classic, Interactive, Classic Joker, Interactive Joker)
 - Filter by min/max stake
 - Sort: newest, lowest to highest stake, highest to lowest stake
 - Rakeback tier display
@@ -96,6 +105,10 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - `SESSION_SECRET` - Flask session secret key
 
 ## Recent Changes (Feb 2026)
+- 4 game modes: BJ Classic, BJ Interactive, Classic Joker, Interactive Joker
+- Joker support in engine: 4 jokers per deck, optimal value 1-11, Joker+10=BJ, split jokers no BJ
+- Classic mode auto-dealer (stand 17+), Interactive mode manual dealer choices
+- Game mode tabs in lobby and tournaments, mode badges on match cards
 - Tournament system expanded: 5 player sizes (8/16/32/64/128), dynamic bracket generation, unregister support
 - Rake system: configurable lobby rake by stake tiers, tournament rake per type
 - Admin panel: full configuration dashboard for rake, payouts, coins, rakeback, stats

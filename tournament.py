@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from models import (db, User, Match, Tournament, TournamentEntry, TournamentMatch,
-                     RakeTransaction, AdminConfig, get_tournament_rake_percent, get_tournament_payouts)
+                     RakeTransaction, AdminConfig, get_tournament_rake_percent, get_tournament_payouts,
+                     GAME_MODES, GAME_MODE_LIST)
 from auth import login_required, get_current_user
 from engine import init_game_state
 from datetime import datetime
@@ -35,14 +36,15 @@ def get_round_display_name(round_name, total_rounds=None):
     return round_name.replace('_', ' ').title()
 
 
-def get_or_create_waiting_tournament(stake, max_players):
+def get_or_create_waiting_tournament(stake, max_players, game_mode='classic'):
     tournament = Tournament.query.filter_by(
         stake_amount=stake,
         max_players=max_players,
+        game_mode=game_mode,
         status='waiting'
     ).first()
     if not tournament:
-        tournament = Tournament(stake_amount=stake, max_players=max_players, status='waiting', prize_pool=0)
+        tournament = Tournament(stake_amount=stake, max_players=max_players, game_mode=game_mode, status='waiting', prize_pool=0)
         db.session.add(tournament)
         db.session.flush()
     return tournament
@@ -95,7 +97,8 @@ def start_tournament(tournament):
             stake=0,
             status='active',
             is_spectatable=True,
-            game_state=init_game_state(),
+            game_mode=tournament.game_mode,
+            game_state=init_game_state(game_mode=tournament.game_mode),
         )
         db.session.add(game_match)
         db.session.flush()
@@ -246,7 +249,8 @@ def _create_match_for_tournament(tm, tournament):
         stake=0,
         status='active',
         is_spectatable=True,
-        game_state=init_game_state(),
+        game_mode=tournament.game_mode,
+        game_state=init_game_state(game_mode=tournament.game_mode),
     )
     db.session.add(game_match)
     db.session.flush()
@@ -306,6 +310,10 @@ def _check_tournament_complete(tournament):
 def tournaments_page():
     user = get_current_user()
 
+    game_mode = request.args.get('mode', 'classic')
+    if game_mode not in GAME_MODE_LIST:
+        game_mode = 'classic'
+
     my_entries = TournamentEntry.query.filter_by(user_id=user.id).all()
     my_tournament_ids = {e.tournament_id for e in my_entries}
 
@@ -314,7 +322,7 @@ def tournaments_page():
         stake_variants = []
         for size in Tournament.PLAYER_SIZES:
             waiting = Tournament.query.filter_by(
-                stake_amount=stake, max_players=size, status='waiting'
+                stake_amount=stake, max_players=size, game_mode=game_mode, status='waiting'
             ).first()
             entry_count = 0
             user_joined = False
@@ -325,7 +333,7 @@ def tournaments_page():
                 waiting_id = waiting.id
 
             active_list = Tournament.query.filter_by(
-                stake_amount=stake, max_players=size, status='active'
+                stake_amount=stake, max_players=size, game_mode=game_mode, status='active'
             ).order_by(Tournament.started_at.desc()).limit(2).all()
 
             rake_pct = get_tournament_rake_percent(stake, size)
@@ -355,26 +363,31 @@ def tournaments_page():
         .order_by(Tournament.completed_at.desc()).limit(10).all()
 
     return render_template('tournaments.html', user=user,
-                           tournament_data=tournament_data, completed=completed)
+                           tournament_data=tournament_data, completed=completed,
+                           game_mode=game_mode, game_modes=GAME_MODES)
 
 
 @tournament_bp.route('/tournament/join/<int:stake>/<int:size>', methods=['POST'])
 @login_required
 def join_tournament(stake, size):
     user = get_current_user()
+    game_mode = request.args.get('mode', 'classic')
+    if game_mode not in GAME_MODE_LIST:
+        game_mode = 'classic'
+
     if stake not in Tournament.STAKES:
         flash('Invalid tournament stake.', 'error')
-        return redirect(url_for('tournament.tournaments_page'))
+        return redirect(url_for('tournament.tournaments_page', mode=game_mode))
 
     if size not in Tournament.PLAYER_SIZES:
         flash('Invalid tournament size.', 'error')
-        return redirect(url_for('tournament.tournaments_page'))
+        return redirect(url_for('tournament.tournaments_page', mode=game_mode))
 
     if stake > user.coins:
         flash('Not enough coins to join this tournament.', 'error')
-        return redirect(url_for('tournament.tournaments_page'))
+        return redirect(url_for('tournament.tournaments_page', mode=game_mode))
 
-    tournament = get_or_create_waiting_tournament(stake, size)
+    tournament = get_or_create_waiting_tournament(stake, size, game_mode)
 
     existing = TournamentEntry.query.filter_by(
         tournament_id=tournament.id,

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Waiting for Opponent{% endblock %}
+{% block content %}
+<div class="waiting-room">
+    <h1>Waiting for Opponent</h1>
+    <p>Match Stake: <strong>{{ match.stake }} coins</strong></p>
+    <div class="spinner"></div>
+    <p>Share this page with a friend to play!</p>
+    <form method="POST" action="/cancel_match/{{ match.id }}">
+        <button type="submit" class="btn btn-danger">Cancel Match</button>
+    </form>
+</div>
+{% block scripts %}
+<script>
+setInterval(function() {
+    fetch('/api/match/{{ match.id }}/state')
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'active') {
+                window.location.reload();
+            }
+        });
+}, 3000);
+</script>
+{% endblock %}
+{% endblock %}

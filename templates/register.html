@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Register - Blackjack 1v1{% endblock %}
+{% block content %}
+<div class="auth-container">
+    <h1>Register</h1>
+    <form method="POST" action="/register">
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required minlength="3" autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required minlength="4" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Register</button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="/login">Login</a></p>
+</div>
+{% endblock %}

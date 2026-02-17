@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Lobby - Blackjack 1v1{% endblock %}
+{% block content %}
+<div class="lobby">
+    <div class="lobby-header">
+        <h1>Game Lobby</h1>
+        <div class="user-info">
+            <span class="coins-display">Your Coins: <strong>{{ user.coins }}</strong></span>
+        </div>
+    </div>
+
+    <div class="lobby-section">
+        <h2>Create a Match</h2>
+        <form method="POST" action="/create_match" class="create-match-form">
+            <div class="form-group">
+                <label for="stake">Stake Amount (min 10)</label>
+                <input type="number" id="stake" name="stake" min="10" max="{{ user.coins }}" value="50" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Match</button>
+        </form>
+    </div>
+
+    {% if my_matches %}
+    <div class="lobby-section">
+        <h2>My Active Matches</h2>
+        <div class="match-list">
+            {% for m in my_matches %}
+            <div class="match-card">
+                <div class="match-info">
+                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
+                    <span class="match-status status-{{ m.status }}">{{ m.status }}</span>
+                </div>
+                <div class="match-players">
+                    {% if m.player1 %}{{ m.player1.username }}{% endif %}
+                    {% if m.player2 %} vs {{ m.player2.username }}{% endif %}
+                </div>
+                <div class="match-actions">
+                    {% if m.status == 'active' %}
+                        <a href="/match/{{ m.id }}" class="btn btn-success">Play</a>
+                    {% elif m.status == 'waiting' and m.player1_id == user.id %}
+                        <span class="waiting-text">Waiting for opponent...</span>
+                        <form method="POST" action="/cancel_match/{{ m.id }}" style="display:inline">
+                            <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if waiting %}
+    <div class="lobby-section">
+        <h2>Available Matches</h2>
+        <div class="match-list">
+            {% for m in waiting %}
+            <div class="match-card">
+                <div class="match-info">
+                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
+                    <span>Created by: {{ m.player1.username }}</span>
+                </div>
+                <form method="POST" action="/join_match/{{ m.id }}">
+                    <button type="submit" class="btn btn-success" {% if m.stake > user.coins %}disabled title="Not enough coins"{% endif %}>
+                        Join ({{ m.stake }} coins)
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if history %}
+    <div class="lobby-section">
+        <h2>Recent Match History</h2>
+        <div class="match-list">
+            {% for m in history %}
+            <div class="match-card history-card">
+                <div class="match-info">
+                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
+                    <span>
+                        {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
+                    </span>
+                </div>
+                <div class="match-result-text">
+                    {% if m.winner_id == user.id %}
+                        <span class="result-win">Won +{{ m.stake }} coins</span>
+                    {% elif m.winner_id %}
+                        <span class="result-lose">Lost -{{ m.stake }} coins</span>
+                    {% else %}
+                        <span class="result-tie">Tie - Stake returned</span>
+                    {% endif %}
+                </div>
+                <a href="/match/{{ m.id }}" class="btn btn-sm">View</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

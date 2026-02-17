@@ -1,0 +1,37 @@
+import os
+from flask import Flask
+from models import db
+from auth import auth_bp, get_current_user
+from game import game_bp
+
+def create_app():
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-fallback-key')
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+    db.init_app(app)
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(game_bp)
+
+    @app.context_processor
+    def inject_user():
+        return dict(get_current_user=get_current_user)
+
+    with app.app_context():
+        db.create_all()
+
+    @app.after_request
+    def add_header(response):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+
+    return app
+
+if __name__ == '__main__':
+    app = create_app()
+    app.run(host='0.0.0.0', port=5000, debug=True)

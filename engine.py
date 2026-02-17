@@ -46,7 +46,7 @@ def is_ten_value(rank):
 
 def can_split(hand, chips):
     cards = hand['cards']
-    if len(cards) != 2 or hand.get('is_split'):
+    if len(cards) != 2:
         return False
     r1, r2 = cards[0]['rank'], cards[1]['rank']
     return (r1 == r2 or (is_ten_value(r1) and is_ten_value(r2))) and chips >= hand['bet']
@@ -119,6 +119,7 @@ def place_bets(state, bets):
             'hands': [{
                 'cards': [], 'bet': bet_amt, 'status': 'active',
                 'is_split': False, 'is_doubled': False, 'result': None,
+                'from_split_aces': False,
             }],
         })
 
@@ -165,7 +166,7 @@ def _resolve_dealer_blackjack(state):
     rnd = ts['round']
     for box in rnd['boxes']:
         for hand in box['hands']:
-            if is_blackjack(hand['cards']) and not hand.get('is_split'):
+            if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
                 ts['chips'] += hand['bet']
                 hand['status'] = 'push'
                 hand['result'] = 'push'
@@ -179,7 +180,7 @@ def _resolve_dealer_blackjack(state):
 def _mark_player_blackjacks(rnd):
     for box in rnd['boxes']:
         for hand in box['hands']:
-            if is_blackjack(hand['cards']) and not hand.get('is_split'):
+            if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
                 hand['status'] = 'blackjack'
 
 
@@ -202,7 +203,7 @@ def handle_insurance(state, take_insurance):
             ts['chips'] += rnd['insurance_amount'] * 3
         for box in rnd['boxes']:
             for hand in box['hands']:
-                if is_blackjack(hand['cards']):
+                if is_blackjack(hand['cards']) and not hand.get('from_split_aces', False):
                     ts['chips'] += hand['bet']
                     hand['status'] = 'push'
                     hand['result'] = 'push'
@@ -288,21 +289,21 @@ def player_action(state, action):
             return state, 'Cannot split'
         ts['chips'] -= hand['bet']
         card1, card2 = hand['cards'][0], hand['cards'][1]
+        split_aces = card1['rank'] == 'A'
         hand['cards'] = [card1, deck[ts['cards_dealt']]]
         ts['cards_dealt'] += 1
         new_hand = {
             'cards': [card2, deck[ts['cards_dealt']]],
             'bet': hand['bet'], 'status': 'active',
             'is_split': True, 'is_doubled': False, 'result': None,
+            'from_split_aces': split_aces or hand.get('from_split_aces', False),
         }
         ts['cards_dealt'] += 1
         hand['is_split'] = True
+        hand['from_split_aces'] = split_aces or hand.get('from_split_aces', False)
         if ts['cards_dealt'] >= CUT_CARD_POSITION:
             ts['cut_card_reached'] = True
         box['hands'].insert(rnd['current_hand'] + 1, new_hand)
-        if hand_value(hand['cards']) == 21:
-            hand['status'] = 'stand'
-            _next_hand(state)
     else:
         return state, f'Unknown action: {action}'
 
@@ -525,6 +526,7 @@ def get_client_state(state, user_player_num, match=None):
                         'status': hand['status'],
                         'is_split': hand.get('is_split', False),
                         'is_doubled': hand.get('is_doubled', False),
+                        'from_split_aces': hand.get('from_split_aces', False),
                         'value': hand_value(hand['cards']),
                         'result': hand.get('result'),
                         'can_split': can_split(hand, ts['chips']) if hand['status'] == 'active' else False,

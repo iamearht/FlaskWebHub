@@ -9,6 +9,10 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-fallback-key')
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_recycle': 280,
+        'pool_pre_ping': True,
+    }
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
     db.init_app(app)

@@ -135,6 +135,21 @@ def play(match_id):
     if match.status == 'waiting':
         return render_template('waiting.html', match=match, user=user)
 
+    state = match.game_state
+    if state and 'turns' not in state:
+        match.status = 'finished'
+        match.game_state = state
+        if match.winner_id is None:
+            p1u = User.query.get(match.player1_id)
+            p2u = User.query.get(match.player2_id)
+            if p1u:
+                p1u.coins += match.stake
+            if p2u and match.player2_id:
+                p2u.coins += match.stake
+        db.session.commit()
+        flash('This match used an old format and has been closed. Stakes refunded.', 'error')
+        return redirect(url_for('game.lobby'))
+
     if match.status == 'active':
         _check_and_handle_timeout(match)
 
@@ -158,6 +173,9 @@ def api_state(match_id):
     match = Match.query.get_or_404(match_id)
     if user.id not in (match.player1_id, match.player2_id):
         return jsonify({'error': 'Not your match'}), 403
+    state = match.game_state
+    if state and 'turns' not in state:
+        return jsonify({'error': 'Old match format', 'status': 'finished'}), 400
     if match.status == 'active':
         _check_and_handle_timeout(match)
     player_num = _get_player_num(user, match)

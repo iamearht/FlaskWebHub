@@ -388,6 +388,40 @@ body {
 .win-text { color: #4caf50; }
 .lose-text { color: #ef5350; }
 
+.timer-display {
+    margin-top: 8px;
+    text-align: center;
+}
+
+.timer-bar-container {
+    display: inline-block;
+    width: 120px;
+    height: 8px;
+    background: #1e2a40;
+    border-radius: 4px;
+    overflow: hidden;
+    vertical-align: middle;
+    margin-right: 8px;
+}
+
+.timer-bar {
+    height: 100%;
+    width: 100%;
+    background: #4caf50;
+    border-radius: 4px;
+    transition: width 0.1s linear;
+}
+
+.timer-bar.timer-critical {
+    background: #ef5350;
+}
+
+.timer-text {
+    color: #ffd700;
+    font-weight: bold;
+    font-size: 0.95em;
+}
+
 @media (max-width: 600px) {
     .game-header { flex-direction: column; gap: 8px; }
     .create-match-form { flex-direction: column; }

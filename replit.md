@@ -20,12 +20,19 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 
 ## Game Rules
 - 1v1 matches with coin stakes
-- 4 turns per match (each player plays twice as Player and twice as Dealer)
+- 2 turns per match (each player plays once as Player, once as Dealer)
 - Multi-box betting (up to 3 boxes per round)
 - Full blackjack: hit, stand, double, split, insurance
 - 2 standard decks, cut card at position 65
 - 100 chips per turn bankroll
 - Winner takes both stakes
+- 10-second decision timer (server-side enforced) with auto-fallback actions
+
+## Recent Changes (Feb 2026)
+- Simplified from 4 turns to 2 turns per match
+- Added 10-second server-side decision timer with auto-fallbacks
+- Match model: added decision_started_at, decision_type, is_waiting_decision fields
+- Cleaner state machine with explicit phase transitions
 
 ## Running
 - `python app.py` starts Flask dev server on port 5000

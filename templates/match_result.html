@@ -7,14 +7,12 @@
         <div class="result-players">
             <div class="result-player {% if cs.match_result.winner == 1 %}winner{% endif %}">
                 <h3>{{ p1.username }}</h3>
-                <p class="result-total">Total: {{ cs.match_result.player1_total }}</p>
-                <p>Turns: {{ cs.results.player1 | join(', ') }}</p>
+                <p class="result-total">Chips: {{ cs.match_result.player1_total }}</p>
             </div>
             <div class="result-vs">VS</div>
             <div class="result-player {% if cs.match_result.winner == 2 %}winner{% endif %}">
                 <h3>{{ p2.username }}</h3>
-                <p class="result-total">Total: {{ cs.match_result.player2_total }}</p>
-                <p>Turns: {{ cs.results.player2 | join(', ') }}</p>
+                <p class="result-total">Chips: {{ cs.match_result.player2_total }}</p>
             </div>
         </div>
         <div class="result-outcome">

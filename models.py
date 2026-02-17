@@ -27,6 +27,9 @@ class Match(db.Model):
     status = db.Column(db.String(20), default='waiting')
     winner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     game_state = db.Column(db.JSON, nullable=True)
+    decision_started_at = db.Column(db.Float, nullable=True)
+    decision_type = db.Column(db.String(20), nullable=True)
+    is_waiting_decision = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     player1 = db.relationship('User', foreign_keys=[player1_id], backref='matches_as_p1')

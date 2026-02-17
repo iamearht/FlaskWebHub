@@ -340,12 +340,73 @@ def _play_dealer(state):
         for box in rnd['boxes'] for h in box['hands']
     )
 
-    if any_standing:
-        while hand_value(dc) < 17:
-            dc.append(deck[ts['cards_dealt']])
-            ts['cards_dealt'] += 1
-            if ts['cards_dealt'] >= CUT_CARD_POSITION:
-                ts['cut_card_reached'] = True
+    if not any_standing:
+        _resolve_hands(state)
+        return
+
+    while hand_value(dc) < 17:
+        dc.append(deck[ts['cards_dealt']])
+        ts['cards_dealt'] += 1
+        if ts['cards_dealt'] >= CUT_CARD_POSITION:
+            ts['cut_card_reached'] = True
+
+    dealer_val = hand_value(dc)
+    if dealer_val >= 17 and dealer_val <= 20:
+        state['phase'] = 'DEALER_TURN'
+        return
+
+    _resolve_hands(state)
+
+
+def dealer_action(state, action):
+    if state['phase'] != 'DEALER_TURN':
+        return state, 'Not in dealer turn phase'
+
+    ts = state['turn_state']
+    rnd = ts['round']
+    deck = ts['deck']
+    dc = rnd['dealer_cards']
+
+    if action == 'stand':
+        _resolve_hands(state)
+        return state, None
+    elif action == 'hit':
+        dc.append(deck[ts['cards_dealt']])
+        ts['cards_dealt'] += 1
+        if ts['cards_dealt'] >= CUT_CARD_POSITION:
+            ts['cut_card_reached'] = True
+
+        dealer_val = hand_value(dc)
+        if dealer_val > 21:
+            _resolve_hands(state)
+            return state, None
+
+        if dealer_val < 17:
+            while hand_value(dc) < 17:
+                dc.append(deck[ts['cards_dealt']])
+                ts['cards_dealt'] += 1
+                if ts['cards_dealt'] >= CUT_CARD_POSITION:
+                    ts['cut_card_reached'] = True
+            dealer_val = hand_value(dc)
+
+        if dealer_val > 21 or dealer_val == 21:
+            _resolve_hands(state)
+            return state, None
+
+        if 17 <= dealer_val <= 20:
+            state['phase'] = 'DEALER_TURN'
+            return state, None
+
+        _resolve_hands(state)
+        return state, None
+    else:
+        return state, f'Unknown dealer action: {action}'
+
+
+def _resolve_hands(state):
+    ts = state['turn_state']
+    rnd = ts['round']
+    dc = rnd['dealer_cards']
 
     dealer_val = hand_value(dc)
     dealer_bust = dealer_val > 21
@@ -451,6 +512,11 @@ def apply_timeout(state, match):
         match.is_waiting_decision = False
         return state, True
 
+    elif phase == 'DEALER_TURN':
+        state, _ = dealer_action(state, 'stand')
+        match.is_waiting_decision = False
+        return state, True
+
     elif phase == 'ROUND_RESULT':
         state, _ = next_round_or_end_turn(state)
         match.is_waiting_decision = False
@@ -496,9 +562,15 @@ def get_client_state(state, user_player_num, match=None):
         ti = state['turns'][state['current_turn']]
         cs['current_player_role'] = ti['player_role']
         cs['current_dealer_role'] = ti['dealer_role']
-        cs['is_my_turn'] = (ti['player_role'] == user_player_num)
+        if state['phase'] == 'DEALER_TURN':
+            cs['is_my_turn'] = (ti['dealer_role'] == user_player_num)
+            cs['is_dealer_turn'] = True
+        else:
+            cs['is_my_turn'] = (ti['player_role'] == user_player_num)
+            cs['is_dealer_turn'] = False
     else:
         cs['is_my_turn'] = False
+        cs['is_dealer_turn'] = False
         cs['current_player_role'] = None
         cs['current_dealer_role'] = None
 
@@ -536,7 +608,9 @@ def get_client_state(state, user_player_num, match=None):
                 cs['round']['boxes'].append(b)
 
             dc = rnd['dealer_cards']
-            if rnd['resolved']:
+            is_dealer_player = (state['current_turn'] < 2 and
+                                state['turns'][state['current_turn']]['dealer_role'] == user_player_num)
+            if rnd['resolved'] or state['phase'] == 'DEALER_TURN' or is_dealer_player:
                 cs['round']['dealer_cards'] = dc
                 cs['round']['dealer_value'] = hand_value(dc)
             else:

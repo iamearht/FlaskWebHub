@@ -72,6 +72,12 @@
             <button class="btn btn-secondary" id="btn-split">Split</button>
         </div>
 
+        <div id="dealer-action-area" class="action-area" style="display:none">
+            <span id="dealer-action-label" class="dealer-label">Dealer has <strong id="dealer-action-value"></strong> — Hit or Stand?</span>
+            <button class="btn btn-primary" id="btn-dealer-hit">Hit</button>
+            <button class="btn btn-warning" id="btn-dealer-stand">Stand</button>
+        </div>
+
         <div id="round-result-area" class="game-area" style="display:none">
             <h3>Round Complete</h3>
             <p id="round-result-chips"></p>
@@ -79,8 +85,8 @@
         </div>
 
         <div id="waiting-opponent" class="game-area" style="display:none">
-            <h3>Opponent's Turn</h3>
-            <p>Waiting for the other player to finish their turn...</p>
+            <h3 id="waiting-opponent-title">Opponent's Turn</h3>
+            <p id="waiting-opponent-desc">Watching the other player...</p>
             <div class="spinner"></div>
         </div>
 
@@ -165,7 +171,7 @@ async function fetchState() {
 }
 
 function hideAll() {
-    var els = document.querySelectorAll('.game-area, #action-area');
+    var els = document.querySelectorAll('.game-area, #action-area, #dealer-action-area');
     for (var i = 0; i < els.length; i++) els[i].style.display = 'none';
 }
 
@@ -199,8 +205,18 @@ function renderState(s) {
     }
 
     if (!s.is_my_turn) {
-        phaseEl.textContent = "Opponent's Turn";
-        document.getElementById('waiting-opponent').style.display = 'block';
+        if (s.round && s.phase !== 'WAITING_BETS' && s.phase !== 'TURN_START') {
+            phaseEl.textContent = "Watching Opponent";
+            showTable(s);
+            document.getElementById('waiting-opponent').style.display = 'block';
+            document.getElementById('waiting-opponent-title').textContent = "Opponent's Turn";
+            document.getElementById('waiting-opponent-desc').textContent = 'Watching live...';
+        } else {
+            phaseEl.textContent = "Opponent's Turn";
+            document.getElementById('waiting-opponent').style.display = 'block';
+            document.getElementById('waiting-opponent-title').textContent = "Opponent's Turn";
+            document.getElementById('waiting-opponent-desc').textContent = 'Waiting for the other player...';
+        }
         document.getElementById('timer-display').style.display = 'none';
         startPolling();
         return;
@@ -223,6 +239,10 @@ function renderState(s) {
         phaseEl.textContent = 'Your Turn';
         showTable(s);
         showActions(s);
+    } else if (s.phase === 'DEALER_TURN') {
+        phaseEl.textContent = 'Dealer Decision';
+        showTable(s);
+        showDealerActions(s);
     } else if (s.phase === 'ROUND_RESULT') {
         phaseEl.textContent = 'Round Result';
         showTable(s);
@@ -311,6 +331,11 @@ function showActions(s) {
     document.getElementById('btn-split').style.display = hand.can_split ? '' : 'none';
 }
 
+function showDealerActions(s) {
+    document.getElementById('dealer-action-area').style.display = 'flex';
+    document.getElementById('dealer-action-value').textContent = s.round.dealer_value;
+}
+
 function showRoundResult(s) {
     document.getElementById('round-result-area').style.display = 'block';
     var msg = 'Chips remaining: ' + s.chips;
@@ -379,6 +404,16 @@ document.getElementById('btn-insurance-no').addEventListener('click', async func
         var data = await apiCall('action', 'POST', {action: action});
         if (data) renderState(data);
     });
+});
+
+document.getElementById('btn-dealer-hit').addEventListener('click', async function() {
+    var data = await apiCall('dealer_action', 'POST', {action: 'hit'});
+    if (data) renderState(data);
+});
+
+document.getElementById('btn-dealer-stand').addEventListener('click', async function() {
+    var data = await apiCall('dealer_action', 'POST', {action: 'stand'});
+    if (data) renderState(data);
 });
 
 document.getElementById('btn-next-round').addEventListener('click', async function() {

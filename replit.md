@@ -23,16 +23,33 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 - 2 turns per match (each player plays once as Player, once as Dealer)
 - Multi-box betting (up to 3 boxes per round)
 - Full blackjack: hit, stand, double, split, insurance
+- Infinite re-splits allowed; double after split allowed
+- Hit/double after splitting aces allowed (but split aces + ten = not blackjack, pays 1:1)
 - 2 standard decks, cut card at position 65
 - 100 chips per turn bankroll
 - Winner takes both stakes
-- 10-second decision timer (server-side enforced) with auto-fallback actions
+- 30-second decision timer (server-side enforced) with auto-fallback actions
+- Bank player can see opponent's turn in real-time (spectating)
+- Bank player can manually hit on dealer hands 17-20 (DEALER_TURN phase)
+- If dealer hits and drops below 17, auto-draws back to 17+ then offers choice again
+- Forfeit option available for active matches (opponent gets both stakes)
+
+## Game Phases
+- TURN_START → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN (if 17-20) → ROUND_RESULT → (next round or end turn)
+- DEALER_TURN: bank player decides hit/stand on 17-20; auto-draw if hand drops below 17
+
+## State Persistence
+- game_state stored as JSON in Match model (MutableDict + flag_modified via _save_match helper)
+- All game state mutations go through _save_match(match) to ensure SQLAlchemy detects nested changes
 
 ## Recent Changes (Feb 2026)
-- Simplified from 4 turns to 2 turns per match
-- Added 10-second server-side decision timer with auto-fallbacks
-- Match model: added decision_started_at, decision_type, is_waiting_decision fields
-- Cleaner state machine with explicit phase transitions
+- Infinite splits, double after split, hit/double on split aces
+- Split aces + ten is NOT blackjack (from_split_aces flag)
+- DEALER_TURN phase: bank player can hit on 17-20
+- Real-time spectating for bank player during opponent's turn
+- Forfeit active matches from lobby
+- Fixed timeout button disable bug (buttons re-enabled on each render)
+- 30-second server-side decision timer with auto-fallbacks
 
 ## Running
 - `python app.py` starts Flask dev server on port 5000

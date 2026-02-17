@@ -4,7 +4,7 @@ from models import db, User, Match
 from auth import login_required, get_current_user
 from engine import (
     init_game_state, enter_turn, place_bets, handle_insurance,
-    player_action, next_round_or_end_turn, get_client_state,
+    player_action, dealer_action, next_round_or_end_turn, get_client_state,
     check_timeout, apply_timeout, set_decision_timer, clear_decision_timer
 )
 
@@ -42,6 +42,8 @@ def _set_timer_for_phase(match, state):
         set_decision_timer(match, 'INSURANCE')
     elif phase == 'PLAYER_TURN':
         set_decision_timer(match, 'ACTION')
+    elif phase == 'DEALER_TURN':
+        set_decision_timer(match, 'DEALER')
     elif phase == 'ROUND_RESULT':
         set_decision_timer(match, 'NEXT')
     elif phase in ('TURN_START', 'MATCH_OVER'):
@@ -303,6 +305,40 @@ def api_action(match_id):
         return jsonify({'error': 'Invalid action'}), 400
 
     state, err = player_action(state, action)
+    if err:
+        return jsonify({'error': err}), 400
+
+    clear_decision_timer(match)
+    match.game_state = state
+    _set_timer_for_phase(match, state)
+    _save_match(match)
+    return jsonify(get_client_state(state, player_num, match))
+
+
+@game_bp.route('/api/match/<int:match_id>/dealer_action', methods=['POST'])
+@login_required
+def api_dealer_action(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+    if match.status != 'active':
+        return jsonify({'error': 'Match not active'}), 400
+
+    player_num = _get_player_num(user, match)
+    _check_and_handle_timeout(match)
+    state = match.game_state
+
+    turn_info = state['turns'][state['current_turn']]
+    if turn_info['dealer_role'] != player_num:
+        return jsonify({'error': 'Not your turn as dealer'}), 403
+    if state['phase'] != 'DEALER_TURN':
+        return jsonify({'error': 'Not in dealer turn phase'}), 400
+
+    data = request.get_json()
+    action = data.get('action')
+    if action not in ('hit', 'stand'):
+        return jsonify({'error': 'Invalid dealer action'}), 400
+
+    state, err = dealer_action(state, action)
     if err:
         return jsonify({'error': err}), 400
 

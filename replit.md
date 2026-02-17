@@ -35,16 +35,20 @@ A 1v1 competitive Blackjack web application built with Flask. Players register, 
 - **Chip carryover**: 100 chips for first Player turn; second Player turn gets leftover + 100 bonus
 - Winner = highest final chip count after all 4 turns
 - 30-second decision timer (server-side enforced) with auto-fallback actions
-- Bank player can see opponent's turn in real-time (spectating)
-- Bank player can manually hit on dealer hands 17-20 (DEALER_TURN phase)
-- If dealer hits and drops below 17, auto-draws back to 17+ then offers choice again
+- Bank player can see opponent's turn in real-time (spectating) with swapped perspective (dealer cards at bottom)
+- Bank player can hit or stand on ANY dealer hand value 1-20 (full manual control)
+- No auto-draw to 17; dealer makes all decisions manually
 - Forfeit option available for active matches (opponent gets both stakes)
 
 ## Game Phases
-- CARD_DRAW → CHOICE → TURN_START → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN (if 17-20) → ROUND_RESULT → (next round or end turn)
+- CARD_DRAW → CHOICE → TURN_START → WAITING_BETS → INSURANCE (if dealer ace) → PLAYER_TURN → DEALER_TURN (any value 1-20) → ROUND_RESULT → (next round or end turn)
 - CARD_DRAW: both players draw cards, higher rank wins (poker ordering: 2-A)
 - CHOICE: draw winner picks Player or Bank first
-- DEALER_TURN: bank player decides hit/stand on 17-20; auto-draw if hand drops below 17
+- DEALER_TURN: bank player decides hit/stand on any value 1-20; no auto-draw
+
+## Perspective
+- When you're the Player: dealer cards at top, your boxes at bottom
+- When you're the Bank: opponent's boxes at top, your dealer cards at bottom (facing you)
 
 ## State Persistence
 - game_state stored as JSON in Match model (MutableDict + flag_modified via _save_match helper)

@@ -75,12 +75,8 @@
         </div>
 
         <div id="table-area" class="game-area" style="display:none">
-            <div class="dealer-section">
-                <h3>Dealer</h3>
-                <div id="dealer-cards" class="card-row"></div>
-                <span id="dealer-value" class="hand-value"></span>
-            </div>
-            <div id="boxes-section" class="boxes-section"></div>
+            <div id="table-top-section"></div>
+            <div id="table-bottom-section"></div>
         </div>
 
         <div id="action-area" class="action-area" style="display:none">
@@ -261,10 +257,10 @@ function renderState(s) {
 
     if (!s.is_my_turn) {
         if (s.round && s.phase !== 'WAITING_BETS' && s.phase !== 'TURN_START') {
-            phaseEl.textContent = "Watching Opponent";
+            phaseEl.textContent = s.i_am_dealer ? "Watching Player" : "Watching Opponent";
             showTable(s);
             document.getElementById('waiting-opponent').style.display = 'block';
-            document.getElementById('waiting-opponent-title').textContent = "Opponent's Turn";
+            document.getElementById('waiting-opponent-title').textContent = s.i_am_dealer ? "Player's Turn" : "Opponent's Turn";
             document.getElementById('waiting-opponent-desc').textContent = 'Watching live...';
         } else {
             phaseEl.textContent = "Opponent's Turn";
@@ -383,7 +379,7 @@ function showTurnStart(s) {
         desc.textContent = chipText;
     } else {
         title.textContent = 'Turn ' + turnNum + '/4: You are the Bank (Dealer)';
-        desc.textContent = 'Your opponent plays this turn. You control dealer decisions on 17-20.';
+        desc.textContent = 'Your opponent plays this turn. You control all dealer hit/stand decisions.';
     }
 }
 
@@ -402,25 +398,24 @@ function showInsurance(s) {
     document.getElementById('insurance-cost').textContent = 'Insurance costs ' + Math.floor(totalBet / 2) + ' chips';
 }
 
-function showTable(s) {
-    document.getElementById('table-area').style.display = 'block';
-    var dealerCards = document.getElementById('dealer-cards');
-    dealerCards.innerHTML = s.round.dealer_cards.map(cardHtml).join('');
-    document.getElementById('dealer-value').textContent = s.round.resolved ? 'Value: ' + s.round.dealer_value : '';
+function buildDealerHtml(s) {
+    var dealerLabel = s.i_am_dealer ? 'Your Cards (Dealer)' : 'Dealer';
+    var valueText = s.round.resolved || s.i_am_dealer ? 'Value: ' + s.round.dealer_value : '';
+    return '<div class="dealer-section"><h3>' + dealerLabel + '</h3>' +
+        '<div class="card-row">' + s.round.dealer_cards.map(cardHtml).join('') + '</div>' +
+        '<span class="hand-value">' + valueText + '</span></div>';
+}
 
-    var boxesSection = document.getElementById('boxes-section');
-    boxesSection.innerHTML = '';
-
+function buildBoxesHtml(s) {
+    var boxesLabel = s.i_am_dealer ? "Opponent's Hands" : 'Your Hands';
+    var html = '<div class="boxes-section"><h3 class="boxes-label">' + boxesLabel + '</h3>';
     for (var bi = 0; bi < s.round.boxes.length; bi++) {
         var box = s.round.boxes[bi];
-        var boxDiv = document.createElement('div');
-        boxDiv.className = 'box-container';
-
+        html += '<div class="box-container">';
         for (var hi = 0; hi < box.hands.length; hi++) {
             var hand = box.hands[hi];
             var isActive = s.phase === 'PLAYER_TURN' && bi === s.round.current_box && hi === s.round.current_hand && hand.status === 'active';
-            var handDiv = document.createElement('div');
-            handDiv.className = 'hand-container' + (isActive ? ' active-hand' : '') + (hand.result ? ' result-' + hand.result : '');
+            var cls = 'hand-container' + (isActive ? ' active-hand' : '') + (hand.result ? ' result-' + hand.result : '');
 
             var label = 'Box ' + (bi + 1);
             if (box.hands.length > 1) label += ' Hand ' + (hi + 1);
@@ -430,14 +425,29 @@ function showTable(s) {
                 statusText = '<span class="hand-result result-' + hand.result + '">' + (labels[hand.result] || hand.result) + '</span>';
             }
 
-            handDiv.innerHTML =
+            html += '<div class="' + cls + '">' +
                 '<div class="hand-header">' + label + ' (Bet: ' + hand.bet + ')' +
                 (hand.is_doubled ? ' [DOUBLED]' : '') + (hand.is_split ? ' [SPLIT]' : '') + '</div>' +
                 '<div class="card-row">' + hand.cards.map(cardHtml).join('') + '</div>' +
-                '<div class="hand-value">Value: ' + hand.value + ' ' + statusText + '</div>';
-            boxDiv.appendChild(handDiv);
+                '<div class="hand-value">Value: ' + hand.value + ' ' + statusText + '</div></div>';
         }
-        boxesSection.appendChild(boxDiv);
+        html += '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+function showTable(s) {
+    document.getElementById('table-area').style.display = 'block';
+    var topSection = document.getElementById('table-top-section');
+    var bottomSection = document.getElementById('table-bottom-section');
+
+    if (s.i_am_dealer) {
+        topSection.innerHTML = buildBoxesHtml(s);
+        bottomSection.innerHTML = buildDealerHtml(s);
+    } else {
+        topSection.innerHTML = buildDealerHtml(s);
+        bottomSection.innerHTML = buildBoxesHtml(s);
     }
 }
 
@@ -457,6 +467,7 @@ function showActions(s) {
 function showDealerActions(s) {
     document.getElementById('dealer-action-area').style.display = 'flex';
     document.getElementById('dealer-action-value').textContent = s.round.dealer_value;
+    document.getElementById('dealer-action-label').innerHTML = 'Your hand is at <strong id="dealer-action-value">' + s.round.dealer_value + '</strong> — Hit or Stand?';
 }
 
 function showRoundResult(s) {

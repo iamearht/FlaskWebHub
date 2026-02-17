@@ -432,7 +432,6 @@ def _next_hand(state):
 def _play_dealer(state):
     ts = state['turn_state']
     rnd = ts['round']
-    deck = ts['deck']
     dc = rnd['dealer_cards']
 
     any_standing = any(
@@ -444,14 +443,8 @@ def _play_dealer(state):
         _resolve_hands(state)
         return
 
-    while hand_value(dc) < 17:
-        dc.append(deck[ts['cards_dealt']])
-        ts['cards_dealt'] += 1
-        if ts['cards_dealt'] >= CUT_CARD_POSITION:
-            ts['cut_card_reached'] = True
-
     dealer_val = hand_value(dc)
-    if dealer_val >= 17 and dealer_val <= 20:
+    if dealer_val <= 20:
         state['phase'] = 'DEALER_TURN'
         return
 
@@ -477,27 +470,11 @@ def dealer_action(state, action):
             ts['cut_card_reached'] = True
 
         dealer_val = hand_value(dc)
-        if dealer_val > 21:
-            _resolve_hands(state)
-            return state, None
-
-        if dealer_val < 17:
-            while hand_value(dc) < 17:
-                dc.append(deck[ts['cards_dealt']])
-                ts['cards_dealt'] += 1
-                if ts['cards_dealt'] >= CUT_CARD_POSITION:
-                    ts['cut_card_reached'] = True
-            dealer_val = hand_value(dc)
-
         if dealer_val > 21 or dealer_val == 21:
             _resolve_hands(state)
             return state, None
 
-        if 17 <= dealer_val <= 20:
-            state['phase'] = 'DEALER_TURN'
-            return state, None
-
-        _resolve_hands(state)
+        state['phase'] = 'DEALER_TURN'
         return state, None
     else:
         return state, f'Unknown dealer action: {action}'
@@ -682,6 +659,7 @@ def get_client_state(state, user_player_num, match=None):
         ti = state['turns'][state['current_turn']]
         cs['current_player_role'] = ti['player_role']
         cs['current_dealer_role'] = ti['dealer_role']
+        cs['i_am_dealer'] = (ti['dealer_role'] == user_player_num)
         if state['phase'] == 'DEALER_TURN':
             cs['is_my_turn'] = (ti['dealer_role'] == user_player_num)
             cs['is_dealer_turn'] = True
@@ -697,6 +675,7 @@ def get_client_state(state, user_player_num, match=None):
     elif state['phase'] in ('CARD_DRAW', 'CHOICE'):
         cs['current_player_role'] = None
         cs['current_dealer_role'] = None
+        cs['i_am_dealer'] = False
         if state['phase'] == 'CHOICE':
             cs['is_my_turn'] = (state['chooser'] == user_player_num)
         else:
@@ -705,6 +684,7 @@ def get_client_state(state, user_player_num, match=None):
     else:
         cs['is_my_turn'] = False
         cs['is_dealer_turn'] = False
+        cs['i_am_dealer'] = False
         cs['current_player_role'] = None
         cs['current_dealer_role'] = None
 

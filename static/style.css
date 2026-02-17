@@ -257,6 +257,33 @@ body {
     border-bottom: 2px dashed #1e7a46;
 }
 
+#table-top-section .dealer-section {
+    border-bottom: 2px dashed #1e7a46;
+    margin-bottom: 20px;
+}
+
+#table-bottom-section .dealer-section {
+    border-top: 2px dashed #1e7a46;
+    border-bottom: none;
+    margin-top: 20px;
+    padding-top: 16px;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+#table-top-section .boxes-section {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 2px dashed #1e7a46;
+}
+
+.boxes-label {
+    color: #8bc34a;
+    font-size: 1em;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
 .card-row {
     display: flex;
     gap: 8px;

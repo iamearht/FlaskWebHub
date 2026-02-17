@@ -48,7 +48,7 @@ def register():
         if len(password) < 4:
             flash('Password must be at least 4 characters.', 'error')
             return render_template('register.html', ref_code=ref_code)
-        if User.query.filter_by(username=username).first():
+        if User.query.filter(db.func.lower(User.username) == username.lower()).first():
             flash('Username already taken.', 'error')
             return render_template('register.html', ref_code=ref_code)
         if email:
@@ -82,7 +82,7 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter(db.func.lower(User.username) == username.lower()).first()
         if user and user.check_password(password):
             session['user_id'] = user.id
             return redirect(url_for('game.lobby'))

@@ -36,6 +36,11 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        from models import User
+        admin_user = User.query.filter(db.func.lower(User.username) == 'iamearth').first()
+        if admin_user and not admin_user.is_admin:
+            admin_user.is_admin = True
+            db.session.commit()
 
     @app.after_request
     def add_header(response):

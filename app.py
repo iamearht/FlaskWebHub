@@ -36,6 +36,22 @@ def create_app():
     def inject_user():
         return dict(get_current_user=get_current_user)
 
+    @app.context_processor
+    def inject_known_matches():
+        from flask import session as flask_session, request as flask_request
+        if flask_session.get('user_id'):
+            accept = flask_request.headers.get('Accept', '')
+            if 'text/html' not in accept:
+                return dict(known_match_ids=[])
+            from models import Match
+            user_id = flask_session['user_id']
+            active = Match.query.filter(
+                Match.status == 'active',
+                db.or_(Match.player1_id == user_id, Match.player2_id == user_id),
+            ).with_entities(Match.id).all()
+            return dict(known_match_ids=[m.id for m in active])
+        return dict(known_match_ids=[])
+
     with app.app_context():
         db.create_all()
         from models import User

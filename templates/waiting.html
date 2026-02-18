@@ -10,17 +10,44 @@
         <button type="submit" class="btn btn-danger">Cancel Match</button>
     </form>
 </div>
+{% endblock %}
 {% block scripts %}
 <script>
-setInterval(function() {
-    fetch('/api/match/{{ match.id }}/state')
-        .then(r => r.json())
-        .then(data => {
-            if (data.status === 'active') {
-                window.location.reload();
-            }
-        });
-}, 3000);
+(function() {
+    var matchId = {{ match.id }};
+    var popupShown = false;
+
+    function checkMatch() {
+        if (popupShown) return;
+        fetch('/api/match/' + matchId + '/state')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'active' && !popupShown) {
+                    popupShown = true;
+                    fetch('/api/my_active_matches')
+                        .then(function(r) { return r.json(); })
+                        .then(function(matches) {
+                            for (var i = 0; i < matches.length; i++) {
+                                if (matches[i].match_id === matchId) {
+                                    if (window._showMatchPopup) {
+                                        window._showMatchPopup(matches[i]);
+                                    } else {
+                                        window.location.href = '/match/' + matchId;
+                                    }
+                                    return;
+                                }
+                            }
+                            window.location.href = '/match/' + matchId;
+                        })
+                        .catch(function() {
+                            window.location.href = '/match/' + matchId;
+                        });
+                }
+            })
+            .catch(function() {});
+    }
+
+    setInterval(checkMatch, 3000);
+})();
 </script>
-{% endblock %}
 {% endblock %}

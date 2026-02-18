@@ -367,6 +367,29 @@ def play(match_id):
     return render_template('game.html', match=match, user=user, cs=cs, player_num=player_num, p1=p1, p2=p2, game_modes=GAME_MODES)
 
 
+@game_bp.route('/api/my_active_matches')
+@login_required
+def api_my_active_matches():
+    user = get_current_user()
+    active_matches = Match.query.filter(
+        Match.status == 'active',
+        db.or_(Match.player1_id == user.id, Match.player2_id == user.id),
+    ).order_by(Match.created_at.desc()).all()
+
+    results = []
+    for m in active_matches:
+        opponent_id = m.player2_id if m.player1_id == user.id else m.player1_id
+        opponent = User.query.get(opponent_id) if opponent_id else None
+        results.append({
+            'match_id': m.id,
+            'stake': m.stake,
+            'opponent': opponent.username if opponent else 'Unknown',
+            'game_mode': m.game_mode,
+            'is_tournament': m.tournament_match_id is not None,
+        })
+    return jsonify(results)
+
+
 @game_bp.route('/api/match/<int:match_id>/state')
 @login_required
 def api_state(match_id):

@@ -7,12 +7,38 @@
         <p class="subtitle">Score = Finishing Chips x Match Stake. Top scores win a share of the jackpot!</p>
     </div>
 
+    <div class="game-mode-tabs" style="margin-bottom: 20px;">
+        <a href="/jackpots?type=standard" class="mode-tab {% if pool_type == 'standard' %}active{% endif %}">
+            <span class="mode-name">Standard</span>
+            <span class="mode-desc">Classic & Interactive</span>
+        </a>
+        <a href="/jackpots?type=joker" class="mode-tab {% if pool_type == 'joker' %}active{% endif %}">
+            <span class="mode-name">Joker</span>
+            <span class="mode-desc">Classic Joker & Interactive Joker</span>
+        </a>
+    </div>
+
     <div class="jackpot-pools-overview">
         <div class="jackpot-pool-card">
             <div class="jackpot-pool-header">
-                <span class="jackpot-tier-name">Jackpot Pool</span>
+                <span class="jackpot-tier-name">{{ pool_types[pool_type] }} Jackpot</span>
             </div>
             <div class="jackpot-amount">{{ jackpot_data.pool.pool_amount }} <span class="jackpot-coins-label">coins</span></div>
+            {% if countdown %}
+            <div class="jackpot-countdown" id="jackpot-countdown" data-total-seconds="{{ countdown.total_seconds }}">
+                <span class="countdown-label">Payout in:</span>
+                <span class="countdown-timer">
+                    <span id="cd-days">{{ countdown.days }}</span>d
+                    <span id="cd-hours">{{ countdown.hours }}</span>h
+                    <span id="cd-minutes">{{ countdown.minutes }}</span>m
+                    <span id="cd-seconds">{{ countdown.seconds }}</span>s
+                </span>
+            </div>
+            {% else %}
+            <div class="jackpot-countdown expired">
+                <span class="countdown-label">Payout period ended - awaiting distribution</span>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -30,7 +56,7 @@
 
     <div class="lobby-section jackpot-leaderboard-section">
         <h2>
-            Leaderboard
+            {{ pool_types[pool_type] }} Leaderboard
             <span class="jackpot-pool-display">Jackpot: {{ jackpot_data.pool.pool_amount }} coins</span>
         </h2>
 
@@ -77,8 +103,36 @@
             </tbody>
         </table>
         {% else %}
-        <p class="empty-text">No entries yet. Play lobby matches to get on the leaderboard!</p>
+        <p class="empty-text">No entries yet. Play {{ 'joker mode' if pool_type == 'joker' else 'standard' }} lobby matches to get on the leaderboard!</p>
         {% endif %}
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var el = document.getElementById('jackpot-countdown');
+    if (!el) return;
+    var total = parseInt(el.getAttribute('data-total-seconds'), 10);
+    if (isNaN(total) || total <= 0) return;
+
+    function update() {
+        total--;
+        if (total <= 0) {
+            el.innerHTML = '<span class="countdown-label">Payout period ended - awaiting distribution</span>';
+            return;
+        }
+        var d = Math.floor(total / 86400);
+        var h = Math.floor((total % 86400) / 3600);
+        var m = Math.floor((total % 3600) / 60);
+        var s = total % 60;
+        document.getElementById('cd-days').textContent = d;
+        document.getElementById('cd-hours').textContent = h;
+        document.getElementById('cd-minutes').textContent = m;
+        document.getElementById('cd-seconds').textContent = s;
+        setTimeout(update, 1000);
+    }
+    setTimeout(update, 1000);
+})();
+</script>
 {% endblock %}

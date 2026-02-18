@@ -271,8 +271,13 @@ def rakeback_config():
 @admin_required
 def jackpot_config():
     user = get_current_user()
+    pool_type = request.args.get('type', 'standard')
+    if pool_type not in ('standard', 'joker'):
+        pool_type = 'standard'
+
     if request.method == 'POST':
         action = request.form.get('action')
+        post_pool_type = request.form.get('pool_type', 'standard')
 
         if action == 'set_percent':
             try:
@@ -282,6 +287,15 @@ def jackpot_config():
                 flash(f'Jackpot rake percentage set to {pct}%.', 'success')
             except (ValueError, TypeError):
                 flash('Invalid percentage.', 'error')
+
+        elif action == 'set_period':
+            try:
+                days = int(request.form.get('jackpot_period_days', 7))
+                AdminConfig.set('jackpot_period_days', days)
+                db.session.commit()
+                flash(f'Jackpot accumulation period set to {days} days.', 'success')
+            except (ValueError, TypeError):
+                flash('Invalid number of days.', 'error')
 
         elif action == 'set_payouts':
             payouts = {}
@@ -300,7 +314,7 @@ def jackpot_config():
                 flash('Jackpot payout structure updated.', 'success')
 
         elif action == 'payout':
-            pool = JackpotPool.get_active_pool()
+            pool = JackpotPool.get_active_pool(post_pool_type)
             if pool and pool.pool_amount > 0:
                 payouts = get_jackpot_payouts()
                 payouts_int = {int(k): v for k, v in payouts.items()}
@@ -327,10 +341,12 @@ def jackpot_config():
                 pool.status = 'paid'
                 pool.paid_out_at = datetime.utcnow()
                 db.session.commit()
-                flash(f'Jackpot paid out! {paid_out} coins distributed.', 'success')
+                label = JackpotPool.POOL_TYPES.get(post_pool_type, post_pool_type)
+                flash(f'{label} jackpot paid out! {paid_out} coins distributed.', 'success')
 
                 new_pool = JackpotPool(
-                    stake_tier='Main',
+                    stake_tier='Standard' if post_pool_type == 'standard' else 'Joker',
+                    pool_type=post_pool_type,
                     min_stake=0,
                     max_stake=999999,
                     pool_amount=0,
@@ -342,22 +358,26 @@ def jackpot_config():
                 flash('Pool is empty.', 'error')
 
         elif action == 'reset':
-            pool = JackpotPool.get_active_pool()
+            pool = JackpotPool.get_active_pool(post_pool_type)
             if pool:
                 JackpotEntry.query.filter_by(jackpot_id=pool.id).delete()
                 pool.pool_amount = 0
                 pool.period_start = datetime.utcnow()
                 db.session.commit()
-                flash('Jackpot reset.', 'success')
+                label = JackpotPool.POOL_TYPES.get(post_pool_type, post_pool_type)
+                flash(f'{label} jackpot reset.', 'success')
 
-        return redirect(url_for('admin.jackpot_config'))
+        return redirect(url_for('admin.jackpot_config', type=post_pool_type))
 
-    pool = JackpotPool.get_active_pool()
+    pools = JackpotPool.get_all_active_pools()
     db.session.commit()
     jackpot_percent = get_jackpot_rake_percent()
     payouts = get_jackpot_payouts()
     payouts_int = {int(k): v for k, v in payouts.items()}
+    period_days = AdminConfig.get('jackpot_period_days', 7)
 
     return render_template('admin/jackpot.html', user=user,
-                           pool=pool, jackpot_percent=jackpot_percent,
-                           payouts=payouts_int)
+                           pools=pools, pool_type=pool_type,
+                           jackpot_percent=jackpot_percent,
+                           payouts=payouts_int, period_days=period_days,
+                           pool_types=JackpotPool.POOL_TYPES)

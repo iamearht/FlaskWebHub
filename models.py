@@ -291,12 +291,21 @@ class RakebackProgress(db.Model):
 
     user = db.relationship('User', backref=db.backref('rakeback_progress_rel', uselist=False))
 
+    @staticmethod
+    def _get_tiers():
+        return AdminConfig.get('rakeback_tiers', [
+            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
+            {'name': 'Silver', 'threshold': 500, 'percent': 5},
+            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
+            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
+        ])
+
     def check_reset(self):
         reset_days = AdminConfig.get('rakeback_reset_days', 60)
         if self.period_start and datetime.utcnow() > self.period_start + timedelta(days=reset_days):
             self.total_rake_paid = 0.0
-            self.tier = 'Bronze'
             self.period_start = datetime.utcnow()
+            self.update_tier()
 
     def add_rake(self, amount):
         self.check_reset()
@@ -304,26 +313,22 @@ class RakebackProgress(db.Model):
         self.update_tier()
 
     def update_tier(self):
-        tiers = AdminConfig.get('rakeback_tiers', [
-            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
-            {'name': 'Silver', 'threshold': 500, 'percent': 5},
-            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
-            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
-        ])
+        tiers = self._get_tiers()
+        lowest = tiers[0]['name'] if tiers else 'Bronze'
+        self.tier = lowest
         for tier in reversed(tiers):
             if self.total_rake_paid >= tier['threshold']:
                 self.tier = tier['name']
                 break
 
+    def ensure_consistent(self):
+        self.check_reset()
+        self.update_tier()
+
     @property
     def rakeback_percent(self):
-        self.check_reset()
-        tiers = AdminConfig.get('rakeback_tiers', [
-            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
-            {'name': 'Silver', 'threshold': 500, 'percent': 5},
-            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
-            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
-        ])
+        self.ensure_consistent()
+        tiers = self._get_tiers()
         for tier in reversed(tiers):
             if tier['name'] == self.tier:
                 return tier['percent']
@@ -331,12 +336,8 @@ class RakebackProgress(db.Model):
 
     @property
     def next_tier_info(self):
-        tiers = AdminConfig.get('rakeback_tiers', [
-            {'name': 'Bronze', 'threshold': 0, 'percent': 0},
-            {'name': 'Silver', 'threshold': 500, 'percent': 5},
-            {'name': 'Gold', 'threshold': 2000, 'percent': 10},
-            {'name': 'Platinum', 'threshold': 5000, 'percent': 15},
-        ])
+        self.ensure_consistent()
+        tiers = self._get_tiers()
         for tier in tiers:
             if tier['threshold'] > self.total_rake_paid:
                 return tier
@@ -347,6 +348,7 @@ class JackpotPool(db.Model):
     __tablename__ = 'jackpot_pools'
     id = db.Column(db.Integer, primary_key=True)
     stake_tier = db.Column(db.String(50), nullable=False, default='Main')
+    pool_type = db.Column(db.String(20), nullable=False, default='standard')
     min_stake = db.Column(db.Integer, nullable=False, default=0)
     max_stake = db.Column(db.Integer, nullable=False, default=999999)
     pool_amount = db.Column(db.Integer, default=0, nullable=False)
@@ -357,12 +359,19 @@ class JackpotPool(db.Model):
 
     entries = db.relationship('JackpotEntry', backref='jackpot', lazy='dynamic')
 
+    POOL_TYPES = {
+        'standard': 'Standard (Classic & Interactive)',
+        'joker': 'Joker (Classic Joker & Interactive Joker)',
+    }
+
     @staticmethod
-    def get_active_pool():
-        pool = JackpotPool.query.filter_by(status='active').first()
+    def get_active_pool(pool_type='standard'):
+        pool = JackpotPool.query.filter_by(status='active', pool_type=pool_type).first()
         if not pool:
+            label = 'Standard' if pool_type == 'standard' else 'Joker'
             pool = JackpotPool(
-                stake_tier='Main',
+                stake_tier=label,
+                pool_type=pool_type,
                 min_stake=0,
                 max_stake=999999,
                 pool_amount=0,
@@ -371,6 +380,18 @@ class JackpotPool(db.Model):
             db.session.add(pool)
             db.session.flush()
         return pool
+
+    @staticmethod
+    def get_all_active_pools():
+        standard = JackpotPool.get_active_pool('standard')
+        joker = JackpotPool.get_active_pool('joker')
+        return {'standard': standard, 'joker': joker}
+
+    @staticmethod
+    def pool_type_for_mode(game_mode):
+        if game_mode in ('classic_joker', 'interactive_joker'):
+            return 'joker'
+        return 'standard'
 
 
 class JackpotEntry(db.Model):

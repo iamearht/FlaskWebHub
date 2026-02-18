@@ -6,9 +6,10 @@
 
     <div class="admin-card" style="margin-bottom: 24px;">
         <h4>Rake to Jackpot Percentage</h4>
-        <p style="color: #888; margin-bottom: 12px;">Percentage of lobby match rake that goes into the jackpot pool.</p>
-        <form method="POST" action="/admin/jackpot" class="inline-form">
+        <p style="color: #888; margin-bottom: 12px;">Percentage of lobby match rake that goes into jackpot pools (applies to both Standard and Joker).</p>
+        <form method="POST" action="/admin/jackpot?type={{ pool_type }}" class="inline-form">
             <input type="hidden" name="action" value="set_percent">
+            <input type="hidden" name="pool_type" value="{{ pool_type }}">
             <div class="form-group" style="display:inline-block; width: 120px;">
                 <label>Jackpot %</label>
                 <input type="number" name="jackpot_percent" value="{{ jackpot_percent }}" min="0" max="100" step="1">
@@ -18,10 +19,25 @@
     </div>
 
     <div class="admin-card" style="margin-bottom: 24px;">
+        <h4>Accumulation Period</h4>
+        <p style="color: #888; margin-bottom: 12px;">Number of days the jackpot accumulates rake before the payout countdown expires.</p>
+        <form method="POST" action="/admin/jackpot?type={{ pool_type }}" class="inline-form">
+            <input type="hidden" name="action" value="set_period">
+            <input type="hidden" name="pool_type" value="{{ pool_type }}">
+            <div class="form-group" style="display:inline-block; width: 120px;">
+                <label>Days</label>
+                <input type="number" name="jackpot_period_days" value="{{ period_days }}" min="1" max="365" step="1">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 24px;">Save</button>
+        </form>
+    </div>
+
+    <div class="admin-card" style="margin-bottom: 24px;">
         <h4>Payout Structure</h4>
         <p style="color: #888; margin-bottom: 12px;">Percentage of jackpot pool paid to each rank. Must total 100% or less.</p>
-        <form method="POST" action="/admin/jackpot">
+        <form method="POST" action="/admin/jackpot?type={{ pool_type }}">
             <input type="hidden" name="action" value="set_payouts">
+            <input type="hidden" name="pool_type" value="{{ pool_type }}">
             <table class="admin-table">
                 <thead>
                     <tr>
@@ -47,11 +63,22 @@
     </div>
 
     <div class="admin-card" style="margin-bottom: 24px;">
-        <h4>Current Jackpot Pool</h4>
+        <h4>Jackpot Pools</h4>
+        <div class="game-mode-tabs" style="margin-bottom: 16px;">
+            <a href="/admin/jackpot?type=standard" class="mode-tab {% if pool_type == 'standard' %}active{% endif %}">
+                <span class="mode-name">Standard</span>
+            </a>
+            <a href="/admin/jackpot?type=joker" class="mode-tab {% if pool_type == 'joker' %}active{% endif %}">
+                <span class="mode-name">Joker</span>
+            </a>
+        </div>
+
+        {% set pool = pools[pool_type] %}
         <table class="admin-table">
             <thead>
                 <tr>
-                    <th>Pool Amount</th>
+                    <th>Pool</th>
+                    <th>Amount</th>
                     <th>Entries</th>
                     <th>Started</th>
                     <th>Actions</th>
@@ -59,17 +86,20 @@
             </thead>
             <tbody>
                 <tr>
+                    <td><strong>{{ pool_types[pool_type] }}</strong></td>
                     <td class="text-green"><strong>{{ pool.pool_amount }} coins</strong></td>
                     <td>{{ pool.entries.count() }}</td>
                     <td>{{ pool.period_start.strftime('%Y-%m-%d') if pool.period_start else 'N/A' }}</td>
                     <td>
-                        <form method="POST" action="/admin/jackpot" style="display:inline;">
+                        <form method="POST" action="/admin/jackpot?type={{ pool_type }}" style="display:inline;">
                             <input type="hidden" name="action" value="payout">
-                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Pay out the jackpot ({{ pool.pool_amount }} coins)?')">Pay Out</button>
+                            <input type="hidden" name="pool_type" value="{{ pool_type }}">
+                            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Pay out the {{ pool_types[pool_type] }} jackpot ({{ pool.pool_amount }} coins)?')">Pay Out</button>
                         </form>
-                        <form method="POST" action="/admin/jackpot" style="display:inline;">
+                        <form method="POST" action="/admin/jackpot?type={{ pool_type }}" style="display:inline;">
                             <input type="hidden" name="action" value="reset">
-                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Reset the jackpot? This clears the leaderboard and pool.')">Reset</button>
+                            <input type="hidden" name="pool_type" value="{{ pool_type }}">
+                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Reset the {{ pool_types[pool_type] }} jackpot? This clears the leaderboard and pool.')">Reset</button>
                         </form>
                     </td>
                 </tr>

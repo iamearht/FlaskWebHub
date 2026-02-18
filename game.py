@@ -91,7 +91,8 @@ def _settle_match(match, state):
         jackpot_pct = get_jackpot_rake_percent()
         jackpot_contribution = int(rake * jackpot_pct / 100)
         if jackpot_contribution > 0:
-            pool = JackpotPool.get_active_pool()
+            pt = JackpotPool.pool_type_for_mode(match.game_mode)
+            pool = JackpotPool.get_active_pool(pt)
             pool.pool_amount += jackpot_contribution
 
         for pid in [match.player1_id, match.player2_id]:
@@ -133,7 +134,8 @@ def _settle_match(match, state):
 
 
 def _record_jackpot_scores(match, state):
-    pool = JackpotPool.get_active_pool()
+    pt = JackpotPool.pool_type_for_mode(match.game_mode)
+    pool = JackpotPool.get_active_pool(pt)
 
     results = state.get('results', {})
     for player_num, pid in [(1, match.player1_id), (2, match.player2_id)]:
@@ -247,14 +249,77 @@ def lobby():
     vip = user.get_vip_progress()
     rakeback = user.get_rakeback_progress()
 
-    jackpot_pool = JackpotPool.get_active_pool()
+    jackpot_pools = JackpotPool.get_all_active_pools()
     db.session.commit()
 
     return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
                            history=history, live_games=live_games, vip=vip, rakeback=rakeback,
                            min_stake=min_stake, max_stake=max_stake, sort_order=sort_order,
                            game_mode=game_mode, game_modes=GAME_MODES,
-                           jackpot_pool=jackpot_pool)
+                           jackpot_pools=jackpot_pools)
+
+
+@game_bp.route('/watch')
+@login_required
+def watch_live():
+    user = get_current_user()
+
+    top_lobby = Match.query.filter(
+        Match.status == 'active',
+        Match.is_spectatable == True,
+        Match.tournament_match_id.is_(None),
+    ).order_by(Match.stake.desc()).limit(5).all()
+
+    active_tournament_matches = db.session.query(TournamentMatch, Match, Tournament)\
+        .join(Match, TournamentMatch.match_id == Match.id)\
+        .join(Tournament, TournamentMatch.tournament_id == Tournament.id)\
+        .filter(
+            TournamentMatch.status == 'active',
+            Match.status == 'active',
+            Match.is_spectatable == True,
+        ).all()
+
+    round_priority = {
+        'final': 100,
+        'third_place': 90,
+        'semifinal': 80,
+        'quarterfinal': 70,
+    }
+
+    def tournament_match_sort_key(item):
+        tm, match, tournament = item
+        rp = round_priority.get(tm.round, 0)
+        if rp == 0 and tm.round.startswith('round_'):
+            try:
+                r_num = int(tm.round.replace('round_', ''))
+                rp = r_num * 10
+            except ValueError:
+                pass
+        return (-rp, -tournament.stake_amount)
+
+    active_tournament_matches.sort(key=tournament_match_sort_key)
+    top_tournament = active_tournament_matches[:5]
+
+    from tournament import get_round_display_name
+    import math
+
+    tournament_display = []
+    for tm, match, tournament in top_tournament:
+        total_rounds = int(math.log2(tournament.max_players)) if tournament.max_players > 1 else 1
+        p1 = User.query.get(match.player1_id) if match.player1_id else None
+        p2 = User.query.get(match.player2_id) if match.player2_id else None
+        tournament_display.append({
+            'match': match,
+            'tournament': tournament,
+            'round_name': get_round_display_name(tm.round, total_rounds),
+            'p1': p1,
+            'p2': p2,
+        })
+
+    return render_template('watch.html', user=user,
+                           top_lobby=top_lobby,
+                           tournament_display=tournament_display,
+                           game_modes=GAME_MODES)
 
 
 @game_bp.route('/create_match', methods=['POST'])

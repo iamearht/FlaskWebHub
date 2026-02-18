@@ -1445,3 +1445,73 @@ body {
     text-decoration: none;
     display: inline-block;
 }
+
+.watch-page .lobby-header { margin-bottom: 24px; }
+
+.tournament-round-badge {
+    background: linear-gradient(135deg, #f9a825, #ff8f00);
+    color: #000;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.tournament-live {
+    border-left: 3px solid #f9a825;
+}
+
+.tournament-size-badge {
+    background: rgba(255,255,255,0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.8em;
+    color: #aaa;
+}
+
+.jackpot-banner-label {
+    display: block;
+    font-size: 0.75em;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+.jackpot-countdown {
+    margin-top: 12px;
+    padding: 10px 16px;
+    background: rgba(255,215,0,0.1);
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.jackpot-countdown .countdown-label {
+    color: #ccc;
+    font-size: 0.9em;
+    margin-right: 8px;
+}
+
+.jackpot-countdown .countdown-timer {
+    color: #ffd700;
+    font-weight: 700;
+    font-size: 1.1em;
+    font-family: monospace;
+}
+
+.jackpot-countdown .countdown-timer span {
+    display: inline-block;
+    min-width: 20px;
+    text-align: center;
+}
+
+.jackpot-countdown.expired {
+    background: rgba(255,82,82,0.1);
+    border-color: rgba(255,82,82,0.3);
+}
+
+.jackpot-countdown.expired .countdown-label {
+    color: #ff5252;
+}

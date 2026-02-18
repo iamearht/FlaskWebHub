@@ -7,8 +7,8 @@ from sqlalchemy import func
 jackpot_bp = Blueprint('jackpot', __name__)
 
 
-def get_jackpot_data():
-    pool = JackpotPool.get_active_pool()
+def get_jackpot_data(pool_type='standard'):
+    pool = JackpotPool.get_active_pool(pool_type)
     db.session.commit()
     top_entries = db.session.query(
         JackpotEntry.user_id,
@@ -25,13 +25,45 @@ def get_jackpot_data():
     return {'pool': pool, 'leaderboard': top_entries}
 
 
+def get_jackpot_countdown(pool):
+    from datetime import datetime
+    period_days = AdminConfig.get('jackpot_period_days', 7)
+    if pool.period_start and period_days > 0:
+        from datetime import timedelta
+        deadline = pool.period_start + timedelta(days=period_days)
+        now = datetime.utcnow()
+        remaining = deadline - now
+        if remaining.total_seconds() > 0:
+            days = remaining.days
+            hours = remaining.seconds // 3600
+            minutes = (remaining.seconds % 3600) // 60
+            seconds = remaining.seconds % 60
+            return {
+                'deadline': deadline,
+                'days': days,
+                'hours': hours,
+                'minutes': minutes,
+                'seconds': seconds,
+                'total_seconds': int(remaining.total_seconds()),
+            }
+    return None
+
+
 @jackpot_bp.route('/jackpots')
 @login_required
 def leaderboard():
     user = get_current_user()
-    jackpot_data = get_jackpot_data()
+    pool_type = request.args.get('type', 'standard')
+    if pool_type not in ('standard', 'joker'):
+        pool_type = 'standard'
+
+    jackpot_data = get_jackpot_data(pool_type)
     payouts = get_jackpot_payouts()
     payouts_int = {int(k): v for k, v in payouts.items()}
+    countdown = get_jackpot_countdown(jackpot_data['pool'])
+
+    other_pool = JackpotPool.get_active_pool('joker' if pool_type == 'standard' else 'standard')
+    db.session.commit()
 
     user_score = None
     entry = db.session.query(
@@ -48,15 +80,23 @@ def leaderboard():
         }
 
     return render_template('jackpots.html', user=user, jackpot_data=jackpot_data,
-                           payouts=payouts_int, user_score=user_score)
+                           payouts=payouts_int, user_score=user_score,
+                           pool_type=pool_type, other_pool=other_pool,
+                           countdown=countdown, pool_types=JackpotPool.POOL_TYPES)
 
 
 @jackpot_bp.route('/api/jackpots')
 @login_required
 def api_jackpots():
-    pool = JackpotPool.get_active_pool()
+    pools = JackpotPool.get_all_active_pools()
     db.session.commit()
     return jsonify({
-        'id': pool.id,
-        'amount': pool.pool_amount,
+        'standard': {
+            'id': pools['standard'].id,
+            'amount': pools['standard'].pool_amount,
+        },
+        'joker': {
+            'id': pools['joker'].id,
+            'amount': pools['joker'].pool_amount,
+        },
     })

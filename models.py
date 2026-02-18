@@ -419,6 +419,33 @@ def get_jackpot_payouts():
     })
 
 
+def get_affiliate_tiers():
+    return AdminConfig.get('affiliate_tiers', [
+        {'name': 'Bronze', 'threshold': 0, 'percent': 2},
+        {'name': 'Silver', 'threshold': 5000, 'percent': 5},
+        {'name': 'Gold', 'threshold': 25000, 'percent': 8},
+        {'name': 'Platinum', 'threshold': 100000, 'percent': 12},
+    ])
+
+
+def get_affiliate_tier_for_rake(total_rake):
+    tiers = get_affiliate_tiers()
+    current = tiers[0] if tiers else {'name': 'Bronze', 'threshold': 0, 'percent': 2}
+    for tier in reversed(tiers):
+        if total_rake >= tier['threshold']:
+            current = tier
+            break
+    return current
+
+
+def get_affiliate_next_tier(total_rake):
+    tiers = get_affiliate_tiers()
+    for tier in tiers:
+        if tier['threshold'] > total_rake:
+            return tier
+    return None
+
+
 def get_lobby_rake_percent(stake):
     tiers = AdminConfig.get('lobby_rake_tiers', [
         {'min': 0, 'max': 250, 'percent': 1},

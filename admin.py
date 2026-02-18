@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from models import (db, User, AdminConfig, RakeTransaction, RakebackProgress,
                      Tournament, Match, get_lobby_rake_percent, get_tournament_rake_percent,
                      get_tournament_payouts, JackpotPool, JackpotEntry,
-                     get_jackpot_rake_percent, get_jackpot_payouts)
+                     get_jackpot_rake_percent, get_jackpot_payouts, get_affiliate_tiers)
 from auth import login_required, get_current_user
 from datetime import datetime, timedelta
 from functools import wraps
@@ -381,3 +381,32 @@ def jackpot_config():
                            jackpot_percent=jackpot_percent,
                            payouts=payouts_int, period_days=period_days,
                            pool_types=JackpotPool.POOL_TYPES)
+
+
+@admin_bp.route('/affiliate', methods=['GET', 'POST'])
+@admin_required
+def affiliate_config():
+    user = get_current_user()
+    if request.method == 'POST':
+        tiers = []
+        i = 0
+        while f'tier_name_{i}' in request.form:
+            try:
+                tiers.append({
+                    'name': request.form.get(f'tier_name_{i}', ''),
+                    'threshold': float(request.form.get(f'tier_threshold_{i}', 0)),
+                    'percent': float(request.form.get(f'tier_percent_{i}', 0)),
+                })
+            except (ValueError, TypeError):
+                pass
+            i += 1
+        if tiers:
+            tiers.sort(key=lambda x: x['threshold'])
+            AdminConfig.set('affiliate_tiers', tiers)
+            db.session.commit()
+            flash('Affiliate tiers updated.', 'success')
+
+        return redirect(url_for('admin.affiliate_config'))
+
+    current_tiers = get_affiliate_tiers()
+    return render_template('admin/affiliate.html', user=user, tiers=current_tiers)

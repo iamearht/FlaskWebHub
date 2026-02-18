@@ -133,12 +133,24 @@ def can_double(hand, chips):
     return len(hand['cards']) == 2 and chips >= hand['bet']
 
 
-def init_game_state(game_mode='classic'):
+def init_game_state(game_mode='classic', is_heads_up=False):
     use_joker = _is_joker_mode(game_mode)
     draw_deck = create_deck(joker=use_joker)
+    results = {
+        'player1_turn1': None,
+        'player1_turn2': None,
+        'player2_turn1': None,
+        'player2_turn2': None,
+    }
+    if is_heads_up:
+        results['player1_turn3'] = None
+        results['player1_turn4'] = None
+        results['player2_turn3'] = None
+        results['player2_turn4'] = None
     state = {
         'phase': 'CARD_DRAW',
         'game_mode': game_mode,
+        'is_heads_up': is_heads_up,
         'draw_deck': draw_deck,
         'draw_deck_pos': 0,
         'draw_cards': {'player1': [], 'player2': []},
@@ -147,12 +159,7 @@ def init_game_state(game_mode='classic'):
         'choice_made': False,
         'current_turn': 0,
         'turns': [],
-        'results': {
-            'player1_turn1': None,
-            'player1_turn2': None,
-            'player2_turn1': None,
-            'player2_turn2': None,
-        },
+        'results': results,
         'turn_state': None,
         'match_over': False,
         'match_result': None,
@@ -218,12 +225,24 @@ def make_choice(state, chooser_goes_first_as_player):
         first_player = other
         first_bank = chooser
 
-    state['turns'] = [
-        {'player_role': first_player, 'dealer_role': first_bank},
-        {'player_role': first_bank, 'dealer_role': first_player},
-        {'player_role': first_bank, 'dealer_role': first_player},
-        {'player_role': first_player, 'dealer_role': first_bank},
-    ]
+    if state.get('is_heads_up', False):
+        state['turns'] = [
+            {'player_role': first_player, 'dealer_role': first_bank},
+            {'player_role': first_bank, 'dealer_role': first_player},
+            {'player_role': first_bank, 'dealer_role': first_player},
+            {'player_role': first_player, 'dealer_role': first_bank},
+            {'player_role': first_player, 'dealer_role': first_bank},
+            {'player_role': first_bank, 'dealer_role': first_player},
+            {'player_role': first_bank, 'dealer_role': first_player},
+            {'player_role': first_player, 'dealer_role': first_bank},
+        ]
+    else:
+        state['turns'] = [
+            {'player_role': first_player, 'dealer_role': first_bank},
+            {'player_role': first_bank, 'dealer_role': first_player},
+            {'player_role': first_bank, 'dealer_role': first_player},
+            {'player_role': first_player, 'dealer_role': first_bank},
+        ]
     state['choice_made'] = True
     state = enter_turn(state)
     return state, None
@@ -236,17 +255,16 @@ def enter_turn(state):
     game_mode = state.get('game_mode', 'classic')
     use_joker = _is_joker_mode(game_mode)
 
-    if player_role == 1:
-        first_turn_result = state['results']['player1_turn1']
-    else:
-        first_turn_result = state['results']['player2_turn1']
+    p_key = 'player1' if player_role == 1 else 'player2'
+    prev_result = None
+    for t in range(4, 0, -1):
+        key = f'{p_key}_turn{t}'
+        if key in state['results'] and state['results'][key] is not None:
+            prev_result = state['results'][key]
+            break
 
-    is_second_player_turn = (turn_idx >= 2 and
-        ((player_role == 1 and state['results']['player1_turn1'] is not None) or
-         (player_role == 2 and state['results']['player2_turn1'] is not None)))
-
-    if is_second_player_turn and first_turn_result is not None:
-        starting_chips = first_turn_result + TURN_STARTING_CHIPS
+    if prev_result is not None:
+        starting_chips = prev_result + TURN_STARTING_CHIPS
     else:
         starting_chips = TURN_STARTING_CHIPS
 
@@ -770,24 +788,21 @@ def end_turn(state):
     turn_chips = ts['chips']
     turn_idx = state['current_turn']
     player_role = state['turns'][turn_idx]['player_role']
+    p_key = 'player1' if player_role == 1 else 'player2'
 
-    if player_role == 1:
-        if state['results']['player1_turn1'] is None:
-            state['results']['player1_turn1'] = turn_chips
-        else:
-            state['results']['player1_turn2'] = turn_chips
-    else:
-        if state['results']['player2_turn1'] is None:
-            state['results']['player2_turn1'] = turn_chips
-        else:
-            state['results']['player2_turn2'] = turn_chips
+    for t in range(1, 5):
+        key = f'{p_key}_turn{t}'
+        if key in state['results'] and state['results'][key] is None:
+            state['results'][key] = turn_chips
+            break
 
     state['current_turn'] += 1
+    total_turns = len(state['turns'])
 
-    if state['current_turn'] >= 4:
+    if state['current_turn'] >= total_turns:
         state['match_over'] = True
-        p1 = state['results']['player1_turn2'] if state['results']['player1_turn2'] is not None else (state['results']['player1_turn1'] or 0)
-        p2 = state['results']['player2_turn2'] if state['results']['player2_turn2'] is not None else (state['results']['player2_turn1'] or 0)
+        p1 = _get_last_result(state, 'player1')
+        p2 = _get_last_result(state, 'player2')
         if p1 > p2:
             winner = 1
         elif p2 > p1:
@@ -805,6 +820,14 @@ def end_turn(state):
     state['turn_state'] = None
     state = enter_turn(state)
     return state, False
+
+
+def _get_last_result(state, p_key):
+    for t in range(4, 0, -1):
+        key = f'{p_key}_turn{t}'
+        if key in state['results'] and state['results'][key] is not None:
+            return state['results'][key]
+    return 0
 
 
 def check_timeout(match):
@@ -927,7 +950,8 @@ def get_client_state(state, user_player_num, match=None, spectator=False):
         'results': state['results'],
         'match_over': state['match_over'],
         'match_result': state['match_result'],
-        'total_turns': 4,
+        'total_turns': len(state.get('turns', [])) or 4,
+        'is_heads_up': state.get('is_heads_up', False),
         'draw_cards': state.get('draw_cards'),
         'draw_winner': state.get('draw_winner'),
         'chooser': state.get('chooser'),

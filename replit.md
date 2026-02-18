@@ -145,6 +145,7 @@ A multiplayer competitive Blackjack web platform built with Flask. Players regis
 - `SESSION_SECRET` - Flask session secret key
 
 ## Recent Changes (Feb 2026)
+- Tournament finals use 1-2-2-1-1-2-2-1 (8-turn) heads-up format instead of standard 1-2-2-1 (4-turn)
 - Affiliate tiered commission system: 4 tiers (Bronze/Silver/Gold/Platinum) based on referred players' rake, admin-configurable
 - Affiliate dashboard: tier display, progress bar, tier breakdown grid, commission history with rate
 - Dual jackpot pools: Standard (classic/interactive) and Joker (classic_joker/interactive_joker)

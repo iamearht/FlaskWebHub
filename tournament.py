@@ -243,6 +243,7 @@ def advance_tournament(tournament, completed_match_id, winner_id, loser_id):
 
 
 def _create_match_for_tournament(tm, tournament):
+    is_final = tm.round == 'final'
     game_match = Match(
         player1_id=tm.player1_id,
         player2_id=tm.player2_id,
@@ -250,7 +251,7 @@ def _create_match_for_tournament(tm, tournament):
         status='active',
         is_spectatable=True,
         game_mode=tournament.game_mode,
-        game_state=init_game_state(game_mode=tournament.game_mode),
+        game_state=init_game_state(game_mode=tournament.game_mode, is_heads_up=is_final),
     )
     db.session.add(game_match)
     db.session.flush()

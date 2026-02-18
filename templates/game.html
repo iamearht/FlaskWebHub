@@ -34,7 +34,7 @@
 
         <div id="choice-area" class="game-area" style="display:none">
             <h2 id="choice-title"></h2>
-            <p>The match has 4 turns in a 1-2-2-1 pattern. If you go first as Player, you'll play: Player, Bank, Bank, Player.</p>
+            <p id="choice-pattern-text">The match has 4 turns in a 1-2-2-1 pattern. If you go first as Player, you'll play: Player, Bank, Bank, Player.</p>
             <div id="choice-draw-cards" class="draw-cards-display"></div>
             <div class="choice-buttons">
                 <button class="btn btn-primary" id="btn-go-player">Go First as Player</button>
@@ -214,11 +214,20 @@ function hideAll() {
 }
 
 function getPlayerScoreText(s, playerKey) {
-    var t1 = s.results[playerKey + '_turn1'];
-    var t2 = s.results[playerKey + '_turn2'];
-    if (t2 !== null && t2 !== undefined) return 'Final: ' + t2;
-    if (t1 !== null && t1 !== undefined) return 'R1: ' + t1;
-    return '-';
+    var last = null;
+    var lastIdx = 0;
+    for (var i = 4; i >= 1; i--) {
+        var val = s.results[playerKey + '_turn' + i];
+        if (val !== null && val !== undefined) {
+            last = val;
+            lastIdx = i;
+            break;
+        }
+    }
+    if (last === null) return '-';
+    var maxTurns = s.is_heads_up ? 4 : 2;
+    if (lastIdx >= maxTurns) return 'Final: ' + last;
+    return 'R' + lastIdx + ': ' + last;
 }
 
 function renderState(s) {
@@ -234,7 +243,8 @@ function renderState(s) {
     if (s.phase === 'CARD_DRAW' || s.phase === 'CHOICE') {
         turnText = 'Setup';
     } else {
-        turnText = 'Turn ' + Math.min(s.current_turn + 1, 4) + '/4';
+        var totalTurns = s.total_turns || 4;
+        turnText = 'Turn ' + Math.min(s.current_turn + 1, totalTurns) + '/' + totalTurns;
     }
     document.getElementById('turn-info').textContent = turnText;
 
@@ -413,6 +423,13 @@ function showChoice(s) {
     html += '</div>';
 
     document.getElementById('choice-draw-cards').innerHTML = html;
+
+    var patternText = document.getElementById('choice-pattern-text');
+    if (s.is_heads_up) {
+        patternText.textContent = 'This is a heads-up final! 8 turns in a 1-2-2-1-1-2-2-1 pattern. If you go first as Player, you\'ll play: Player, Bank, Bank, Player, Player, Bank, Bank, Player.';
+    } else {
+        patternText.textContent = 'The match has 4 turns in a 1-2-2-1 pattern. If you go first as Player, you\'ll play: Player, Bank, Bank, Player.';
+    }
 
     var title = document.getElementById('choice-title');
     if (s.chooser === PLAYER_NUM) {

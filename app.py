@@ -3,7 +3,6 @@ import os
 from flask import Flask, redirect
 from extensions import db
 
-
 from auth import auth_bp, get_current_user
 from game import game_bp
 from wallet import wallet_bp
@@ -37,7 +36,6 @@ def create_app():
 
     db.init_app(app)
 
-
     # ---------------------------------------------------
     # BLUEPRINTS
     # ---------------------------------------------------
@@ -49,6 +47,17 @@ def create_app():
     app.register_blueprint(affiliate_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(jackpot_bp)
+
+    # ---------------------------------------------------
+    # CREATE TABLES (FREE PLAN FRIENDLY)
+    # ---------------------------------------------------
+    with app.app_context():
+        try:
+            db.create_all()
+            print("Tables ensured.")
+        except Exception as e:
+            # Don't crash the whole service on startup; print so it's visible in Render logs
+            print("Table creation error:", e)
 
     # ---------------------------------------------------
     # ROOT ENTRY → LOBBY
@@ -88,6 +97,3 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
-

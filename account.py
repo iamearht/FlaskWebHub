@@ -7,33 +7,37 @@ account_bp = Blueprint('account', __name__)
 
 
 def get_user_stats(user):
+    finished_status = Match.MATCH_STATUS["finished"]
+
     total_matches = Match.query.filter(
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
-        Match.status == 'finished'
+        Match.status_code == finished_status
     ).count()
 
     wins = Match.query.filter(
         Match.winner_id == user.id,
-        Match.status == 'finished'
+        Match.status_code == finished_status
     ).count()
 
     losses = total_matches - wins
+
     forfeits_given = Match.query.filter(
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
-        Match.status == 'finished',
+        Match.status_code == finished_status,
         Match.winner_id != user.id,
         Match.winner_id.isnot(None),
     ).count()
 
     total_wagered_query = db.session.query(db.func.sum(Match.stake)).filter(
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
-        Match.status == 'finished'
+        Match.status_code == finished_status
     ).scalar()
+
     total_wagered = total_wagered_query or 0
 
     total_won = db.session.query(db.func.sum(Match.stake)).filter(
         Match.winner_id == user.id,
-        Match.status == 'finished'
+        Match.status_code == finished_status
     ).scalar() or 0
 
     return {
@@ -53,14 +57,20 @@ def account_page():
     user = get_current_user()
     user.ensure_affiliate_code()
     db.session.commit()
+
     stats = get_user_stats(user)
     vip = user.get_vip_progress()
     db.session.commit()
 
     referral_count = User.query.filter_by(referred_by_id=user.id).count()
 
-    return render_template('account.html', user=user, stats=stats, vip=vip,
-                           referral_count=referral_count)
+    return render_template(
+        'account.html',
+        user=user,
+        stats=stats,
+        vip=vip,
+        referral_count=referral_count
+    )
 
 
 @account_bp.route('/account/transactions')
@@ -69,10 +79,16 @@ def transaction_history():
     user = get_current_user()
     page = request.args.get('page', 1, type=int)
     per_page = 20
-    txns = WalletTransaction.query.filter_by(user_id=user.id)\
-        .order_by(WalletTransaction.created_at.desc())\
+
+    txns = WalletTransaction.query.filter_by(user_id=user.id) \
+        .order_by(WalletTransaction.created_at.desc()) \
         .paginate(page=page, per_page=per_page, error_out=False)
-    return render_template('transaction_history.html', user=user, txns=txns)
+
+    return render_template(
+        'transaction_history.html',
+        user=user,
+        txns=txns
+    )
 
 
 @account_bp.route('/account/games')
@@ -81,12 +97,20 @@ def game_history():
     user = get_current_user()
     page = request.args.get('page', 1, type=int)
     per_page = 20
+
+    finished_status = Match.MATCH_STATUS["finished"]
+
     matches = Match.query.filter(
         ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
-        Match.status == 'finished'
-    ).order_by(Match.created_at.desc())\
+        Match.status_code == finished_status
+    ).order_by(Match.created_at.desc()) \
      .paginate(page=page, per_page=per_page, error_out=False)
-    return render_template('game_history.html', user=user, matches=matches)
+
+    return render_template(
+        'game_history.html',
+        user=user,
+        matches=matches
+    )
 
 
 @account_bp.route('/account/update', methods=['POST'])
@@ -96,11 +120,17 @@ def update_account():
     email = request.form.get('email', '').strip()
 
     if email:
-        existing = User.query.filter(User.email == email, User.id != user.id).first()
+        existing = User.query.filter(
+            User.email == email,
+            User.id != user.id
+        ).first()
+
         if existing:
             flash('Email already in use.', 'error')
             return redirect(url_for('account.account_page'))
+
         user.email = email
+
     db.session.commit()
     flash('Account updated.', 'success')
     return redirect(url_for('account.account_page'))

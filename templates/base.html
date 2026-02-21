@@ -26,11 +26,15 @@
             <a href="{{ url_for('game.watch') }}" class="nav-link">Watch</a>
             <a href="{{ url_for('jackpot.leaderboard') }}" class="nav-link">Jackpots</a>
             <a href="{{ url_for('tournament.tournaments_page') }}" class="nav-link">Tournaments</a>
-            <a href="{{ url_for('wallet.index') }}" class="nav-link">Wallet</a>
+
+            <!-- FIXED -->
+            <a href="{{ url_for('wallet.wallet_page') }}" class="nav-link">Wallet</a>
+
             <a href="{{ url_for('account.account_page') }}" class="nav-link">Account</a>
 
             {% if current_user.is_admin %}
-                <a href="{{ url_for('admin.index') }}"
+                <!-- FIXED -->
+                <a href="{{ url_for('admin.dashboard') }}"
                    class="nav-link"
                    style="color: #f9a825;">
                     Admin

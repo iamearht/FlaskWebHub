@@ -1,9 +1,7 @@
-from flask import Blueprint, request, jsonify, abort
+from flask import Blueprint, request, jsonify, abort, session, render_template
 from auth import login_required
-from flask import session
-
 from extensions import db
-from models import Match
+from models import Match, User
 from engine import (
     init_game_state,
     do_card_draw,
@@ -26,10 +24,8 @@ from engine import (
 game_bp = Blueprint("game", __name__, url_prefix="/game")
 
 # -------------------------------------------------------------------
-# Lobby Route (Fix for game.lobby BuildError)
+# Lobby Route
 # -------------------------------------------------------------------
-
-from flask import render_template
 
 @game_bp.route("/lobby", methods=["GET"])
 @login_required
@@ -38,7 +34,16 @@ def lobby():
     Main game lobby page.
     Required because auth.py redirects to url_for('game.lobby')
     """
-    return render_template("lobby.html")
+
+    user_id = session.get("user_id")
+    if not user_id:
+        abort(401)
+
+    user = db.session.get(User, user_id)
+    if not user:
+        abort(403)
+
+    return render_template("lobby.html", user=user)
 
 
 # -------------------------------------------------------------------

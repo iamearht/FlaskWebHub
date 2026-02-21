@@ -1,6 +1,5 @@
 import os
 
-
 from flask import Flask
 from extensions import db
 from models import db
@@ -17,6 +16,13 @@ from jackpot import jackpot_bp
 
 def create_app():
     app = Flask(__name__)
+
+    # ---------------------------------------------------
+    # TEST ROOT ROUTE
+    # ---------------------------------------------------
+    @app.route("/")
+    def test_home():
+        return "HOME WORKING"
 
     # ---------------------------------------------------
     # BASIC CONFIG
@@ -38,12 +44,9 @@ def create_app():
         'pool_pre_ping': True,
     }
 
-    # Disable aggressive caching
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
     db.init_app(app)
-
-
 
     # ---------------------------------------------------
     # BLUEPRINTS
@@ -88,4 +91,3 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
-

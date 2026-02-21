@@ -141,7 +141,7 @@ class AffiliateCommission(db.Model):
     referred_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     source_match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=True)
     amount = db.Column(db.Integer, nullable=False)
-    rate = db.Column(db.Integer, default=0.05)
+    rate = db.Column(db.Float, default=0.05)
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -311,7 +311,7 @@ class RakebackProgress(db.Model):
     def check_reset(self):
         reset_days = AdminConfig.get('rakeback_reset_days', 60)
         if self.period_start and datetime.utcnow() > self.period_start + timedelta(days=reset_days):
-            self.total_rake_paid = 0.0
+            self.total_rake_paid = 0
             self.period_start = datetime.utcnow()
             self.update_tier()
 

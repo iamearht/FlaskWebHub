@@ -69,7 +69,7 @@ class WalletTransaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     type = db.Column(db.String(30), nullable=False)
-    amount = db.Column(db.Float, nullable=False)
+    amount = db.Column(db.Integer, nullable=False)
     currency = db.Column(db.String(10), default='USD')
     crypto_address = db.Column(db.String(256), nullable=True)
     network = db.Column(db.String(50), nullable=True)
@@ -85,7 +85,7 @@ class VIPProgress(db.Model):
     __tablename__ = 'vip_progress'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
-    total_wagered = db.Column(db.Float, default=0.0)
+    total_wagered = db.Column(db.Integer, default=0.0)
     tier = db.Column(db.String(20), default='Bronze')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -140,8 +140,8 @@ class AffiliateCommission(db.Model):
     referrer_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     referred_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     source_match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=True)
-    amount = db.Column(db.Float, nullable=False)
-    rate = db.Column(db.Float, default=0.05)
+    amount = db.Column(db.Integer, nullable=False)
+    rate = db.Column(db.Integer, default=0.05)
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -161,6 +161,7 @@ GAME_MODE_LIST = list(GAME_MODES.keys())
 
 class Match(db.Model):
     __tablename__ = 'matches'
+
     id = db.Column(db.Integer, primary_key=True)
     player1_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     player2_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -180,6 +181,13 @@ class Match(db.Model):
     player1 = db.relationship('User', foreign_keys=[player1_id], backref='matches_as_p1')
     player2 = db.relationship('User', foreign_keys=[player2_id], backref='matches_as_p2')
     winner = db.relationship('User', foreign_keys=[winner_id])
+
+    __table_args__ = (
+        db.Index('idx_match_status', 'status'),
+        db.Index('idx_match_created', 'created_at'),
+        db.Index('idx_match_player1', 'player1_id'),
+        db.Index('idx_match_player2', 'player2_id'),
+    )
 
 
 class Tournament(db.Model):
@@ -284,7 +292,7 @@ class RakebackProgress(db.Model):
     __tablename__ = 'rakeback_progress'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
-    total_rake_paid = db.Column(db.Float, default=0.0)
+    total_rake_paid = db.Column(db.Integer, default=0.0)
     tier = db.Column(db.String(20), default='Bronze')
     period_start = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -480,3 +488,232 @@ def get_tournament_payouts(max_players):
     if isinstance(result, dict):
         return {int(k): v for k, v in result.items()}
     return result
+
+# =============================================================================
+# NORMALIZED MATCH STATE STORAGE (SQL-FIRST REPLACEMENT FOR JSON game_state)
+# =============================================================================
+
+CARD_RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', 'JOKER']
+CARD_SUITS = ['hearts', 'diamonds', 'clubs', 'spades', 'joker']
+
+
+class MatchState(db.Model):
+    __tablename__ = 'match_state'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+
+    phase = db.Column(db.String(30), nullable=False, default='CARD_DRAW')
+    is_heads_up = db.Column(db.Boolean, nullable=False, default=False)
+
+    draw_deck_pos = db.Column(db.SmallInteger, nullable=False, default=0)
+    draw_winner = db.Column(db.SmallInteger, nullable=True)
+    chooser = db.Column(db.SmallInteger, nullable=True)
+    choice_made = db.Column(db.Boolean, nullable=False, default=False)
+    draw_timestamp = db.Column(db.Float, nullable=True)
+
+    current_turn = db.Column(db.SmallInteger, nullable=False, default=0)
+
+    match_over = db.Column(db.Boolean, nullable=False, default=False)
+    match_result_winner = db.Column(db.SmallInteger, nullable=True)
+    match_result_reason = db.Column(db.String(40), nullable=True)
+
+
+class MatchDrawDeckCard(db.Model):
+    __tablename__ = 'match_draw_deck_cards'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+    pos = db.Column(db.SmallInteger, primary_key=True)
+    rank_code = db.Column(db.SmallInteger, nullable=False)
+    suit_code = db.Column(db.SmallInteger, nullable=False)
+
+
+class MatchDrawCard(db.Model):
+    __tablename__ = 'match_draw_cards'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+    player_num = db.Column(db.SmallInteger, primary_key=True)
+    seq = db.Column(db.SmallInteger, primary_key=True)
+    rank_code = db.Column(db.SmallInteger, nullable=False)
+    suit_code = db.Column(db.SmallInteger, nullable=False)
+
+
+class MatchTurn(db.Model):
+    __tablename__ = 'match_turns'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False)
+    turn_index = db.Column(db.SmallInteger, nullable=False)
+
+    player_role = db.Column(db.SmallInteger, nullable=False)
+    dealer_role = db.Column(db.SmallInteger, nullable=False)
+
+    starting_chips = db.Column(db.Integer, nullable=False, default=100)
+    chips = db.Column(db.Integer, nullable=False, default=100)
+
+    cards_dealt = db.Column(db.SmallInteger, nullable=False, default=0)
+    cut_card_reached = db.Column(db.Boolean, nullable=False, default=False)
+
+    active_round_index = db.Column(db.SmallInteger, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('match_id', 'turn_index', name='uq_match_turn'),
+    )
+
+
+class MatchTurnDeckCard(db.Model):
+    __tablename__ = 'match_turn_deck_cards'
+
+    match_id = db.Column(db.Integer, primary_key=True)
+    turn_index = db.Column(db.SmallInteger, primary_key=True)
+    pos = db.Column(db.SmallInteger, primary_key=True)
+
+    rank_code = db.Column(db.SmallInteger, nullable=False)
+    suit_code = db.Column(db.SmallInteger, nullable=False)
+
+    __table_args__ = (
+        db.ForeignKeyConstraint(
+            ['match_id', 'turn_index'],
+            ['match_turns.match_id', 'match_turns.turn_index'],
+            ondelete='CASCADE'
+        ),
+    )
+
+
+class MatchRound(db.Model):
+    __tablename__ = 'match_rounds'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False, index=True)
+    turn_index = db.Column(db.SmallInteger, nullable=False)
+    round_index = db.Column(db.SmallInteger, nullable=False)
+
+    current_box = db.Column(db.SmallInteger, nullable=False, default=0)
+    current_hand = db.Column(db.SmallInteger, nullable=False, default=0)
+
+    insurance_offered = db.Column(db.Boolean, nullable=False, default=False)
+    total_initial_bet = db.Column(db.Integer, nullable=False, default=0)
+    resolved = db.Column(db.Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('match_id', 'turn_index', 'round_index'),
+        db.Index('idx_round_lookup', 'match_id', 'turn_index', 'round_index'),
+    )
+
+
+class MatchDealerCard(db.Model):
+    __tablename__ = 'match_dealer_cards'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+    turn_index = db.Column(db.SmallInteger, primary_key=True)
+    round_index = db.Column(db.SmallInteger, primary_key=True)
+    seq = db.Column(db.SmallInteger, primary_key=True)
+
+    rank_code = db.Column(db.SmallInteger, nullable=False)
+    suit_code = db.Column(db.SmallInteger, nullable=False)
+    joker_chosen_value = db.Column(db.SmallInteger, nullable=True)
+
+    __table_args__ = (
+        db.Index('idx_dealer_lookup', 'match_id', 'turn_index', 'round_index'),
+    )
+
+
+class MatchBox(db.Model):
+    __tablename__ = 'match_boxes'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False, index=True)
+    turn_index = db.Column(db.SmallInteger, nullable=False)
+    round_index = db.Column(db.SmallInteger, nullable=False)
+    box_index = db.Column(db.SmallInteger, nullable=False)
+
+    bet = db.Column(db.Integer, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('match_id', 'turn_index', 'round_index', 'box_index'),
+        db.Index('idx_box_lookup', 'match_id', 'turn_index', 'round_index'),
+    )
+
+
+class MatchHand(db.Model):
+    __tablename__ = 'match_hands'
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False, index=True)
+    turn_index = db.Column(db.SmallInteger, nullable=False)
+    round_index = db.Column(db.SmallInteger, nullable=False)
+    box_index = db.Column(db.SmallInteger, nullable=False)
+    hand_index = db.Column(db.SmallInteger, nullable=False)
+
+    bet = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='active')
+
+    is_split = db.Column(db.Boolean, nullable=False, default=False)
+    is_doubled = db.Column(db.Boolean, nullable=False, default=False)
+
+    result = db.Column(db.String(20), nullable=True)
+
+    from_split_aces = db.Column(db.Boolean, nullable=False, default=False)
+    from_split_jokers = db.Column(db.Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            'match_id', 'turn_index', 'round_index', 'box_index', 'hand_index'
+        ),
+        db.Index('idx_hand_lookup', 'match_id', 'turn_index', 'round_index'),
+    )
+
+class MatchHandCard(db.Model):
+    __tablename__ = 'match_hand_cards'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+    turn_index = db.Column(db.SmallInteger, primary_key=True)
+    round_index = db.Column(db.SmallInteger, primary_key=True)
+    box_index = db.Column(db.SmallInteger, primary_key=True)
+    hand_index = db.Column(db.SmallInteger, primary_key=True)
+    seq = db.Column(db.SmallInteger, primary_key=True)
+
+    rank_code = db.Column(db.SmallInteger, nullable=False)
+    suit_code = db.Column(db.SmallInteger, nullable=False)
+    joker_chosen_value = db.Column(db.SmallInteger, nullable=True)
+
+    __table_args__ = (
+        db.Index(
+            'idx_hand_card_lookup',
+            'match_id', 'turn_index', 'round_index', 'box_index', 'hand_index'
+        ),
+    )
+
+
+class MatchHandInsurance(db.Model):
+    __tablename__ = 'match_hand_insurance'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+    turn_index = db.Column(db.SmallInteger, primary_key=True)
+    round_index = db.Column(db.SmallInteger, primary_key=True)
+    box_index = db.Column(db.SmallInteger, primary_key=True)
+    hand_index = db.Column(db.SmallInteger, primary_key=True)
+
+    offered = db.Column(db.Boolean, nullable=False, default=False)
+    taken = db.Column(db.Boolean, nullable=False, default=False)
+    amount = db.Column(db.Integer, nullable=False, default=0)
+    decided = db.Column(db.Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        db.Index(
+            'idx_insurance_lookup',
+            'match_id', 'turn_index', 'round_index', 'box_index', 'hand_index'
+        ),
+    )
+
+
+class MatchTurnResult(db.Model):
+    __tablename__ = 'match_turn_results'
+
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), primary_key=True)
+    player_num = db.Column(db.SmallInteger, primary_key=True)
+    turn_number = db.Column(db.SmallInteger, primary_key=True)
+
+    chips_end = db.Column(db.Integer, nullable=False)

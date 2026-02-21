@@ -75,7 +75,7 @@
 
         <div id="joker-choice-area" class="game-area" style="display:none">
             <h3>Choose Joker Value</h3>
-            <p id="joker-choice-desc">Pick a value (1-11) for your Joker:</p>
+            <p id="joker-choice-desc">Pick a value (A,2-10) for your Joker:</p>
             <div id="joker-choice-hand" class="card-row"></div>
             <div id="joker-value-selectors"></div>
             <button class="btn btn-primary" id="btn-joker-confirm" disabled>Confirm</button>
@@ -83,7 +83,7 @@
 
         <div id="dealer-joker-choice-area" class="game-area" style="display:none">
             <h3>Dealer: Choose Joker Value</h3>
-            <p>Pick a value (1-11) for the dealer's Joker:</p>
+            <p>Pick a value (A,2-10) for the dealer's Joker:</p>
             <div id="dealer-joker-hand" class="card-row"></div>
             <div id="dealer-joker-value-selectors"></div>
             <button class="btn btn-primary" id="btn-dealer-joker-confirm" disabled>Confirm</button>
@@ -132,7 +132,11 @@ let actionLock = false;
 let timerInterval = null;
 let timerEnd = null;
 let drawAnimationDone = false;
+let drawRevealTimeout = null;
+let localDrawStart = null;
 let roundResultAutoTimer = null;
+let lastPhase = null;
+let isFetching = false;
 
 const GAME_MODE = document.getElementById('game').dataset.gameMode;
 
@@ -153,59 +157,116 @@ function cardBackHtml() {
     return '<div class="card card-back">?</div>';
 }
 
-function startTimer(remaining) {
-    if (timerInterval) clearInterval(timerInterval);
-    const timerEl = document.getElementById('timer-display');
-    const timerText = document.getElementById('timer-text');
-    const timerBar = document.getElementById('timer-bar');
+function startTimer(seconds) {
 
-    if (remaining === null || remaining === undefined || remaining <= 0) {
+    const timerEl   = document.getElementById('timer-display');
+    const timerText = document.getElementById('timer-text');
+    const timerBar  = document.getElementById('timer-bar');
+
+    // Clear any existing timer
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+
+    // Hide if no valid time
+    if (!seconds || seconds <= 0) {
         timerEl.style.display = 'none';
         return;
     }
 
-    var totalTime = remaining;
     timerEl.style.display = 'block';
-    timerEnd = Date.now() + remaining * 1000;
 
-    timerInterval = setInterval(function() {
-        var left = Math.max(0, (timerEnd - Date.now()) / 1000);
-        timerText.textContent = Math.ceil(left) + 's';
-        timerBar.style.width = (left / totalTime * 100) + '%';
-        if (left <= 5) {
-            timerBar.className = 'timer-bar timer-critical';
+    const totalTime = seconds;
+    timerEnd = Date.now() + (seconds * 1000);
+
+    timerInterval = setInterval(() => {
+
+        const remainingMs = timerEnd - Date.now();
+        const remaining   = Math.max(0, remainingMs / 1000);
+
+        // Update text
+        timerText.textContent = Math.ceil(remaining) + 's';
+
+        // Update bar width
+        const percent = (remaining / totalTime) * 100;
+        timerBar.style.width = percent + '%';
+
+        // Critical styling under 5s
+        if (remaining <= 5) {
+            timerBar.classList.add('timer-critical');
         } else {
-            timerBar.className = 'timer-bar';
+            timerBar.classList.remove('timer-critical');
         }
-        if (left <= 0) {
+
+        // Time expired
+        if (remaining <= 0) {
             clearInterval(timerInterval);
-            actionLock = false;
-            fetchState();
+            timerInterval = null;
+
+            timerBar.style.width = '0%';
+
+            // Small delay avoids race with server update
+            setTimeout(() => {
+                fetchState();
+            }, 80);
         }
+
     }, 100);
 }
 
 async function apiCall(endpoint, method, body) {
     if (actionLock) return null;
     actionLock = true;
+
     try {
-        var opts = {method: method, headers: {'Content-Type': 'application/json'}};
+        const opts = {
+            method: method,
+            headers: {'Content-Type': 'application/json'}
+        };
         if (body) opts.body = JSON.stringify(body);
-        var r = await fetch('/api/match/' + MATCH_ID + '/' + endpoint, opts);
-        var data = await r.json();
-        if (data.error) {
-            console.warn('API error:', data.error);
-            return null;
-        }
+
+        const r = await fetch('/api/match/' + MATCH_ID + '/' + endpoint, opts);
+        if (!r.ok) return null;
+
+        const data = await r.json();
+        if (data.error) return null;
+
+        // 🔥 FORCE FAST RESYNC AFTER ACTION
+        setTimeout(fetchState, 120);
+
         return data;
+
     } finally {
         actionLock = false;
     }
 }
 
 async function fetchState() {
-    var data = await apiCall('state', 'GET');
-    if (data) renderState(data);
+    if (isFetching) return;   // prevent overlap
+    isFetching = true;
+
+    try {
+        const r = await fetch(`/api/match/${MATCH_ID}/state`);
+        if (!r.ok) return;
+
+        const data = await r.json();
+        if (!data) return;
+
+        // 🔥 PHASE CHANGE = INSTANT HARD RENDER
+        if (data.phase !== lastPhase) {
+            lastPhase = data.phase;
+            renderState(data);
+            return;
+        }
+
+        renderState(data);
+
+    } catch (e) {
+        console.warn("State fetch failed");
+    } finally {
+        isFetching = false;
+    }
 }
 
 function hideAll() {
@@ -233,6 +294,25 @@ function getPlayerScoreText(s, playerKey) {
 function renderState(s) {
     currentState = s;
     hideAll();
+
+    // Ensure joker UI never stays visible after phase change
+    if (s.phase !== 'JOKER_CHOICE') {
+        document.getElementById('joker-choice-area').style.display = 'none';
+    }
+
+    if (s.phase !== 'DEALER_JOKER_CHOICE') {
+        document.getElementById('dealer-joker-choice-area').style.display = 'none';
+    }
+
+    // rest of renderState continues here...
+
+    // If we left the setup phases, reset the draw animation state (prevents getting stuck)
+    if (s.phase !== 'CARD_DRAW' && s.phase !== 'CHOICE') {
+        drawAnimationDone = false;
+        localDrawStart = null;
+        if (drawRevealTimeout) { clearTimeout(drawRevealTimeout); drawRevealTimeout = null; }
+    }
+
     var allBtns = document.querySelectorAll('.game-area button, #action-area button, #dealer-action-area button');
     for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = false;
 
@@ -346,7 +426,22 @@ function showCardDrawAnimation(s) {
     var p1Cards = s.draw_cards.player1;
     var p2Cards = s.draw_cards.player2;
 
-    var elapsed = (Date.now() / 1000) - (s.draw_timestamp || 0);
+    // Use server timestamp if reasonable, but guard against clock skew / ms-vs-sec bugs.
+    var nowSec = Date.now() / 1000;
+    var ts = (s.draw_timestamp !== null && s.draw_timestamp !== undefined) ? s.draw_timestamp : nowSec;
+    if (ts > 1000000000000) ts = ts / 1000; // looks like ms -> convert to seconds
+
+    if (localDrawStart === null) localDrawStart = nowSec;
+
+    var elapsed = nowSec - ts;
+
+    // If server time is ahead (elapsed < 0) or timestamp looks wildly off, fall back to local timing.
+    if (elapsed < 0 || elapsed > 120) {
+        elapsed = nowSec - localDrawStart;
+    } else {
+        elapsed = Math.max(0, elapsed);
+    }
+
     var revealDelay = 3;
 
     if (elapsed < revealDelay) {
@@ -363,10 +458,13 @@ function showCardDrawAnimation(s) {
         document.getElementById('draw-result-text').textContent = 'Revealing cards...';
 
         var timeLeft = (revealDelay - elapsed) * 1000;
-        setTimeout(function() {
+        if (drawRevealTimeout) clearTimeout(drawRevealTimeout);
+        drawRevealTimeout = setTimeout(function() {
             drawAnimationDone = true;
-            renderState(currentState);
-        }, timeLeft);
+            drawRevealTimeout = null;
+            // Re-fetch to ensure we render the latest phase (CHOICE/WAITING_BETS) even if server advanced.
+            fetchState();
+        }, Math.max(0, timeLeft));
         return;
     }
 
@@ -397,9 +495,12 @@ function showCardDrawAnimation(s) {
     document.getElementById('draw-result-text').textContent = winnerText;
 
     if (s.phase === 'CHOICE') {
-        setTimeout(function() {
-            renderState(currentState);
-        }, 2000);
+        // After showing the revealed draw, jump to the chooser UI using the latest state.
+        if (drawRevealTimeout) clearTimeout(drawRevealTimeout);
+        drawRevealTimeout = setTimeout(function() {
+            drawRevealTimeout = null;
+            fetchState();
+        }, 800);
     }
 }
 
@@ -548,18 +649,27 @@ function showDealerActions(s) {
 var jokerSelectedValues = [];
 
 function buildJokerValueSelector(numJokers, containerId, prefix) {
-    var container = document.getElementById(containerId);
-    var html = '';
-    for (var ji = 0; ji < numJokers; ji++) {
-        var label = numJokers > 1 ? 'Joker ' + (ji + 1) + ':' : 'Value:';
+    const container = document.getElementById(containerId);
+    const VALUES = ["A","2","3","4","5","6","7","8","9","10"];
+
+    let html = '';
+
+    for (let ji = 0; ji < numJokers; ji++) {
+        const label = numJokers > 1 ? 'Joker ' + (ji + 1) + ':' : 'Value:';
         html += '<div class="joker-selector-row">';
         html += '<span class="joker-selector-label">' + label + '</span>';
         html += '<div class="joker-value-grid">';
-        for (var v = 1; v <= 11; v++) {
-            html += '<button class="joker-val-btn" data-prefix="' + prefix + '" data-joker="' + ji + '" data-val="' + v + '">' + v + '</button>';
-        }
+
+        VALUES.forEach(function(val) {
+            html += '<button class="joker-val-btn" ' +
+                    'data-prefix="' + prefix + '" ' +
+                    'data-joker="' + ji + '" ' +
+                    'data-val="' + val + '">' + val + '</button>';
+        });
+
         html += '</div></div>';
     }
+
     container.innerHTML = html;
     return new Array(numJokers).fill(null);
 }
@@ -585,7 +695,7 @@ function showJokerChoice(s) {
     document.querySelectorAll('.joker-val-btn[data-prefix="player"]').forEach(function(btn) {
         btn.onclick = function() {
             var ji = parseInt(this.dataset.joker);
-            var val = parseInt(this.dataset.val);
+            var val = this.dataset.val;
             jokerSelectedValues[ji] = val;
             document.querySelectorAll('.joker-val-btn[data-prefix="player"][data-joker="' + ji + '"]').forEach(function(b) {
                 b.classList.remove('selected');
@@ -612,7 +722,7 @@ function showDealerJokerChoice(s) {
     document.querySelectorAll('.joker-val-btn[data-prefix="dealer"]').forEach(function(btn) {
         btn.onclick = function() {
             var ji = parseInt(this.dataset.joker);
-            var val = parseInt(this.dataset.val);
+            var val = this.dataset.val;
             dealerJokerSelectedValues[ji] = val;
             document.querySelectorAll('.joker-val-btn[data-prefix="dealer"][data-joker="' + ji + '"]').forEach(function(b) {
                 b.classList.remove('selected');
@@ -670,7 +780,7 @@ function showMatchOver(s) {
 
 function startPolling() {
     if (polling) return;
-    polling = setInterval(fetchState, 1500);
+    polling = setInterval(fetchState, 800);
 }
 
 function stopPolling() {
@@ -728,14 +838,25 @@ document.getElementById('btn-dealer-stand').addEventListener('click', async func
 });
 
 document.getElementById('btn-joker-confirm').addEventListener('click', async function() {
-    if (jokerSelectedValues.some(function(v) { return v === null; })) return;
-    var data = await apiCall('joker_choice', 'POST', {values: jokerSelectedValues});
-    if (data) renderState(data);
+
+    if (jokerSelectedValues.some(v => v === null)) return;
+
+    // 🔒 prevent double submit
+    this.disabled = true;
+
+    const data = await apiCall('joker', 'POST', { values: jokerSelectedValues });
+
+    if (data) {
+        renderState(data);
+    } else {
+        // If backend rejected because phase already changed
+        fetchState();
+    }
 });
 
 document.getElementById('btn-dealer-joker-confirm').addEventListener('click', async function() {
     if (dealerJokerSelectedValues.some(function(v) { return v === null; })) return;
-    var data = await apiCall('dealer_joker_choice', 'POST', {values: dealerJokerSelectedValues});
+    var data = await apiCall('dealer_joker', 'POST', {values: dealerJokerSelectedValues});
     if (data) renderState(data);
 });
 

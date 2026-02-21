@@ -7,132 +7,47 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <nav class="navbar">
-        <a href="/lobby" class="nav-brand">Blackjack Platform</a>
-        <div class="nav-links">
-            {% if session.get('user_id') %}
-                {% set nav_user = get_current_user() %}
-                {% if nav_user %}
-                <span class="nav-coins">{{ nav_user.coins }} coins</span>
-                {% endif %}
-                <a href="/lobby" class="nav-link">Lobby</a>
-                <a href="/watch" class="nav-link">Watch</a>
-                <a href="/jackpots" class="nav-link">Jackpots</a>
-                <a href="/tournaments" class="nav-link">Tournaments</a>
-                <a href="/wallet" class="nav-link">Wallet</a>
-                <a href="/account" class="nav-link">Account</a>
-                {% if nav_user and nav_user.is_admin %}
-                <a href="/admin/" class="nav-link" style="color: #f9a825;">Admin</a>
-                {% endif %}
-                <a href="/logout" class="nav-link">Logout</a>
-            {% else %}
-                <a href="/login" class="nav-link">Login</a>
-                <a href="/register" class="nav-link">Register</a>
+
+<nav class="navbar">
+    <a href="/lobby" class="nav-brand">Blackjack Platform</a>
+    <div class="nav-links">
+        {% if session.get('user_id') %}
+            {% set nav_user = get_current_user() %}
+            {% if nav_user %}
+            <span class="nav-coins">{{ nav_user.coins }} coins</span>
             {% endif %}
-        </div>
-    </nav>
-    <div class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        <div class="flash-messages">
-            {% for category, message in messages %}
-            <div class="flash {{ category }}">{{ message }}</div>
-            {% endfor %}
-        </div>
+            <a href="/lobby" class="nav-link">Lobby</a>
+            <a href="/watch" class="nav-link">Watch</a>
+            <a href="/jackpots" class="nav-link">Jackpots</a>
+            <a href="/tournaments" class="nav-link">Tournaments</a>
+            <a href="/wallet" class="nav-link">Wallet</a>
+            <a href="/account" class="nav-link">Account</a>
+            {% if nav_user and nav_user.is_admin %}
+            <a href="/admin/" class="nav-link" style="color: #f9a825;">Admin</a>
+            {% endif %}
+            <a href="/logout" class="nav-link">Logout</a>
+        {% else %}
+            <a href="/login" class="nav-link">Login</a>
+            <a href="/register" class="nav-link">Register</a>
         {% endif %}
-        {% endwith %}
-        {% block content %}{% endblock %}
     </div>
-    {% if session.get('user_id') %}
-    <div id="match-found-overlay" style="display:none;">
-        <div class="match-found-popup">
-            <div class="match-found-icon">&#9876;</div>
-            <h2 id="match-found-title">Match Found!</h2>
-            <p id="match-found-detail"></p>
-            <div class="match-found-countdown">
-                Redirecting in <span id="match-found-timer">5</span>s...
-            </div>
-            <a id="match-found-link" href="#" class="btn btn-success btn-lg">Go to Match</a>
-        </div>
+</nav>
+
+<div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
     </div>
-    <script>
-    (function() {
-        var serverKnown = {{ known_match_ids|default([])|tojson }};
-        var stored = [];
-        try { stored = JSON.parse(sessionStorage.getItem('knownMatchIds') || '[]'); } catch(e) {}
-        var knownMatchIds = serverKnown.slice();
-        for (var s = 0; s < stored.length; s++) {
-            if (knownMatchIds.indexOf(stored[s]) === -1) knownMatchIds.push(stored[s]);
-        }
-        try { sessionStorage.setItem('knownMatchIds', JSON.stringify(knownMatchIds)); } catch(e) {}
-
-        var matchFoundShown = false;
-
-        function markSeen(matchId) {
-            if (knownMatchIds.indexOf(matchId) === -1) knownMatchIds.push(matchId);
-            try { sessionStorage.setItem('knownMatchIds', JSON.stringify(knownMatchIds)); } catch(e) {}
-        }
-
-        function showMatchPopup(match) {
-            if (matchFoundShown) return;
-            matchFoundShown = true;
-            markSeen(match.match_id);
-
-            var overlay = document.getElementById('match-found-overlay');
-            var title = document.getElementById('match-found-title');
-            var detail = document.getElementById('match-found-detail');
-            var timer = document.getElementById('match-found-timer');
-            var link = document.getElementById('match-found-link');
-
-            if (match.is_tournament) {
-                title.textContent = 'Tournament Match Ready!';
-            } else {
-                title.textContent = 'Match Found!';
-            }
-            detail.textContent = 'vs ' + match.opponent + ' | Stake: ' + match.stake + ' coins';
-            link.href = '/match/' + match.match_id;
-            overlay.style.display = 'flex';
-
-            var seconds = 5;
-            timer.textContent = seconds;
-            var countdownInterval = setInterval(function() {
-                seconds--;
-                timer.textContent = seconds;
-                if (seconds <= 0) {
-                    clearInterval(countdownInterval);
-                    window.location.href = '/match/' + match.match_id;
-                }
-            }, 1000);
-        }
-
-        window._showMatchPopup = showMatchPopup;
-
-        function pollForMatches() {
-            if (matchFoundShown) return;
-            fetch('/api/my_active_matches')
-                .then(function(r) { return r.json(); })
-                .then(function(matches) {
-                    for (var i = 0; i < matches.length; i++) {
-                        if (knownMatchIds.indexOf(matches[i].match_id) === -1) {
-                            showMatchPopup(matches[i]);
-                            break;
-                        }
-                    }
-                })
-                .catch(function() {});
-        }
-
-        var currentPath = window.location.pathname;
-        var shouldPoll = currentPath === '/lobby' ||
-                         currentPath === '/tournaments' ||
-                         currentPath.indexOf('/tournament/') === 0;
-
-        if (shouldPoll) {
-            setInterval(pollForMatches, 3000);
-        }
-    })();
-    </script>
     {% endif %}
-    {% block scripts %}{% endblock %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</div>
+
+{% block scripts %}{% endblock %}
+
 </body>
 </html>

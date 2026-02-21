@@ -565,24 +565,36 @@ def player_action(state, action):
 
 
 def assign_joker_values(state, values):
-    ts = state['turn_state']
-    rnd = ts['round']
-    jc = ts.get('joker_choice')
-    if not jc or state['phase'] != 'JOKER_CHOICE':
-        return state, 'Not in joker choice phase'
+    VALID = {"A","2","3","4","5","6","7","8","9","10","J","Q","K"}
 
+    ts = state['turn_state']
+    jc = ts.get('joker_choice')
+
+    if not jc:
+        return state, "No joker choice pending."
+
+    rnd = ts['round']
     box = rnd['boxes'][jc['box']]
     hand = box['hands'][jc['hand']]
+
     indices = jc['indices']
 
     if len(values) != len(indices):
-        return state, f'Expected {len(indices)} value(s), got {len(values)}'
+        return state, "Invalid number of joker values."
 
-    for i, idx in enumerate(indices):
-        val = int(values[i])
-        if val < 1 or val > 11:
-            return state, 'Joker value must be between 1 and 11'
-        hand['cards'][idx]['chosen_value'] = val
+    for idx, choice in zip(indices, values):
+        if choice not in VALID:
+            return state, "Invalid joker value."
+
+        if choice in ["J","Q","K"]:
+            numeric = 10
+        elif choice == "A":
+            numeric = 11
+        else:
+            numeric = int(choice)
+
+        hand['cards'][idx]['chosen_value'] = numeric
+        hand['cards'][idx]['chosen_rank'] = choice
 
     del ts['joker_choice']
     pending = ts.pop('pending_after_joker', None)
@@ -590,21 +602,17 @@ def assign_joker_values(state, values):
     hv = hand_value(hand['cards'])
 
     if pending == 'double':
-        if hv > 21:
-            hand['status'] = 'bust'
-        else:
-            hand['status'] = 'stand'
+        hand['status'] = 'bust' if hv > 21 else 'stand'
         _next_hand(state)
-    elif is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
-        hand['status'] = 'blackjack'
-        _next_hand(state)
+
     elif hv > 21:
         hand['status'] = 'bust'
-        hand['result'] = None
         _next_hand(state)
+
     elif hv == 21:
         hand['status'] = 'stand'
         _next_hand(state)
+
     else:
         state['phase'] = 'PLAYER_TURN'
 
@@ -709,34 +717,35 @@ def dealer_action(state, action):
 
 
 def assign_dealer_joker_values(state, values):
+    VALID = {"A","2","3","4","5","6","7","8","9","10","J","Q","K"}
+
     ts = state['turn_state']
+    indices = ts.get('dealer_joker_indices', [])
     rnd = ts['round']
     dc = rnd['dealer_cards']
-    indices = ts.get('dealer_joker_indices', [])
-
-    if state['phase'] != 'DEALER_JOKER_CHOICE':
-        return state, 'Not in dealer joker choice phase'
 
     if len(values) != len(indices):
-        return state, f'Expected {len(indices)} value(s)'
+        return state, "Invalid number of joker values."
 
-    for i, idx in enumerate(indices):
-        val = int(values[i])
-        if val < 1 or val > 11:
-            return state, 'Value must be 1-11'
-        dc[idx]['chosen_value'] = val
+    for idx, choice in zip(indices, values):
+        if choice not in VALID:
+            return state, "Invalid joker value."
+
+        if choice in ["J", "Q", "K"]:
+            numeric = 10
+        elif choice == "A":
+            numeric = 11
+        else:
+            numeric = int(choice)
+
+        dc[idx]['chosen_value'] = numeric
+        dc[idx]['chosen_rank'] = choice
 
     if 'dealer_joker_indices' in ts:
         del ts['dealer_joker_indices']
 
-    dealer_val = hand_value(dc)
-    if dealer_val > 21 or dealer_val == 21:
-        _resolve_hands(state)
-    else:
-        state['phase'] = 'DEALER_TURN'
-
+    state['phase'] = 'DEALER_TURN'
     return state, None
-
 
 def _resolve_hands(state):
     ts = state['turn_state']
@@ -851,7 +860,7 @@ def apply_timeout(state, match):
         return state, True
 
     elif phase == 'WAITING_BETS':
-        if ts and ts['chips'] > 0:
+        if ts and ts.get('chips', 0) > 0:
             state, _ = place_bets(state, [1])
         else:
             state, _ = end_turn(state)
@@ -869,44 +878,71 @@ def apply_timeout(state, match):
         match.is_waiting_decision = False
         return state, True
 
+    # ----------------------------------
+    # ✅ FIXED: PLAYER JOKER TIMEOUT
+    # ----------------------------------
     elif phase == 'JOKER_CHOICE':
         jc = ts.get('joker_choice')
         if jc:
             rnd = ts['round']
             box = rnd['boxes'][jc['box']]
             hand = box['hands'][jc['hand']]
-            _auto_assign_jokers(hand['cards'])
+
+            # 🔥 AUTO-ASSIGN ACE TO ONLY REQUIRED JOKERS
+            for idx in jc['indices']:
+                hand['cards'][idx]['chosen_value'] = 11
+                hand['cards'][idx]['chosen_rank'] = 'A'
+
             del ts['joker_choice']
             pending = ts.pop('pending_after_joker', None)
+
             hv = hand_value(hand['cards'])
+
             if pending == 'double':
                 hand['status'] = 'bust' if hv > 21 else 'stand'
                 _next_hand(state)
+
             elif is_blackjack(hand['cards']) and not _no_blackjack_after_split(hand):
                 hand['status'] = 'blackjack'
                 _next_hand(state)
+
             elif hv > 21:
                 hand['status'] = 'bust'
                 hand['result'] = None
                 _next_hand(state)
+
             elif hv == 21:
                 hand['status'] = 'stand'
                 _next_hand(state)
+
             else:
                 state['phase'] = 'PLAYER_TURN'
+
         match.is_waiting_decision = False
         return state, True
 
+    # ----------------------------------
+    # ✅ FIXED: DEALER JOKER TIMEOUT
+    # ----------------------------------
     elif phase == 'DEALER_JOKER_CHOICE':
+        indices = ts.get('dealer_joker_indices', [])
         dc = ts['round']['dealer_cards']
-        _auto_assign_jokers(dc)
+
+        # 🔥 AUTO-ASSIGN ACE TO DEALER JOKERS
+        for idx in indices:
+            dc[idx]['chosen_value'] = 11
+            dc[idx]['chosen_rank'] = 'A'
+
         if 'dealer_joker_indices' in ts:
             del ts['dealer_joker_indices']
+
         dealer_val = hand_value(dc)
+
         if dealer_val > 21 or dealer_val == 21:
             _resolve_hands(state)
         else:
             state['phase'] = 'DEALER_TURN'
+
         match.is_waiting_decision = False
         return state, True
 

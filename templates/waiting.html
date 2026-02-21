@@ -1,53 +1,108 @@
 {% extends "base.html" %}
 {% block title %}Waiting for Opponent{% endblock %}
+
 {% block content %}
-<div class="waiting-room">
+<div class="waiting-room" style="text-align:center; padding:40px;">
     <h1>Waiting for Opponent</h1>
-    <p>Match Stake: <strong>{{ match.stake }} coins</strong></p>
-    <div class="spinner"></div>
-    <p>Share this page with a friend to play!</p>
+
+    <p style="font-size:18px;">
+        Match Stake: <strong>{{ match.stake }} coins</strong>
+    </p>
+
+    <div class="spinner" style="margin:30px auto;"></div>
+
+    <p style="opacity:0.8;">
+        Share this page with a friend to play!
+    </p>
+
     <form method="POST" action="/cancel_match/{{ match.id }}">
-        <button type="submit" class="btn btn-danger">Cancel Match</button>
+        <button type="submit" class="btn btn-danger">
+            Cancel Match
+        </button>
     </form>
 </div>
+
+<!-- Notification container -->
+<div id="matchNotificationContainer"></div>
+
 {% endblock %}
+
+
 {% block scripts %}
 <script>
 (function() {
     var matchId = {{ match.id }};
-    var popupShown = false;
+    var notificationShown = false;
+    var intervalId = null;
 
-    function checkMatch() {
-        if (popupShown) return;
+    function checkMatchStatus() {
+        if (notificationShown) return;
+
         fetch('/api/match/' + matchId + '/state')
-            .then(function(r) { return r.json(); })
+            .then(function(response) {
+                return response.json();
+            })
             .then(function(data) {
-                if (data.status === 'active' && !popupShown) {
-                    popupShown = true;
-                    fetch('/api/my_active_matches')
-                        .then(function(r) { return r.json(); })
-                        .then(function(matches) {
-                            for (var i = 0; i < matches.length; i++) {
-                                if (matches[i].match_id === matchId) {
-                                    if (window._showMatchPopup) {
-                                        window._showMatchPopup(matches[i]);
-                                    } else {
-                                        window.location.href = '/match/' + matchId;
-                                    }
-                                    return;
-                                }
-                            }
-                            window.location.href = '/match/' + matchId;
-                        })
-                        .catch(function() {
-                            window.location.href = '/match/' + matchId;
-                        });
+                if (data.status === 'active' && !notificationShown) {
+                    notificationShown = true;
+                    clearInterval(intervalId);
+                    showNotification();
                 }
             })
-            .catch(function() {});
+            .catch(function() {
+                // silently ignore polling errors
+            });
     }
 
-    setInterval(checkMatch, 3000);
+    function showNotification() {
+        var container = document.getElementById("matchNotificationContainer");
+
+        container.innerHTML = `
+            <div style="
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #1f2937;
+                color: white;
+                padding: 20px;
+                border-radius: 12px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+                z-index: 9999;
+                min-width: 220px;
+                animation: fadeIn 0.3s ease-in-out;
+            ">
+                <div style="font-size:16px; font-weight:bold; margin-bottom:10px;">
+                    Opponent Joined!
+                </div>
+
+                <button id="playButton" style="
+                    background: #22c55e;
+                    border: none;
+                    padding: 8px 14px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    width: 100%;
+                ">
+                    Play
+                </button>
+            </div>
+        `;
+
+        document.getElementById("playButton").addEventListener("click", function() {
+            window.location.href = "/match/" + matchId;
+        });
+    }
+
+    // Start polling every 2 seconds
+    intervalId = setInterval(checkMatchStatus, 2000);
 })();
 </script>
+
+<style>
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
 {% endblock %}

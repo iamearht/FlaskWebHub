@@ -1601,3 +1601,22 @@ body {
 .jackpot-countdown.expired .countdown-label {
     color: #ff5252;
 }
+
+/* GAME MODE COLORS */
+.classic { background-color: #28a745; color: white; }
+.interactive { background-color: #007bff; color: white; }
+.classic_joker { background-color: #dc3545; color: white; }
+.interactive_joker { background-color: #6f42c1; color: white; }
+
+.filter {
+    padding: 8px 14px;
+    margin-right: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 2px solid #ccc;
+}
+
+.filter.active {
+    border: 2px solid black;
+}
+

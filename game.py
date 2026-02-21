@@ -1,9 +1,11 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response
 from sqlalchemy.orm.attributes import flag_modified
-from models import (db, User, Match, Tournament, TournamentMatch, VIPProgress,
-                     RakeTransaction, RakebackProgress, get_lobby_rake_percent,
-                     JackpotPool, JackpotEntry, get_jackpot_rake_percent,
-                     GAME_MODES, GAME_MODE_LIST)
+from models import (
+    db, User, Match, Tournament, TournamentMatch,
+    RakeTransaction, get_lobby_rake_percent,
+    JackpotPool, JackpotEntry, get_jackpot_rake_percent,
+    GAME_MODES, GAME_MODE_LIST
+)
 from auth import login_required, get_current_user
 from engine import (
     init_game_state, enter_turn, place_bets, handle_insurance,
@@ -15,9 +17,27 @@ from engine import (
 game_bp = Blueprint('game', __name__)
 
 
+def _json(payload, status=200):
+    """JSON response with aggressive no-cache headers (important for polling)."""
+    resp = make_response(jsonify(payload), status)
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    return resp
+
+
 def _save_match(match):
+    """
+    Persist match changes immediately and invalidate the session cache.
+
+    Critical: we flag_modified() to force-flush the JSON field even if mutated
+    in-place, then commit, then expire_all() so the next read in this request
+    cannot accidentally reuse stale identity-map data.
+    """
     flag_modified(match, 'game_state')
+    db.session.add(match)
     db.session.commit()
+    db.session.expire_all()
 
 
 def _get_player_num(user, match):
@@ -94,259 +114,255 @@ def _settle_match(match, state):
             pt = JackpotPool.pool_type_for_mode(match.game_mode)
             pool = JackpotPool.get_active_pool(pt)
             pool.pool_amount += jackpot_contribution
+            db.session.add(pool)
 
-        for pid in [match.player1_id, match.player2_id]:
-            if pid:
-                user = User.query.get(pid)
-                if user:
-                    rp = user.get_rakeback_progress()
-                    rb_pct = rp.rakeback_percent
-                    rp.add_rake(rake / 2)
-                    if rb_pct > 0:
-                        rb_credit = int((rake / 2) * rb_pct / 100)
-                        if rb_credit > 0:
-                            user.coins += rb_credit
+            winner = result.get('winner')
+            if winner in (1, 2):
+                winner_id = match.player1_id if winner == 1 else match.player2_id
+                if winner_id:
+                    je = JackpotEntry(user_id=winner_id, match_id=match.id, amount=jackpot_contribution)
+                    db.session.add(je)
 
-    if not is_tournament and match.stake > 0:
-        _record_jackpot_scores(match, state)
-
-    if result['winner'] == 1:
-        p1 = User.query.get(match.player1_id)
-        p1.coins += winnings
+    winner = result.get('winner')
+    if winner == 1:
         match.winner_id = match.player1_id
-    elif result['winner'] == 2:
-        p2 = User.query.get(match.player2_id)
-        p2.coins += winnings
+    elif winner == 2:
         match.winner_id = match.player2_id
     else:
-        p1 = User.query.get(match.player1_id)
-        p2 = User.query.get(match.player2_id)
-        share = winnings // 2
-        p1.coins += share
-        p2.coins += share
         match.winner_id = None
+
+    # pay winner net winnings (if not tournament/0 stake handled earlier)
+    if match.winner_id and winnings > 0:
+        u = User.query.get(match.winner_id)
+        if u:
+            u.coins += winnings
+
     match.status = 'finished'
 
-    if match.stake > 0:
-        _track_vip_and_affiliate(match)
 
-    _check_tournament_advancement(match)
-
-
-def _record_jackpot_scores(match, state):
-    pt = JackpotPool.pool_type_for_mode(match.game_mode)
-    pool = JackpotPool.get_active_pool(pt)
-
-    results = state.get('results', {})
-    for player_num, pid in [(1, match.player1_id), (2, match.player2_id)]:
-        if not pid:
-            continue
-        turn1_key = f'player{player_num}_turn1'
-        turn2_key = f'player{player_num}_turn2'
-        t1 = results.get(turn1_key) or 0
-        t2 = results.get(turn2_key) or 0
-        total_chips = t1 + t2
-        if total_chips <= 0:
-            continue
-        score = total_chips * match.stake
-        entry = JackpotEntry(
-            jackpot_id=pool.id,
-            user_id=pid,
-            match_id=match.id,
-            score=score,
-            finishing_chips=total_chips,
-            match_stake=match.stake,
-        )
-        db.session.add(entry)
-
-
-def _track_vip_and_affiliate(match):
-    import logging
-    logger = logging.getLogger(__name__)
-    for pid in [match.player1_id, match.player2_id]:
-        if not pid:
-            continue
-        user = User.query.get(pid)
-        if user:
-            vp = user.get_vip_progress()
-            vp.add_wager(match.stake)
-
-    from affiliate import process_affiliate_commission
-    try:
-        process_affiliate_commission(match)
-    except Exception as e:
-        logger.error(f"Affiliate commission error for match {match.id}: {e}")
-
-
-def _check_tournament_advancement(match):
-    import logging
-    logger = logging.getLogger(__name__)
-    tm = TournamentMatch.query.filter_by(match_id=match.id).first()
-    if not tm:
-        return
-
-    tournament = Tournament.query.get(tm.tournament_id)
-    if not tournament:
-        return
-
-    if match.winner_id:
-        loser_id = match.player2_id if match.winner_id == match.player1_id else match.player1_id
-        from tournament import advance_tournament
-        try:
-            advance_tournament(tournament, match.id, match.winner_id, loser_id)
-        except Exception as e:
-            logger.error(f"Tournament advancement error for match {match.id}, tournament {tournament.id}: {e}")
-            raise
-
+# =========================
+# Lobby / Match navigation
+# =========================
 
 @game_bp.route('/lobby')
 @login_required
 def lobby():
     user = get_current_user()
+    sort_order = request.args.get('sort', 'desc')
 
-    game_mode = request.args.get('mode', 'classic')
-    if game_mode not in GAME_MODE_LIST:
-        game_mode = 'classic'
-    min_stake = request.args.get('min_stake', '', type=str)
-    max_stake = request.args.get('max_stake', '', type=str)
-    sort_order = request.args.get('sort', 'newest')
-
-    waiting_q = Match.query.filter_by(status='waiting', game_mode=game_mode).filter(
-        Match.player1_id != user.id,
-        Match.tournament_match_id.is_(None),
+    # -------------------------------------------------
+    # ACTIVE MATCHES (ONLY MATCHES THIS USER IS IN)
+    # -------------------------------------------------
+    my_active = (
+        Match.query
+        .filter(
+            Match.status == 'active',
+            Match.tournament_match_id.is_(None),
+            db.or_(
+                Match.player1_id == user.id,
+                Match.player2_id == user.id
+            )
+        )
+        .order_by(Match.created_at.desc())
+        .all()
     )
 
-    if min_stake and min_stake.isdigit():
-        waiting_q = waiting_q.filter(Match.stake >= int(min_stake))
-    if max_stake and max_stake.isdigit():
-        waiting_q = waiting_q.filter(Match.stake <= int(max_stake))
+    # -------------------------------------------------
+    # WAITING MATCHES (PUBLIC LOBBY LIST ONLY)
+    # -------------------------------------------------
+    waiting_query = (
+        Match.query
+        .filter(
+            Match.status == 'waiting',
+            Match.tournament_match_id.is_(None)
+        )
+    )
 
-    if sort_order == 'low_high':
-        waiting_q = waiting_q.order_by(Match.stake.asc())
-    elif sort_order == 'high_low':
-        waiting_q = waiting_q.order_by(Match.stake.desc())
+    if sort_order == 'asc':
+        waiting_query = waiting_query.order_by(Match.stake.asc())
     else:
-        waiting_q = waiting_q.order_by(Match.created_at.desc())
+        waiting_query = waiting_query.order_by(Match.stake.desc())
 
-    waiting = waiting_q.all()
+    waiting = waiting_query.all()
 
-    my_matches = Match.query.filter(
-        ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
-        Match.status.in_(['waiting', 'active'])
-    ).all()
-    history = Match.query.filter(
-        ((Match.player1_id == user.id) | (Match.player2_id == user.id)),
-        Match.status == 'finished'
-    ).order_by(Match.created_at.desc()).limit(10).all()
+    # -------------------------------------------------
+    # Stake limits
+    # -------------------------------------------------
+    min_stake = 10
+    max_stake = user.coins if user else 0
 
-    live_games = Match.query.filter_by(
-        status='active', is_spectatable=True
-    ).filter(
-        Match.player1_id != user.id,
-        Match.player2_id != user.id,
-    ).order_by(Match.created_at.desc()).limit(10).all()
+    # -------------------------------------------------
+    # Jackpot pools (safe fallback)
+    # -------------------------------------------------
+    try:
+        jackpot_pools = {
+            "standard": JackpotPool.get_active_pool("classic"),
+            "joker": JackpotPool.get_active_pool("classic_joker"),
+            "interactive": JackpotPool.get_active_pool("interactive"),
+            "interactive_joker": JackpotPool.get_active_pool("interactive_joker"),
+        }
+    except Exception:
+        jackpot_pools = {
+            "standard": None,
+            "joker": None,
+            "interactive": None,
+            "interactive_joker": None,
+        }
 
-    vip = user.get_vip_progress()
-    rakeback = user.get_rakeback_progress()
+    # -------------------------------------------------
+    # VIP / Rakeback
+    # -------------------------------------------------
+    vip = None
+    rakeback = None
 
-    jackpot_pools = JackpotPool.get_all_active_pools()
-    db.session.commit()
+    try:
+        vp = user.get_vip_progress()
+        rp = user.get_rakeback_progress()
 
-    return render_template('lobby.html', user=user, waiting=waiting, my_matches=my_matches,
-                           history=history, live_games=live_games, vip=vip, rakeback=rakeback,
-                           min_stake=min_stake, max_stake=max_stake, sort_order=sort_order,
-                           game_mode=game_mode, game_modes=GAME_MODES,
-                           jackpot_pools=jackpot_pools)
+        vip = {
+            'tier': vp.tier,
+            'progress_percent': vp.progress_percent,
+            'total_wagered': vp.total_wagered,
+            'next_tier': vp.next_tier,
+        }
 
+        rakeback = {
+            'tier': rp.tier,
+            'total_rake_paid': rp.total_rake_paid,
+        }
+    except Exception:
+        # Do NOT break lobby if VIP system fails
+        pass
+
+    return render_template(
+        'lobby.html',
+        user=user,
+        my_active=my_active,
+        waiting=waiting,
+        min_stake=min_stake,
+        max_stake=max_stake,
+        sort_order=sort_order,
+        game_modes=GAME_MODES,
+        jackpot_pools=jackpot_pools,
+        vip=vip,
+        rakeback=rakeback
+    )
+
+# =========================
+# Watch / Spectating hub
+# =========================
 
 @game_bp.route('/watch')
 @login_required
-def watch_live():
-    user = get_current_user()
-
+def watch():
+    # Top active lobby matches by stake
     top_lobby = Match.query.filter(
         Match.status == 'active',
-        Match.is_spectatable == True,
         Match.tournament_match_id.is_(None),
-    ).order_by(Match.stake.desc()).limit(5).all()
+        Match.is_spectatable.is_(True)
+    ).order_by(Match.stake.desc()).limit(12).all()
 
-    active_tournament_matches = db.session.query(TournamentMatch, Match, Tournament)\
-        .join(Match, TournamentMatch.match_id == Match.id)\
-        .join(Tournament, TournamentMatch.tournament_id == Tournament.id)\
-        .filter(
-            TournamentMatch.status == 'active',
-            Match.status == 'active',
-            Match.is_spectatable == True,
-        ).all()
+    # Top active tournament matches by tournament stake
+    try:
+        from tournament import get_round_display_name
+    except Exception:
+        def get_round_display_name(rn, total_rounds=None):
+            return rn.replace('_', ' ').title()
 
-    round_priority = {
-        'final': 100,
-        'third_place': 90,
-        'semifinal': 80,
-        'quarterfinal': 70,
-    }
-
-    def tournament_match_sort_key(item):
-        tm, match, tournament = item
-        rp = round_priority.get(tm.round, 0)
-        if rp == 0 and tm.round.startswith('round_'):
-            try:
-                r_num = int(tm.round.replace('round_', ''))
-                rp = r_num * 10
-            except ValueError:
-                pass
-        return (-rp, -tournament.stake_amount)
-
-    active_tournament_matches.sort(key=tournament_match_sort_key)
-    top_tournament = active_tournament_matches[:5]
-
-    from tournament import get_round_display_name
-    import math
+    q = (
+        TournamentMatch.query
+        .filter(TournamentMatch.match_id.isnot(None))
+        .join(Match, Match.id == TournamentMatch.match_id)
+        .join(Tournament, Tournament.id == TournamentMatch.tournament_id)
+        .filter(Match.status == 'active', Match.is_spectatable.is_(True))
+        .order_by(Tournament.stake_amount.desc())
+        .limit(12)
+    )
 
     tournament_display = []
-    for tm, match, tournament in top_tournament:
-        total_rounds = int(math.log2(tournament.max_players)) if tournament.max_players > 1 else 1
-        p1 = User.query.get(match.player1_id) if match.player1_id else None
-        p2 = User.query.get(match.player2_id) if match.player2_id else None
+    for tm in q.all():
+        m = Match.query.get(tm.match_id) if tm.match_id else None
+        if not m:
+            continue
         tournament_display.append({
-            'match': match,
-            'tournament': tournament,
-            'round_name': get_round_display_name(tm.round, total_rounds),
-            'p1': p1,
-            'p2': p2,
+            'tournament': tm.tournament,
+            'match': m,
+            'p1': tm.player1,
+            'p2': tm.player2,
+            'round_name': get_round_display_name(tm.round),
         })
 
-    return render_template('watch.html', user=user,
-                           top_lobby=top_lobby,
-                           tournament_display=tournament_display,
-                           game_modes=GAME_MODES)
+    return render_template(
+        'watch.html',
+        top_lobby=top_lobby,
+        tournament_display=tournament_display
+    )
 
 
 @game_bp.route('/create_match', methods=['POST'])
 @login_required
 def create_match():
     user = get_current_user()
+
     try:
         stake = int(request.form.get('stake', 0))
     except (ValueError, TypeError):
         flash('Invalid stake amount.', 'error')
         return redirect(url_for('game.lobby'))
-    game_mode = request.form.get('game_mode', 'classic')
-    if game_mode not in GAME_MODE_LIST:
+
+    game_mode = request.form.get('game_mode')
+    if not game_mode or game_mode not in GAME_MODE_LIST:
         game_mode = 'classic'
+
     if stake < 10:
         flash('Minimum stake is 10 coins.', 'error')
-        return redirect(url_for('game.lobby', mode=game_mode))
+        return redirect(url_for('game.lobby'))
+
     if stake > user.coins:
         flash('Not enough coins.', 'error')
-        return redirect(url_for('game.lobby', mode=game_mode))
+        return redirect(url_for('game.lobby'))
 
     user.coins -= stake
-    match = Match(player1_id=user.id, stake=stake, status='waiting', game_mode=game_mode)
+
+    match = Match(
+        player1_id=user.id,
+        stake=stake,
+        status='waiting',
+        game_mode=game_mode
+    )
+
     db.session.add(match)
     db.session.commit()
+
     flash(f'Match created with {stake} coin stake.', 'success')
-    return redirect(url_for('game.lobby', mode=game_mode))
+    return redirect(url_for('game.lobby'))
+
+
+@game_bp.route('/cancel_match/<int:match_id>', methods=['POST'])
+@login_required
+def cancel_match(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+
+    # Only allow cancel if match is still waiting
+    if match.status != 'waiting':
+        flash('Match cannot be cancelled.', 'error')
+        return redirect(url_for('game.lobby'))
+
+    # Only creator can cancel
+    if match.player1_id != user.id:
+        flash('You cannot cancel this match.', 'error')
+        return redirect(url_for('game.lobby'))
+
+    # Refund stake
+    user.coins += match.stake
+
+    # Delete match
+    db.session.delete(match)
+    db.session.commit()
+
+    flash('Match cancelled and stake refunded.', 'success')
+    return redirect(url_for('game.lobby'))
 
 
 @game_bp.route('/join_match/<int:match_id>', methods=['POST'])
@@ -354,24 +370,93 @@ def create_match():
 def join_match(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
     if match.status != 'waiting':
         flash('Match is no longer available.', 'error')
         return redirect(url_for('game.lobby'))
+
+    if match.tournament_match_id is not None:
+        flash('Cannot join this match from the lobby.', 'error')
+        return redirect(url_for('game.lobby'))
+
     if match.player1_id == user.id:
         flash('Cannot join your own match.', 'error')
         return redirect(url_for('game.lobby'))
+
     if match.stake > user.coins:
         flash('Not enough coins to match the stake.', 'error')
         return redirect(url_for('game.lobby'))
 
+    # Deduct stake
     user.coins -= match.stake
+
+    # Attach player2
     match.player2_id = user.id
     match.status = 'active'
+
+    # Initialize game state but DO NOT start timers yet
     state = init_game_state(game_mode=match.game_mode)
     match.game_state = state
-    _set_timer_for_phase(match, state)
+
+    # IMPORTANT: no timer start here
+    # DO NOT call _set_timer_for_phase()
+
     _save_match(match)
-    return redirect(url_for('game.play', match_id=match.id))
+
+    flash('Match joined. Go to Lobby and press Play to enter.', 'success')
+    return redirect(url_for('game.lobby'))
+
+@game_bp.route('/forfeit_match/<int:match_id>', methods=['POST'])
+@login_required
+def forfeit_match(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+
+    if match.status != 'active':
+        flash('Match is not active.', 'error')
+        return redirect(url_for('game.lobby'))
+
+    if match.tournament_match_id is not None:
+        flash('Forfeit is disabled for tournament matches.', 'error')
+        return redirect(url_for('game.lobby'))
+
+    if user.id not in (match.player1_id, match.player2_id):
+        flash('You are not a player in this match.', 'error')
+        return redirect(url_for('game.lobby'))
+
+    # Determine winner (opponent)
+    forfeiter_player_num = 1 if user.id == match.player1_id else 2
+    winner_player_num = 2 if forfeiter_player_num == 1 else 1
+
+    # ---------------------------
+    # SAFE STATE HANDLING
+    # ---------------------------
+
+    state = match.game_state
+
+    # Guarantee state is a dict
+    if not isinstance(state, dict):
+        state = {}
+
+    # Preserve previous totals if they exist
+    previous_result = state.get('match_result') or {}
+
+    state['match_over'] = True
+    state['phase'] = 'MATCH_OVER'
+    state['match_result'] = {
+        'winner': winner_player_num,
+        'forfeit': True,
+        'player1_total': previous_result.get('player1_total', 0),
+        'player2_total': previous_result.get('player2_total', 0),
+    }
+
+    match.game_state = state
+
+    _settle_match(match, state)
+    _save_match(match)
+
+    flash('You forfeited the match.', 'success')
+    return redirect(url_for('game.lobby'))
 
 
 @game_bp.route('/match/<int:match_id>')
@@ -413,47 +498,25 @@ def play(match_id):
         _check_and_handle_timeout(match)
 
     if is_spectator:
-        state = match.game_state
-        cs = get_client_state(state, 1, match, spectator=True)
+        cs = get_client_state(match.game_state, 1, match, spectator=True)
         p1 = User.query.get(match.player1_id)
         p2 = User.query.get(match.player2_id)
         return render_template('spectate.html', match=match, user=user, cs=cs, p1=p1, p2=p2)
 
     player_num = _get_player_num(user, match)
-    state = match.game_state
+    cs = get_client_state(match.game_state, player_num, match)
     p1 = User.query.get(match.player1_id)
     p2 = User.query.get(match.player2_id)
 
     if match.status == 'finished':
-        cs = get_client_state(state, player_num, match)
         return render_template('match_result.html', match=match, user=user, cs=cs, p1=p1, p2=p2)
 
-    cs = get_client_state(state, player_num, match)
     return render_template('game.html', match=match, user=user, cs=cs, player_num=player_num, p1=p1, p2=p2, game_modes=GAME_MODES)
 
 
-@game_bp.route('/api/my_active_matches')
-@login_required
-def api_my_active_matches():
-    user = get_current_user()
-    active_matches = Match.query.filter(
-        Match.status == 'active',
-        db.or_(Match.player1_id == user.id, Match.player2_id == user.id),
-    ).order_by(Match.created_at.desc()).all()
-
-    results = []
-    for m in active_matches:
-        opponent_id = m.player2_id if m.player1_id == user.id else m.player1_id
-        opponent = User.query.get(opponent_id) if opponent_id else None
-        results.append({
-            'match_id': m.id,
-            'stake': m.stake,
-            'opponent': opponent.username if opponent else 'Unknown',
-            'game_mode': m.game_mode,
-            'is_tournament': m.tournament_match_id is not None,
-        })
-    return jsonify(results)
-
+# =========================
+# Polling state API
+# =========================
 
 @game_bp.route('/api/match/<int:match_id>/state')
 @login_required
@@ -465,143 +528,63 @@ def api_state(match_id):
     is_spectator = not is_player
 
     if is_spectator and not match.is_spectatable:
-        return jsonify({'error': 'Not available for spectating'}), 403
+        return _json({'error': 'Not available for spectating'}, 403)
 
     state = match.game_state
     if state and 'turns' not in state and state.get('phase') not in ('CARD_DRAW', 'CHOICE'):
-        return jsonify({'error': 'Old match format', 'status': 'finished'}), 400
+        return _json({'error': 'Old match format', 'status': 'finished'}, 400)
 
-    if match.status == 'active' and is_player:
+    # Advance timeouts regardless of who is viewing (player OR spectator)
+    if match.status == 'active':
         _check_and_handle_timeout(match)
+        # After timeout handling we may have committed; reload what’s persisted
+        match = Match.query.get(match.id)
 
     if is_spectator:
         cs = get_client_state(match.game_state, 1, match, spectator=True)
         cs['is_spectator'] = True
         cs['status'] = match.status
-        return jsonify(cs)
+        return _json(cs)
 
     player_num = _get_player_num(user, match)
     cs = get_client_state(match.game_state, player_num, match)
     cs['user_coins'] = User.query.get(user.id).coins
     cs['stake'] = match.stake
     cs['status'] = match.status
-    return jsonify(cs)
+    return _json(cs)
 
 
-@game_bp.route('/api/match/<int:match_id>/draw', methods=['POST'])
-@login_required
-def api_draw(match_id):
-    user = get_current_user()
-    match = Match.query.get_or_404(match_id)
-    if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
-    if user.id not in (match.player1_id, match.player2_id):
-        return jsonify({'error': 'Not your match'}), 403
-
-    _check_and_handle_timeout(match)
-    state = match.game_state
-
-    if state['phase'] != 'CARD_DRAW':
-        return jsonify({'error': 'Not in card draw phase'}), 400
-
-    state, err = do_card_draw(state)
-    if err:
-        return jsonify({'error': err}), 400
-
-    clear_decision_timer(match)
-    match.game_state = state
-    _set_timer_for_phase(match, state)
-    _save_match(match)
-
-    player_num = _get_player_num(user, match)
-    return jsonify(get_client_state(state, player_num, match))
-
-
-@game_bp.route('/api/match/<int:match_id>/choice', methods=['POST'])
-@login_required
-def api_choice(match_id):
-    user = get_current_user()
-    match = Match.query.get_or_404(match_id)
-    if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
-
-    player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
-    state = match.game_state
-
-    if state['phase'] != 'CHOICE':
-        return jsonify({'error': 'Not in choice phase'}), 400
-    if state['chooser'] != player_num:
-        return jsonify({'error': 'Not your choice to make'}), 403
-
-    data = request.get_json()
-    go_first = data.get('go_first_as_player', True)
-
-    state, err = make_choice(state, go_first)
-    if err:
-        return jsonify({'error': err}), 400
-
-    clear_decision_timer(match)
-    match.game_state = state
-    _set_timer_for_phase(match, state)
-    _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
-
-
-@game_bp.route('/api/match/<int:match_id>/start_turn', methods=['POST'])
-@login_required
-def api_start_turn(match_id):
-    user = get_current_user()
-    match = Match.query.get_or_404(match_id)
-    if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
-    if user.id not in (match.player1_id, match.player2_id):
-        return jsonify({'error': 'Not your match'}), 403
-
-    _check_and_handle_timeout(match)
-    state = match.game_state
-
-    if state['phase'] != 'TURN_START':
-        return jsonify({'error': 'Not in turn start phase'}), 400
-
-    state = enter_turn(state)
-    match.game_state = state
-    _set_timer_for_phase(match, state)
-    _save_match(match)
-
-    player_num = _get_player_num(user, match)
-    return jsonify(get_client_state(state, player_num, match))
-
+# =========================
+# Game action API routes
+# =========================
 
 @game_bp.route('/api/match/<int:match_id>/bet', methods=['POST'])
 @login_required
 def api_bet(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
     if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
+        return _json({'error': 'Match not active'}, 400)
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
 
-    player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
     state = match.game_state
+    player_num = _get_player_num(user, match)
 
-    turn_info = state['turns'][state['current_turn']]
-    if turn_info['player_role'] != player_num:
-        return jsonify({'error': 'Not your turn'}), 403
-    if state['phase'] != 'WAITING_BETS':
-        return jsonify({'error': 'Not in betting phase'}), 400
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     bets = data.get('bets', [])
+
     state, err = place_bets(state, bets)
     if err:
-        return jsonify({'error': err}), 400
+        return _json({'error': err}, 400)
 
-    clear_decision_timer(match)
     match.game_state = state
     _set_timer_for_phase(match, state)
     _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
+
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
 
 
 @game_bp.route('/api/match/<int:match_id>/insurance', methods=['POST'])
@@ -609,34 +592,28 @@ def api_bet(match_id):
 def api_insurance(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
     if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
+        return _json({'error': 'Match not active'}, 400)
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
 
-    player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
     state = match.game_state
+    player_num = _get_player_num(user, match)
 
-    turn_info = state['turns'][state['current_turn']]
-    if turn_info['player_role'] != player_num:
-        return jsonify({'error': 'Not your turn'}), 403
-    if state['phase'] != 'INSURANCE':
-        return jsonify({'error': 'Not in insurance phase'}), 400
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     decisions = data.get('decisions', [])
-    if not decisions:
-        take_all = data.get('take', False)
-        num_hands = sum(len(box['hands']) for box in state['turn_state']['round']['boxes'])
-        decisions = [take_all] * num_hands
+
     state, err = handle_insurance(state, decisions)
     if err:
-        return jsonify({'error': err}), 400
+        return _json({'error': err}, 400)
 
-    clear_decision_timer(match)
     match.game_state = state
     _set_timer_for_phase(match, state)
     _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
+
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
 
 
 @game_bp.route('/api/match/<int:match_id>/action', methods=['POST'])
@@ -644,99 +621,156 @@ def api_insurance(match_id):
 def api_action(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
     if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
+        return _json({'error': 'Match not active'}, 400)
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
 
-    player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
     state = match.game_state
+    player_num = _get_player_num(user, match)
 
-    turn_info = state['turns'][state['current_turn']]
-    if turn_info['player_role'] != player_num:
-        return jsonify({'error': 'Not your turn'}), 403
-    if state['phase'] != 'PLAYER_TURN':
-        return jsonify({'error': 'Not in player turn phase'}), 400
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     action = data.get('action')
+
     if action not in ('hit', 'stand', 'double', 'split'):
-        return jsonify({'error': 'Invalid action'}), 400
+        return _json({'error': 'Invalid action'}, 400)
 
     state, err = player_action(state, action)
     if err:
-        return jsonify({'error': err}), 400
+        return _json({'error': err}, 400)
 
-    clear_decision_timer(match)
+    if state.get('match_over'):
+        _settle_match(match, state)
+
     match.game_state = state
     _set_timer_for_phase(match, state)
     _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
+
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
 
 
-@game_bp.route('/api/match/<int:match_id>/joker_choice', methods=['POST'])
+@game_bp.route('/api/match/<int:match_id>/choice', methods=['POST'])
 @login_required
-def api_joker_choice(match_id):
+def api_choice(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
     if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
+        return _json({'error': 'Match not active'}, 400)
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
+
+    state = match.game_state
+    player_num = _get_player_num(user, match)
+
+    data = request.get_json(silent=True) or {}
+    raw = data.get('go_first_as_player', True)
+    # Accept strict booleans, but also tolerate string/number payloads.
+    if isinstance(raw, str):
+        raw = raw.strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+    go_first = bool(raw)
+
+    state, err = make_choice(state, go_first)
+    if err:
+        return _json({'error': err}, 400)
+
+    match.game_state = state
+    _set_timer_for_phase(match, state)
+    _save_match(match)
+
+    # IMPORTANT: return what is actually persisted
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
+
+
+@game_bp.route('/api/match/<int:match_id>/next', methods=['POST'])
+@game_bp.route('/api/match/<int:match_id>/next_round', methods=['POST'])
+@login_required
+def api_next(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+
+    if match.status != 'active':
+        return _json({'error': 'Match not active'}, 400)
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
+
+    state = match.game_state
+    player_num = _get_player_num(user, match)
+
+    state, ended = next_round_or_end_turn(state)
+
+    if ended:
+        _settle_match(match, state)
+
+    match.game_state = state
+    _set_timer_for_phase(match, state)
+    _save_match(match)
+
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
+
+
+@game_bp.route('/api/match/<int:match_id>/joker', methods=['POST'])
+@login_required
+def api_joker(match_id):
+    user = get_current_user()
+    match = Match.query.get_or_404(match_id)
+
+    # --- Basic validation ---
+    if match.status != 'active':
+        return _json({'error': 'Match not active'}, 400)
+
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
+
+    state = match.game_state or {}
+
+    # --- Critical: ensure correct phase ---
+    if state.get('phase') != 'JOKER_CHOICE':
+        return _json({'error': 'Not in joker selection phase'}, 400)
 
     player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
-    state = match.game_state
 
-    turn_info = state['turns'][state['current_turn']]
-    if turn_info['player_role'] != player_num:
-        return jsonify({'error': 'Not your turn'}), 403
-    if state['phase'] != 'JOKER_CHOICE':
-        return jsonify({'error': 'Not in joker choice phase'}), 400
+    data = request.get_json(silent=True) or {}
+    values = data.get('values')
 
-    data = request.get_json()
-    values = data.get('values', [])
+    # --- Validate payload ---
+    if not isinstance(values, list) or not values:
+        return _json({'error': 'Invalid joker values'}, 400)
+
+    # Optional: enforce valid card ranks instead of numbers
+    VALID = {"A","2","3","4","5","6","7","8","9","10"}
+
+    # If you're now using ranks instead of numbers:
+    for v in values:
+        if isinstance(v, str):
+            if v not in VALID:
+                return _json({'error': f'Invalid joker rank: {v}'}, 400)
+        else:
+            # fallback numeric safety
+            if not isinstance(v, int) or v < 1 or v > 11:
+                return _json({'error': 'Invalid joker numeric value'}, 400)
+
+    # --- Apply logic ---
     state, err = assign_joker_values(state, values)
     if err:
-        return jsonify({'error': err}), 400
+        return _json({'error': err}, 400)
 
-    clear_decision_timer(match)
     match.game_state = state
-    _set_timer_for_phase(match, state)
+
+    # If joker resolution ended the match
     if state.get('match_over'):
         _settle_match(match, state)
-    _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
 
-
-@game_bp.route('/api/match/<int:match_id>/dealer_joker_choice', methods=['POST'])
-@login_required
-def api_dealer_joker_choice(match_id):
-    user = get_current_user()
-    match = Match.query.get_or_404(match_id)
-    if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
-
-    player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
-    state = match.game_state
-
-    turn_info = state['turns'][state['current_turn']]
-    if turn_info['dealer_role'] != player_num:
-        return jsonify({'error': 'Not your turn as dealer'}), 403
-    if state['phase'] != 'DEALER_JOKER_CHOICE':
-        return jsonify({'error': 'Not in dealer joker choice phase'}), 400
-
-    data = request.get_json()
-    values = data.get('values', [])
-    state, err = assign_dealer_joker_values(state, values)
-    if err:
-        return jsonify({'error': err}), 400
-
-    clear_decision_timer(match)
-    match.game_state = state
     _set_timer_for_phase(match, state)
-    if state.get('match_over'):
-        _settle_match(match, state)
     _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
+
+    # Always return persisted state
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
 
 
 @game_bp.route('/api/match/<int:match_id>/dealer_action', methods=['POST'])
@@ -744,116 +778,129 @@ def api_dealer_joker_choice(match_id):
 def api_dealer_action(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
     if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
+        return _json({'error': 'Match not active'}, 400)
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
 
-    player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
     state = match.game_state
+    player_num = _get_player_num(user, match)
 
-    turn_info = state['turns'][state['current_turn']]
-    if turn_info['dealer_role'] != player_num:
-        return jsonify({'error': 'Not your turn as dealer'}), 403
-    if state['phase'] != 'DEALER_TURN':
-        return jsonify({'error': 'Not in dealer turn phase'}), 400
-
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     action = data.get('action')
+
     if action not in ('hit', 'stand'):
-        return jsonify({'error': 'Invalid dealer action'}), 400
+        return _json({'error': 'Invalid dealer action'}, 400)
 
     state, err = dealer_action(state, action)
     if err:
-        return jsonify({'error': err}), 400
+        return _json({'error': err}, 400)
 
-    clear_decision_timer(match)
+    if state.get('match_over'):
+        _settle_match(match, state)
+
     match.game_state = state
     _set_timer_for_phase(match, state)
     _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
+
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
 
 
-@game_bp.route('/api/match/<int:match_id>/next_round', methods=['POST'])
+@game_bp.route('/api/match/<int:match_id>/dealer_joker', methods=['POST'])
 @login_required
-def api_next_round(match_id):
+def api_dealer_joker(match_id):
     user = get_current_user()
     match = Match.query.get_or_404(match_id)
+
+    # --- Basic validation ---
     if match.status != 'active':
-        return jsonify({'error': 'Match not active'}), 400
+        return _json({'error': 'Match not active'}, 400)
+
+    if user.id not in (match.player1_id, match.player2_id):
+        return _json({'error': 'Not your match'}, 403)
+
+    state = match.game_state or {}
+
+    # --- Critical: ensure correct phase ---
+    if state.get('phase') != 'DEALER_JOKER_CHOICE':
+        return _json({'error': 'Not in dealer joker selection phase'}, 400)
 
     player_num = _get_player_num(user, match)
-    _check_and_handle_timeout(match)
-    state = match.game_state
 
-    if state['phase'] != 'ROUND_RESULT':
-        return jsonify({'error': 'Not in round result phase'}), 400
+    data = request.get_json(silent=True) or {}
+    values = data.get('values')
 
-    state, match_ended = next_round_or_end_turn(state)
-    clear_decision_timer(match)
+    # --- Validate payload ---
+    if not isinstance(values, list) or not values:
+        return _json({'error': 'Invalid dealer joker values'}, 400)
 
-    if match_ended:
+    VALID = {"A","2","3","4","5","6","7","8","9","10"}
+
+    for v in values:
+        if isinstance(v, str):
+            if v not in VALID:
+                return _json({'error': f'Invalid joker rank: {v}'}, 400)
+        else:
+            if not isinstance(v, int) or v < 1 or v > 11:
+                return _json({'error': 'Invalid joker numeric value'}, 400)
+
+    # --- Apply engine logic ---
+    state, err = assign_dealer_joker_values(state, values)
+    if err:
+        return _json({'error': err}, 400)
+
+    match.game_state = state
+
+    # If joker resolution ended the match
+    if state.get('match_over'):
         _settle_match(match, state)
-    else:
-        _set_timer_for_phase(match, state)
 
-    match.game_state = state
+    _set_timer_for_phase(match, state)
     _save_match(match)
-    return jsonify(get_client_state(state, player_num, match))
+
+    # Return persisted state
+    fresh = Match.query.get(match.id)
+    return _json(get_client_state(fresh.game_state, player_num, fresh))
 
 
-@game_bp.route('/cancel_match/<int:match_id>', methods=['POST'])
+# =========================
+# Misc APIs
+# =========================
+
+@game_bp.route('/api/my_active_matches')
 @login_required
-def cancel_match(match_id):
+def api_my_active_matches():
     user = get_current_user()
-    match = Match.query.get_or_404(match_id)
-    if match.status != 'waiting' or match.player1_id != user.id:
-        flash('Cannot cancel this match.', 'error')
-        return redirect(url_for('game.lobby'))
-    user.coins += match.stake
-    db.session.delete(match)
-    db.session.commit()
-    flash('Match cancelled. Stake refunded.', 'success')
-    return redirect(url_for('game.lobby'))
+
+    matches = Match.query.filter(
+        Match.status.in_(['waiting', 'active']),
+        db.or_(
+            Match.player1_id == user.id,
+            Match.player2_id == user.id
+        )
+    ).order_by(Match.created_at.desc()).all()
+
+    data = []
+    for m in matches:
+        data.append({
+            "id": m.id,
+            "stake": m.stake,
+            "status": m.status,
+            "player1": m.player1.username if m.player1 else None,
+            "player2": m.player2.username if m.player2 else None,
+            "game_mode": m.game_mode,
+        })
+
+    return _json(data)
 
 
-@game_bp.route('/forfeit_match/<int:match_id>', methods=['POST'])
+@game_bp.route('/api/match/<int:match_id>/ready')
 @login_required
-def forfeit_match(match_id):
-    user = get_current_user()
+def api_match_ready(match_id):
     match = Match.query.get_or_404(match_id)
-    if match.status != 'active':
-        flash('Cannot forfeit this match.', 'error')
-        return redirect(url_for('game.lobby'))
-    if user.id not in (match.player1_id, match.player2_id):
-        flash('Not your match.', 'error')
-        return redirect(url_for('game.lobby'))
-    if user.id == match.player1_id:
-        winner_id = match.player2_id
-        winner_num = 2
-    else:
-        winner_id = match.player1_id
-        winner_num = 1
-    winner = User.query.get(winner_id)
-    if winner:
-        winner.coins += match.stake * 2
-    match.winner_id = winner_id
-    match.status = 'finished'
-    clear_decision_timer(match)
-    state = match.game_state or {}
-    state['match_over'] = True
-    state['phase'] = 'MATCH_OVER'
-    state['match_result'] = {
-        'player1_total': 0,
-        'player2_total': 0,
-        'winner': winner_num,
-        'forfeit': True,
-    }
-    match.game_state = state
 
-    if match.stake > 0:
-        _track_vip_and_affiliate(match)
-    _check_tournament_advancement(match)
-
-    _save_match(match)
-    flash('You forfeited the match. Your stake goes to your opponent.', 'error')
-    return redirect(url_for('game.lobby'))
+    return _json({
+        "ready": match.status == "active"
+    })

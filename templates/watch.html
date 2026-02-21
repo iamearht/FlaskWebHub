@@ -1,62 +1,116 @@
 {% extends "base.html" %}
 {% block title %}Watch Live - Blackjack Platform{% endblock %}
+
 {% block content %}
 <div class="watch-page">
-    <div class="lobby-header">
-        <h1>Watch Live</h1>
-        <p class="subtitle">Spectate the biggest matches happening right now</p>
+
+  <div class="watch-header">
+    <h1>Live Matches</h1>
+  </div>
+
+  <div class="watch-section">
+    <h2>Top Lobby Matches</h2>
+
+    <div id="watch-lobby-container" class="match-list">
+      {% for match in top_lobby %}
+      <div class="match-card">
+        <div class="match-info">
+          <span class="match-stake">Stake: {{ match.stake }} coins</span>
+          <span>
+            {{ match.player1.username if match.player1 else "?" }}
+            vs
+            {{ match.player2.username if match.player2 else "?" }}
+          </span>
+        </div>
+        <div class="match-actions">
+          <a href="{{ url_for('game.play', match_id=match.id) }}"
+             class="btn btn-primary">
+            Watch
+          </a>
+        </div>
+      </div>
+      {% endfor %}
     </div>
 
-    <div class="lobby-section">
-        <h2>Top Lobby Games</h2>
-        {% if top_lobby %}
-        <div class="match-list">
-            {% for m in top_lobby %}
-            <div class="match-card live-card">
-                <div class="match-info">
-                    <span class="live-indicator">LIVE</span>
-                    <span class="match-stake">Stake: {{ m.stake }} coins (${{ '%.2f'|format(m.stake / 100) }})</span>
-                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
-                </div>
-                <div class="match-players">
-                    {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
-                </div>
-                <a href="/match/{{ m.id }}" class="btn btn-info btn-sm">Spectate</a>
-            </div>
-            {% endfor %}
+    {% if not top_lobby %}
+    <p class="empty-text">No live lobby matches.</p>
+    {% endif %}
+  </div>
+
+
+  <div class="watch-section">
+    <h2>Top Tournament Matches</h2>
+
+    <div id="watch-tournament-container" class="match-list">
+      {% for item in tournament_display %}
+      <div class="match-card">
+        <div class="match-info">
+          <span class="match-stake">
+            Tournament Stake: {{ item.tournament.stake_amount }}
+          </span>
+          <span>
+            {{ item.p1.username if item.p1 else "?" }}
+            vs
+            {{ item.p2.username if item.p2 else "?" }}
+          </span>
+          <span class="mode-badge">
+            {{ item.round_name }}
+          </span>
         </div>
-        {% else %}
-        <p class="empty-text">No active lobby games right now.</p>
-        {% endif %}
+        <div class="match-actions">
+          <a href="{{ url_for('game.play', match_id=item.match.id) }}"
+             class="btn btn-primary">
+            Watch
+          </a>
+        </div>
+      </div>
+      {% endfor %}
     </div>
 
-    <div class="lobby-section">
-        <h2>Top Tournament Matches</h2>
-        <p class="subtitle" style="margin-bottom: 12px; font-size: 0.9em; color: #999;">Finals and semifinals are shown first, then sorted by stake importance.</p>
-        {% if tournament_display %}
-        <div class="match-list">
-            {% for td in tournament_display %}
-            <div class="match-card live-card tournament-live">
-                <div class="match-info">
-                    <span class="live-indicator">LIVE</span>
-                    <span class="tournament-round-badge">{{ td.round_name }}</span>
-                    <span class="match-stake">Buy-in: {{ td.tournament.stake_amount }} coins (${{ '%.2f'|format(td.tournament.stake_amount / 100) }})</span>
-                    <span class="mode-badge mode-{{ td.tournament.game_mode }}">{{ game_modes[td.tournament.game_mode].name if td.tournament.game_mode in game_modes else td.tournament.game_mode }}</span>
-                    <span class="tournament-size-badge">{{ td.tournament.max_players }}-player</span>
-                </div>
-                <div class="match-players">
-                    {{ td.p1.username if td.p1 else '?' }} vs {{ td.p2.username if td.p2 else '?' }}
-                </div>
-                <div class="match-actions">
-                    <a href="/match/{{ td.match.id }}" class="btn btn-info btn-sm">Spectate</a>
-                    <a href="/tournament/{{ td.tournament.id }}" class="btn btn-secondary btn-sm">View Bracket</a>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="empty-text">No active tournament matches right now.</p>
-        {% endif %}
-    </div>
+    {% if not tournament_display %}
+    <p class="empty-text">No live tournament matches.</p>
+    {% endif %}
+  </div>
+
 </div>
+
+<script>
+// -----------------------------
+// REST POLLING FOR WATCH PAGE
+// -----------------------------
+
+function refreshWatchPage() {
+    fetch("/watch?partial=1")
+        .then(r => r.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            const newLobby = doc.querySelector("#watch-lobby-container");
+            const newTournament = doc.querySelector("#watch-tournament-container");
+
+            if (newLobby) {
+                document.querySelector("#watch-lobby-container").innerHTML =
+                    newLobby.innerHTML;
+            }
+
+            if (newTournament) {
+                document.querySelector("#watch-tournament-container").innerHTML =
+                    newTournament.innerHTML;
+            }
+        })
+        .catch(() => {});
+}
+
+// Poll every 5 seconds (watch page needs slightly faster updates)
+setInterval(refreshWatchPage, 5000);
+
+// Refresh when tab becomes active
+document.addEventListener("visibilitychange", function() {
+    if (!document.hidden) {
+        refreshWatchPage();
+    }
+});
+</script>
+
 {% endblock %}

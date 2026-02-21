@@ -1,214 +1,220 @@
 {% extends "base.html" %}
 {% block title %}Lobby - Blackjack Platform{% endblock %}
 {% block content %}
+
 <div class="lobby">
-    <div class="lobby-header">
-        <h1>Game Lobby</h1>
-        <div class="user-info">
-            <span class="coins-display">Your Coins: <strong>{{ user.coins }}</strong></span>
+
+  <!-- HEADER -->
+  <div class="lobby-header">
+    <h1>Game Lobby</h1>
+    <div class="user-info">
+      <span class="coins-display">
+        Your Coins:
+        <strong id="coins-display">{{ user.coins }}</strong>
+      </span>
+    </div>
+  </div>
+
+
+  <!-- JACKPOT SECTION -->
+  {% if jackpot_pools %}
+  <div class="lobby-section jackpot-banner-section">
+    <div class="jackpot-banner">
+      <a href="/jackpots" style="text-decoration:none; color:inherit;">
+        <h3>Jackpot Pools</h3>
+
+        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+          <div>
+            <strong>Standard:</strong>
+            {{ jackpot_pools.standard.pool_amount if jackpot_pools.standard else 0 }} coins
+          </div>
+
+          <div>
+            <strong>Joker:</strong>
+            {{ jackpot_pools.joker.pool_amount if jackpot_pools.joker else 0 }} coins
+          </div>
         </div>
+      </a>
     </div>
+  </div>
+  {% endif %}
 
-    <div class="game-mode-tabs">
-        {% for mode_key, mode_info in game_modes.items() %}
-        <a href="/lobby?mode={{ mode_key }}" class="mode-tab {% if game_mode == mode_key %}active{% endif %}">
-            <span class="mode-name">{{ mode_info.name }}</span>
-            <span class="mode-desc">{{ mode_info.short }}</span>
-        </a>
-        {% endfor %}
-    </div>
 
-    {% if jackpot_pools %}
-    <div class="lobby-section jackpot-banner-section">
-        <div class="jackpot-banner">
-            <a href="/jackpots" style="text-decoration:none; color:inherit;">
-                <h3>Jackpot Pools</h3>
-                <div class="jackpot-banner-pools" style="display:flex; gap:20px; flex-wrap:wrap;">
-                    <div class="jackpot-banner-item">
-                        <span class="jackpot-banner-label">Standard</span>
-                        <span class="jackpot-banner-amount">{{ jackpot_pools.standard.pool_amount }} coins</span>
-                    </div>
-                    <div class="jackpot-banner-item">
-                        <span class="jackpot-banner-label">Joker</span>
-                        <span class="jackpot-banner-amount">{{ jackpot_pools.joker.pool_amount }} coins</span>
-                    </div>
-                </div>
-                <span class="jackpot-banner-range">Play matches to climb the leaderboard!</span>
+  <!-- ✅ YOUR ACTIVE GAMES -->
+  {% if my_active %}
+  <div class="lobby-section">
+    <h2>Your Active Games</h2>
+
+    <div class="match-list">
+
+      {% for m in my_active %}
+        {% set opponent = m.player2 if m.player1_id == user.id else m.player1 %}
+
+        <div class="match-card">
+
+          <div class="match-info">
+            <span class="match-stake">
+              Match #{{ m.id }}
+            </span>
+
+            <span>
+              vs {{ opponent.username if opponent else "Unknown" }}
+            </span>
+
+            <span class="mode-badge">
+              {{ game_modes[m.game_mode].name
+                 if m.game_mode in game_modes
+                 else m.game_mode }}
+            </span>
+          </div>
+
+          <div class="match-actions">
+
+            <!-- PLAY -->
+            <a href="{{ url_for('game.play', match_id=m.id) }}"
+               class="btn btn-primary">
+              Play
             </a>
-        </div>
-    </div>
-    {% endif %}
 
-    {% if vip %}
-    <div class="lobby-section vip-section">
-        <div class="vip-display">
-            <span class="vip-tier vip-{{ vip.tier|lower }}">{{ vip.tier }}</span>
-            <div class="vip-progress-bar">
-                <div class="vip-progress-fill" style="width: {{ vip.progress_percent }}%"></div>
-            </div>
-            {% if vip.next_tier[0] %}
-            <span class="vip-next">Next: {{ vip.next_tier[0] }} ({{ vip.total_wagered|int }}/{{ vip.next_tier[1]|int }})</span>
+            <!-- FORFEIT -->
+            <form method="POST"
+                  action="{{ url_for('game.forfeit_match', match_id=m.id) }}"
+                  onsubmit="return confirm('Are you sure you want to forfeit this match?');">
+              <button type="submit"
+                      class="btn btn-danger">
+                Forfeit
+              </button>
+            </form>
+
+          </div>
+        </div>
+
+      {% endfor %}
+
+    </div>
+  </div>
+  {% endif %}
+
+
+  <!-- CREATE MATCH -->
+  <div class="lobby-section">
+    <h2>Create a Match</h2>
+
+    <form method="POST"
+          action="{{ url_for('game.create_match') }}"
+          class="create-match-form">
+
+      <div class="form-group">
+        <label>Game Mode</label>
+        <select name="game_mode">
+          {% for mode_key, mode_info in game_modes.items() %}
+            <option value="{{ mode_key }}">
+              {{ mode_info.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Stake Amount (min 10 coins)</label>
+        <input type="number"
+               name="stake"
+               min="10"
+               max="{{ user.coins }}"
+               value="50"
+               required>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        Create Match
+      </button>
+    </form>
+  </div>
+
+
+  <!-- AVAILABLE MATCHES (WAITING ONLY) -->
+  <div class="lobby-section">
+    <h2>Available Matches</h2>
+
+    <div id="lobby-container" class="match-list">
+
+      {% for m in waiting %}
+
+        {% set is_creator = (m.player1_id == user.id) %}
+        {% set has_opponent = (m.player2_id is not none) %}
+
+        <div class="match-card">
+
+          <div class="match-info">
+            <span class="match-stake">
+              Stake: {{ m.stake }} coins
+            </span>
+
+            <span>
+              {{ m.player1.username }}
+              {% if m.player2 %}
+                vs {{ m.player2.username }}
+              {% else %}
+                (waiting)
+              {% endif %}
+            </span>
+
+            <span class="mode-badge">
+              {{ game_modes[m.game_mode].name
+                 if m.game_mode in game_modes
+                 else m.game_mode }}
+            </span>
+          </div>
+
+
+          <div class="match-actions">
+
+            {% if is_creator and not has_opponent %}
+
+              <!-- Creator can cancel waiting lobby -->
+              <form method="POST"
+                    action="{{ url_for('game.cancel_match', match_id=m.id) }}">
+                <button type="submit"
+                        class="btn btn-danger">
+                  Cancel Lobby
+                </button>
+              </form>
+
+            {% elif not has_opponent %}
+
+              <!-- Other player can join -->
+              <form method="POST"
+                    action="{{ url_for('game.join_match', match_id=m.id) }}">
+                <button type="submit"
+                        class="btn btn-success"
+                        {% if m.stake > user.coins %}disabled{% endif %}>
+                  Join
+                </button>
+              </form>
+
             {% else %}
-            <span class="vip-next">Max tier reached!</span>
+
+              <button type="button"
+                      class="btn btn-secondary"
+                      disabled>
+                Waiting...
+              </button>
+
             {% endif %}
+
+          </div>
         </div>
+
+      {% endfor %}
     </div>
+
+    {% if not waiting %}
+      <p class="empty-text">
+        No matches available.
+      </p>
     {% endif %}
+  </div>
 
-    {% if rakeback %}
-    {% set rb_pct = rakeback.rakeback_percent %}
-    <div class="lobby-section vip-section">
-        <div class="vip-display">
-            <span class="vip-tier vip-{{ rakeback.tier|lower }}">Rakeback: {{ rakeback.tier }}</span>
-            <span class="vip-next">{{ rb_pct }}% rakeback | Rake paid: {{ rakeback.total_rake_paid|int }} coins</span>
-            {% if rakeback.next_tier_info %}
-            <span class="vip-next">Next: {{ rakeback.next_tier_info.name }} ({{ rakeback.total_rake_paid|int }}/{{ rakeback.next_tier_info.threshold|int }} rake)</span>
-            {% else %}
-            <span class="vip-next">Max rakeback tier reached!</span>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="lobby-section">
-        <h2>Create a Match <span class="mode-badge mode-{{ game_mode }}">{{ game_modes[game_mode].name }}</span></h2>
-        <form method="POST" action="/create_match" class="create-match-form">
-            <input type="hidden" name="game_mode" value="{{ game_mode }}">
-            <div class="form-group">
-                <label for="stake">Stake Amount (min 10 coins)</label>
-                <input type="number" id="stake" name="stake" min="10" max="{{ user.coins }}" value="50" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Create Match</button>
-        </form>
-    </div>
-
-    {% if my_matches %}
-    <div class="lobby-section">
-        <h2>My Active Matches</h2>
-        <div class="match-list">
-            {% for m in my_matches %}
-            <div class="match-card">
-                <div class="match-info">
-                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
-                    <span class="match-status status-{{ m.status }}">{{ m.status }}</span>
-                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
-                </div>
-                <div class="match-players">
-                    {% if m.player1 %}{{ m.player1.username }}{% endif %}
-                    {% if m.player2 %} vs {{ m.player2.username }}{% endif %}
-                </div>
-                <div class="match-actions">
-                    {% if m.status == 'active' %}
-                        <a href="/match/{{ m.id }}" class="btn btn-success">Play</a>
-                        <form method="POST" action="/forfeit_match/{{ m.id }}" style="display:inline" onsubmit="return confirm('Are you sure you want to forfeit? Your stake will go to your opponent.')">
-                            <button type="submit" class="btn btn-danger btn-sm">Forfeit</button>
-                        </form>
-                    {% elif m.status == 'waiting' and m.player1_id == user.id %}
-                        <span class="waiting-text">Waiting for opponent...</span>
-                        <form method="POST" action="/cancel_match/{{ m.id }}" style="display:inline">
-                            <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
-                        </form>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    <div class="lobby-section">
-        <h2>Available Matches <span class="mode-badge mode-{{ game_mode }}">{{ game_modes[game_mode].name }}</span></h2>
-        <form method="GET" action="/lobby" class="filter-bar">
-            <input type="hidden" name="mode" value="{{ game_mode }}">
-            <div class="form-group" style="display:inline-block; width: 120px;">
-                <label>Min Stake</label>
-                <input type="number" name="min_stake" value="{{ min_stake }}" placeholder="Min" min="0">
-            </div>
-            <div class="form-group" style="display:inline-block; width: 120px;">
-                <label>Max Stake</label>
-                <input type="number" name="max_stake" value="{{ max_stake }}" placeholder="Max" min="0">
-            </div>
-            <div class="form-group" style="display:inline-block; width: 160px;">
-                <label>Sort By</label>
-                <select name="sort">
-                    <option value="newest" {% if sort_order == 'newest' %}selected{% endif %}>Newest First</option>
-                    <option value="low_high" {% if sort_order == 'low_high' %}selected{% endif %}>Stake: Low to High</option>
-                    <option value="high_low" {% if sort_order == 'high_low' %}selected{% endif %}>Stake: High to Low</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm" style="margin-top: 24px;">Filter</button>
-            <a href="/lobby?mode={{ game_mode }}" class="btn btn-secondary btn-sm" style="margin-top: 24px;">Clear</a>
-        </form>
-
-        {% if waiting %}
-        <div class="match-list" style="margin-top: 12px;">
-            {% for m in waiting %}
-            <div class="match-card">
-                <div class="match-info">
-                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
-                    <span>Created by: {{ m.player1.username }}</span>
-                </div>
-                <form method="POST" action="/join_match/{{ m.id }}">
-                    <button type="submit" class="btn btn-success" {% if m.stake > user.coins %}disabled title="Not enough coins"{% endif %}>
-                        Join ({{ m.stake }} coins)
-                    </button>
-                </form>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="empty-text" style="margin-top: 12px;">No matches found matching your filters.</p>
-        {% endif %}
-    </div>
-
-    {% if live_games %}
-    <div class="lobby-section">
-        <h2>Live Games - Watch Now</h2>
-        <div class="match-list">
-            {% for m in live_games %}
-            <div class="match-card live-card">
-                <div class="match-info">
-                    <span class="live-indicator">LIVE</span>
-                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
-                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
-                </div>
-                <div class="match-players">
-                    {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
-                </div>
-                <a href="/match/{{ m.id }}" class="btn btn-info btn-sm">Spectate</a>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    {% if history %}
-    <div class="lobby-section">
-        <h2>Recent Match History</h2>
-        <div class="match-list">
-            {% for m in history %}
-            <div class="match-card history-card">
-                <div class="match-info">
-                    <span class="match-stake">Stake: {{ m.stake }} coins</span>
-                    <span class="mode-badge mode-{{ m.game_mode }}">{{ game_modes[m.game_mode].name if m.game_mode in game_modes else m.game_mode }}</span>
-                    <span>
-                        {{ m.player1.username }} vs {{ m.player2.username if m.player2 else '?' }}
-                    </span>
-                </div>
-                <div class="match-result-text">
-                    {% if m.winner_id == user.id %}
-                        <span class="result-win">Won +{{ m.stake }} coins</span>
-                    {% elif m.winner_id %}
-                        <span class="result-lose">Lost -{{ m.stake }} coins</span>
-                    {% else %}
-                        <span class="result-tie">Tie - Stake returned</span>
-                    {% endif %}
-                </div>
-                <a href="/match/{{ m.id }}" class="btn btn-sm">View</a>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
 </div>
+
 {% endblock %}

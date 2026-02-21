@@ -20,7 +20,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=True)
     password_hash = db.Column(db.String(256), nullable=False)
-    coins = db.Column(db.Integer, default=1000, nullable=False)
+    coins = db.Column(db.Integer, default=0, nullable=False)
     affiliate_code = db.Column(db.String(20), unique=True, nullable=True)
     referred_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)

@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, abort
-from flask_login import login_required, current_user
+from auth import login_required
+from flask import session
 
 from extensions import db
 from models import Match

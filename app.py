@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, redirect
+from flask import Flask, redirect, url_for
 from extensions import db
 
 from auth import auth_bp, get_current_user
@@ -19,20 +19,20 @@ def create_app():
     # ---------------------------------------------------
     # BASIC CONFIG
     # ---------------------------------------------------
-    app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-fallback-key')
+    app.config["SECRET_KEY"] = os.environ.get("SESSION_SECRET", "dev-fallback-key")
 
-    database_url = os.environ.get('DATABASE_URL')
+    database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_recycle': 280,
-        'pool_pre_ping': True,
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+        "pool_recycle": 280,
+        "pool_pre_ping": True,
     }
 
-    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
     db.init_app(app)
 
@@ -49,13 +49,12 @@ def create_app():
     app.register_blueprint(jackpot_bp)
 
     # ---------------------------------------------------
-    # CREATE TABLES + FORCE IAMEARTH ADMIN
+    # CREATE TABLES + AUTO PROMOTE ADMIN
     # ---------------------------------------------------
     with app.app_context():
         try:
             db.create_all()
 
-            # Automatically ensure IAMEARTH is admin
             from models import User
 
             user = User.query.filter(
@@ -71,34 +70,34 @@ def create_app():
             print("Startup error:", e)
 
     # ---------------------------------------------------
-    # ROOT ENTRY → LOBBY
+    # ROOT ENTRY → GAME LOBBY
     # ---------------------------------------------------
     @app.route("/")
     def home():
-        return redirect("/lobby")
+        return redirect(url_for("game.lobby"))
 
     # ---------------------------------------------------
-    # HEALTH CHECK
+    # HEALTH CHECK (Render uses this)
     # ---------------------------------------------------
     @app.route("/health")
     def health_check():
         return "ok", 200
 
     # ---------------------------------------------------
-    # CONTEXT PROCESSOR
+    # TEMPLATE CONTEXT
     # ---------------------------------------------------
     @app.context_processor
     def inject_user():
         return dict(get_current_user=get_current_user)
 
     # ---------------------------------------------------
-    # DISABLE CACHE
+    # DISABLE CACHING (important for live game state)
     # ---------------------------------------------------
     @app.after_request
     def add_header(response):
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         return response
 
     return app
@@ -106,5 +105,6 @@ def create_app():
 
 app = create_app()
 
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)

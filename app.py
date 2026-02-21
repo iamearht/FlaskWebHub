@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask, redirect, url_for
+from flask import Flask
 from extensions import db, login_manager
 
 from auth import auth_bp, get_current_user
@@ -84,11 +84,11 @@ def create_app():
             print("Startup error:", e)
 
     # ---------------------------------------------------
-    # ROOT ENTRY → GAME LOBBY
+    # ROOT ENTRY (Render health probe safe)
     # ---------------------------------------------------
     @app.route("/")
     def home():
-        return redirect(url_for("game.lobby"))
+        return "OK", 200
 
     # ---------------------------------------------------
     # HEALTH CHECK (Render uses this)

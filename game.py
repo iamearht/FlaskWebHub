@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, abort, session, render_template
+from flask import Blueprint, request, jsonify, abort, session, render_template, redirect, url_for
 from auth import login_required
 from extensions import db
 from models import Match, User
@@ -45,7 +45,28 @@ def lobby():
 
     return render_template("lobby.html", user=user)
 
+# -------------------------------------------------------------------
+# Create Match
+# -------------------------------------------------------------------
 
+@game_bp.route("/create_match", methods=["POST"])
+@login_required
+def create_match():
+    user_id = session.get("user_id")
+    if not user_id:
+        abort(401)
+
+    # Create new match with current user as player1
+    match = Match(
+        player1_id=user_id,
+        player2_id=None,
+        started=False
+    )
+
+    db.session.add(match)
+    db.session.commit()
+
+    return redirect(url_for("game.lobby"))
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------

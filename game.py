@@ -85,10 +85,14 @@ def _set_timer_for_phase(match, state):
 
 
 def _settle_match(match, state):
-    result = state.get('match_result') or {}
+    # 🚨 Prevent double-settlement
+    if match.status == "finished":
+        return
+
+    result = (state or {}).get('match_result') or {}
     winner = result.get('winner')
 
-    total_pot = match.stake * 2
+    total_pot = (match.stake or 0) * 2
     is_tournament = match.tournament_match_id is not None
 
     # --- Calculate rake ---
@@ -101,7 +105,7 @@ def _settle_match(match, state):
     match.rake_amount = rake
     winnings = total_pot - rake
 
-    # --- Assign winner first ---
+    # --- Assign winner ---
     if winner == 1:
         match.winner_id = match.player1_id
     elif winner == 2:
@@ -110,7 +114,8 @@ def _settle_match(match, state):
         match.winner_id = None
 
     # --- Handle rake + jackpot ---
-    if rake > 0:
+    if rake > 0 and match.winner_id:
+
         rake_pct = get_lobby_rake_percent(match.stake)
 
         rt = RakeTransaction(
@@ -125,7 +130,9 @@ def _settle_match(match, state):
         jackpot_pct = get_jackpot_rake_percent()
         jackpot_contribution = int(rake * jackpot_pct / 100)
 
-        if jackpot_contribution > 0 and match.winner_id:
+        # 🔥 DO NOT create jackpot entry if zero
+        if jackpot_contribution > 0:
+
             pool_type = JackpotPool.pool_type_for_mode(match.game_mode)
             pool = JackpotPool.get_active_pool(pool_type)
 
@@ -133,7 +140,6 @@ def _settle_match(match, state):
                 pool.pool_amount += jackpot_contribution
                 db.session.add(pool)
 
-                # ✅ CORRECT JackpotEntry creation
                 je = JackpotEntry(
                     jackpot_id=pool.id,
                     user_id=match.winner_id,
@@ -150,7 +156,7 @@ def _settle_match(match, state):
         if user:
             user.coins += winnings
 
-    # --- Finalize match ---
+    # --- Finalize ---
     match.status = "finished"
 
 

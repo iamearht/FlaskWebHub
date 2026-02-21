@@ -6,7 +6,7 @@ import secrets
 import string
 import json
 
-db = SQLAlchemy()
+from extensions import db
 
 
 def generate_affiliate_code():

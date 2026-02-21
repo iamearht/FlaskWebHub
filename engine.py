@@ -50,6 +50,28 @@ SUIT_TO_CODE = {s: i for i, s in enumerate(CARD_SUITS)}
 CODE_TO_SUIT = {i: s for i, s in enumerate(CARD_SUITS)}
 
 # -----------------------------------------------------------------------------
+# Public Game Modes (for lobby display)
+# -----------------------------------------------------------------------------
+
+GAME_MODES = {
+    "classic": {
+        "name": "Classic",
+        "description": "Standard blackjack rules."
+    },
+    "classic_joker": {
+        "name": "Classic Joker",
+        "description": "Classic blackjack with jokers."
+    },
+    "interactive": {
+        "name": "Interactive",
+        "description": "Players control dealer actions."
+    },
+    "interactive_joker": {
+        "name": "Interactive Joker",
+        "description": "Interactive mode with jokers."
+    },
+}
+# -----------------------------------------------------------------------------
 # Utility helpers
 # -----------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 import os
 
 from flask import Flask, redirect, url_for
-from extensions import db
+from extensions import db, login_manager
 
 from auth import auth_bp, get_current_user
 from game import game_bp
@@ -34,7 +34,23 @@ def create_app():
 
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
+    # ---------------------------------------------------
+    # INIT EXTENSIONS
+    # ---------------------------------------------------
     db.init_app(app)
+
+    login_manager.init_app(app)
+    login_manager.login_view = "auth.login"
+
+    # Required for Flask-Login session loading
+    from models import User
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        try:
+            return User.query.get(int(user_id))
+        except Exception:
+            return None
 
     # ---------------------------------------------------
     # REGISTER BLUEPRINTS
@@ -54,8 +70,6 @@ def create_app():
     with app.app_context():
         try:
             db.create_all()
-
-            from models import User
 
             user = User.query.filter(
                 db.func.lower(User.username) == "iamearth"

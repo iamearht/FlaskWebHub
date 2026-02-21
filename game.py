@@ -53,10 +53,15 @@ def _get_match_or_404(match_id: int) -> Match:
 
 
 def _get_user_player_num(match: Match) -> int:
-    if current_user.id == match.player1_id:
+    user_id = session.get("user_id")
+    if not user_id:
+        abort(401, "Not authenticated")
+
+    if user_id == match.player1_id:
         return 1
-    if current_user.id == match.player2_id:
+    if user_id == match.player2_id:
         return 2
+
     abort(403, "Not a participant in this match")
 
 

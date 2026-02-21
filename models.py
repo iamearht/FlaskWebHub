@@ -396,19 +396,16 @@ class JackpotPool(db.Model):
 
 class JackpotEntry(db.Model):
     __tablename__ = 'jackpot_entries'
-    id = db.Column(db.Integer, primary_key=True)
 
+    id = db.Column(db.Integer, primary_key=True)
     jackpot_id = db.Column(db.Integer, db.ForeignKey('jackpot_pools.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False)
 
-    # NEW: store jackpot contribution amount for this entry (matches your game.py usage)
-    amount = db.Column(db.Integer, nullable=False, default=0)
-
-    # existing fields
     score = db.Column(db.Integer, nullable=False, default=0)
     finishing_chips = db.Column(db.Integer, nullable=False, default=0)
     match_stake = db.Column(db.Integer, nullable=False, default=0)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', backref='jackpot_entries')

@@ -1,6 +1,9 @@
 from flask import Blueprint, render_template
-from models import (db, User, AffiliateCommission, Match, RakeTransaction,
-                    get_affiliate_tiers, get_affiliate_tier_for_rake, get_affiliate_next_tier)
+from extensions import db
+from models import (
+    User, AffiliateCommission, Match, RakeTransaction,
+    get_affiliate_tiers, get_affiliate_tier_for_rake, get_affiliate_next_tier
+)
 from auth import login_required, get_current_user
 from sqlalchemy import func as sqlfunc
 

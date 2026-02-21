@@ -36,6 +36,8 @@ def create_app():
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
     db.init_app(app)
+    with app.app_context():
+    db.create_all()
 
     # ---------------------------------------------------
     # BLUEPRINTS
@@ -87,4 +89,5 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 

@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask
+from flask import Flask, redirect
 from extensions import db
 from models import db
 
@@ -18,13 +18,6 @@ def create_app():
     app = Flask(__name__)
 
     # ---------------------------------------------------
-    # TEST ROOT ROUTE
-    # ---------------------------------------------------
-    @app.route("/")
-    def test_home():
-        return "HOME WORKING"
-
-    # ---------------------------------------------------
     # BASIC CONFIG
     # ---------------------------------------------------
     app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-fallback-key')
@@ -35,7 +28,6 @@ def create_app():
 
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_recycle': 280,
         'pool_pre_ping': True,
@@ -58,7 +50,21 @@ def create_app():
     app.register_blueprint(jackpot_bp)
 
     # ---------------------------------------------------
-    # CONTEXT
+    # ROOT ENTRY → LOBBY
+    # ---------------------------------------------------
+    @app.route("/")
+    def home():
+        return redirect("/lobby")
+
+    # ---------------------------------------------------
+    # HEALTH CHECK
+    # ---------------------------------------------------
+    @app.route("/health")
+    def health_check():
+        return "ok", 200
+
+    # ---------------------------------------------------
+    # CONTEXT PROCESSOR
     # ---------------------------------------------------
     @app.context_processor
     def inject_user():
@@ -73,13 +79,6 @@ def create_app():
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
         return response
-
-    # ---------------------------------------------------
-    # HEALTH CHECK
-    # ---------------------------------------------------
-    @app.route('/health')
-    def health_check():
-        return 'ok', 200
 
     return app
 

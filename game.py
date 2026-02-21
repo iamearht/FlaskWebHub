@@ -1,8 +1,12 @@
-from flask import Blueprint, request, jsonify, abort, session, render_template, redirect, url_for
+from flask import (
+    Blueprint, request, jsonify, abort,
+    session, render_template, redirect, url_for
+)
 from auth import login_required
 from extensions import db
-from models import Match, User
+from models import Match, User, JackpotPool
 from engine import (
+    GAME_MODES,
     init_game_state,
     do_card_draw,
     make_choice,
@@ -17,69 +21,29 @@ from engine import (
     end_turn,
     apply_timeout,
     get_client_state,
-    set_decision_timer,
-    clear_decision_timer,
 )
 
 game_bp = Blueprint("game", __name__, url_prefix="/game")
 
-# -------------------------------------------------------------------
-# Lobby Route
-# -------------------------------------------------------------------
 
-from engine import GAME_MODES
-
-@game_bp.route("/lobby", methods=["GET"])
-@login_required
-def lobby():
-    user_id = session.get("user_id")
-    if not user_id:
-        abort(401)
-
-    user = db.session.get(User, user_id)
-    if not user:
-        abort(403)
-
-    return render_template(
-        "lobby.html",
-        user=user,
-        game_modes=GAME_MODES
-    )
-
-# -------------------------------------------------------------------
-# Create Match
-# -------------------------------------------------------------------
-
-@game_bp.route("/create_match", methods=["POST"])
-@login_required
-def create_match():
-    user_id = session.get("user_id")
-    if not user_id:
-        abort(401)
-
-    match = Match(
-        player1_id=user_id,
-        player2_id=None,
-        started=False,
-        is_spectatable=True,
-        rake_amount=0,
-        game_mode="classic"
-    )
-
-    db.session.add(match)
-    db.session.commit()
-
-    return redirect(url_for("game.lobby"))
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
+def _get_user_or_401() -> User:
+    user_id = session.get("user_id")
+    if not user_id:
+        abort(401)
+    user = db.session.get(User, user_id)
+    if not user:
+        abort(401)
+    return user
 
 def _get_match_or_404(match_id: int) -> Match:
     match = db.session.get(Match, match_id)
     if not match:
         abort(404, "Match not found")
     return match
-
 
 def _get_user_player_num(match: Match) -> int:
     user_id = session.get("user_id")
@@ -90,35 +54,257 @@ def _get_user_player_num(match: Match) -> int:
         return 1
     if user_id == match.player2_id:
         return 2
-
     abort(403, "Not a participant in this match")
+
+def _get_jackpot_pools_for_lobby():
+    # Lobby template expects jackpot_pools.standard / jackpot_pools.joker
+    standard = JackpotPool.get_active_pool("standard")
+    joker = JackpotPool.get_active_pool("joker")
+    return {"standard": standard, "joker": joker}
 
 
 # -------------------------------------------------------------------
-# Start Game
+# PAGES
+# -------------------------------------------------------------------
+
+@game_bp.route("/lobby", methods=["GET"])
+@login_required
+def lobby():
+    user = _get_user_or_401()
+
+    # Your active matches (active and user is player1 or player2)
+    my_active = (
+        Match.query
+        .filter(Match.status_code == Match.MATCH_STATUS["active"])
+        .filter((Match.player1_id == user.id) | (Match.player2_id == user.id))
+        .order_by(Match.id.desc())
+        .all()
+    )
+
+    # Waiting matches (waiting status)
+    waiting = (
+        Match.query
+        .filter(Match.status_code == Match.MATCH_STATUS["waiting"])
+        .order_by(Match.id.desc())
+        .all()
+    )
+
+    jackpot_pools = _get_jackpot_pools_for_lobby()
+
+    return render_template(
+        "lobby.html",
+        user=user,
+        game_modes=GAME_MODES,
+        my_active=my_active,
+        waiting=waiting,
+        jackpot_pools=jackpot_pools,
+    )
+
+
+@game_bp.route("/watch", methods=["GET"])
+@login_required
+def watch():
+    # watch.html expects top_lobby and tournament_display
+    top_lobby = (
+        Match.query
+        .filter(Match.status_code == Match.MATCH_STATUS["active"])
+        .filter(Match.is_spectatable.is_(True))
+        .order_by(Match.id.desc())
+        .limit(25)
+        .all()
+    )
+
+    # Your repo has tournament templates, but building full tournament_display
+    # depends on tournament logic; keep safe default to avoid crashes.
+    tournament_display = []
+
+    return render_template(
+        "watch.html",
+        top_lobby=top_lobby,
+        tournament_display=tournament_display,
+    )
+
+
+@game_bp.route("/play/<int:match_id>", methods=["GET"])
+@login_required
+def play(match_id):
+    user = _get_user_or_401()
+    match = _get_match_or_404(match_id)
+
+    # must be a participant
+    player_num = _get_user_player_num(match)
+
+    p1 = match.player1
+    p2 = match.player2
+
+    return render_template(
+        "game.html",
+        match=match,
+        p1=p1,
+        p2=p2,
+        player_num=player_num,
+        game_modes=GAME_MODES,
+    )
+
+
+@game_bp.route("/spectate/<int:match_id>", methods=["GET"])
+@login_required
+def spectate(match_id):
+    match = _get_match_or_404(match_id)
+    if not match.is_spectatable:
+        abort(403)
+
+    p1 = match.player1
+    p2 = match.player2
+
+    return render_template(
+        "spectate.html",
+        match=match,
+        p1=p1,
+        p2=p2,
+    )
+
+
+# -------------------------------------------------------------------
+# LOBBY ACTIONS (used by lobby.html forms)
+# -------------------------------------------------------------------
+
+@game_bp.route("/create_match", methods=["POST"])
+@login_required
+def create_match():
+    user = _get_user_or_401()
+
+    game_mode = request.form.get("game_mode", "classic")
+    stake_raw = request.form.get("stake", "0")
+
+    try:
+        stake = int(stake_raw)
+    except ValueError:
+        abort(400, "Invalid stake")
+
+    if stake < 10:
+        abort(400, "Minimum stake is 10")
+
+    if stake > int(user.coins):
+        abort(400, "Not enough coins")
+
+    # lock stake immediately (refund on cancel; payout on finish)
+    user.coins = int(user.coins) - stake
+
+    match = Match(
+        player1_id=user.id,
+        player2_id=None,
+        stake=stake,
+    )
+    match.game_mode = game_mode
+    match.status = "waiting"
+
+    db.session.add(match)
+    db.session.commit()
+
+    return redirect(url_for("game.lobby"))
+
+
+@game_bp.route("/cancel_match/<int:match_id>", methods=["POST"])
+@login_required
+def cancel_match(match_id):
+    user = _get_user_or_401()
+    match = _get_match_or_404(match_id)
+
+    if match.player1_id != user.id:
+        abort(403)
+    if match.status != "waiting":
+        abort(400, "Only waiting matches can be cancelled")
+    if match.player2_id is not None:
+        abort(400, "Cannot cancel after someone joined")
+
+    # refund creator stake
+    user.coins = int(user.coins) + int(match.stake)
+
+    db.session.delete(match)
+    db.session.commit()
+
+    return redirect(url_for("game.lobby"))
+
+
+@game_bp.route("/join_match/<int:match_id>", methods=["POST"])
+@login_required
+def join_match(match_id):
+    user = _get_user_or_401()
+    match = _get_match_or_404(match_id)
+
+    if match.status != "waiting":
+        abort(400, "Match is not joinable")
+    if match.player2_id is not None:
+        abort(400, "Match already has an opponent")
+    if match.player1_id == user.id:
+        abort(400, "You cannot join your own match")
+
+    if int(user.coins) < int(match.stake):
+        abort(400, "Not enough coins to join")
+
+    # lock joiner stake
+    user.coins = int(user.coins) - int(match.stake)
+
+    match.player2_id = user.id
+    match.status = "active"
+
+    db.session.commit()
+
+    # initialize game SQL state once both players exist
+    init_game_state(match)
+
+    return redirect(url_for("game.play", match_id=match.id))
+
+
+@game_bp.route("/forfeit_match/<int:match_id>", methods=["POST"])
+@login_required
+def forfeit_match(match_id):
+    user = _get_user_or_401()
+    match = _get_match_or_404(match_id)
+
+    if user.id not in (match.player1_id, match.player2_id):
+        abort(403)
+    if match.status == "finished":
+        return redirect(url_for("game.lobby"))
+
+    # opponent wins
+    winner_id = match.player2_id if user.id == match.player1_id else match.player1_id
+    match.winner_id = winner_id
+    match.status = "finished"
+
+    # payout: 2*stake to winner (simple)
+    winner = db.session.get(User, winner_id)
+    if winner:
+        winner.coins = int(winner.coins) + (int(match.stake) * 2)
+
+    db.session.commit()
+    return redirect(url_for("game.lobby"))
+
+
+# -------------------------------------------------------------------
+# API ROUTES (used by game.html JS)
 # -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/start", methods=["POST"])
 @login_required
 def start_game(match_id):
     match = _get_match_or_404(match_id)
-    user_num = _get_user_player_num(match)
+    _ = _get_user_player_num(match)
 
-    if match.started:
-        return jsonify({"error": "Match already started"}), 400
+    if match.status != "active":
+        return jsonify({"error": "Match is not active"}), 400
 
-    match.started = True
-    db.session.commit()
+    # If state already exists, init_game_state will wipe+rebuild; avoid double start.
+    # So only init if MatchState missing.
+    from models import MatchState
+    ms = MatchState.query.filter_by(match_id=match.id).first()
+    if not ms:
+        init_game_state(match)
 
-    init_game_state(match)
-
-    payload = get_client_state(match, user_num)
+    payload = get_client_state(match, _get_user_player_num(match))
     return jsonify(payload)
 
-
-# -------------------------------------------------------------------
-# Draw Card Phase
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/draw", methods=["POST"])
 @login_required
@@ -127,14 +313,8 @@ def draw_card(match_id):
     user_num = _get_user_player_num(match)
 
     do_card_draw(match)
+    return jsonify(get_client_state(match, user_num))
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
-
-
-# -------------------------------------------------------------------
-# Choice Phase
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/choice", methods=["POST"])
 @login_required
@@ -142,18 +322,12 @@ def choice(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     goes_first = bool(data.get("goes_first"))
-
     make_choice(match, goes_first)
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Place Bets
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/bet", methods=["POST"])
 @login_required
@@ -161,7 +335,7 @@ def bet(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     bets = data.get("bets", [])
 
     try:
@@ -169,13 +343,8 @@ def bet(match_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Insurance
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/insurance", methods=["POST"])
 @login_required
@@ -183,18 +352,12 @@ def insurance(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     decisions = data.get("decisions", [])
-
     handle_insurance(match, decisions)
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Player Action
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/action", methods=["POST"])
 @login_required
@@ -202,7 +365,7 @@ def action(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     action_type = data.get("action")
 
     try:
@@ -210,13 +373,8 @@ def action(match_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Dealer Action (interactive mode)
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/dealer_action", methods=["POST"])
 @login_required
@@ -224,7 +382,7 @@ def dealer_action_route(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     action_type = data.get("action")
 
     try:
@@ -232,13 +390,8 @@ def dealer_action_route(match_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Assign Joker (Player)
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/joker", methods=["POST"])
 @login_required
@@ -246,18 +399,12 @@ def assign_joker(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     values = data.get("values", [])
-
     assign_joker_values(match, values)
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Assign Joker (Dealer)
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/dealer_joker", methods=["POST"])
 @login_required
@@ -265,18 +412,12 @@ def assign_dealer_joker(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    data = request.get_json()
+    data = request.get_json() or {}
     values = data.get("values", [])
-
     assign_dealer_joker_values(match, values)
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))
 
-
-# -------------------------------------------------------------------
-# Next Round
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/next", methods=["POST"])
 @login_required
@@ -291,10 +432,6 @@ def next_round(match_id):
     return jsonify(payload)
 
 
-# -------------------------------------------------------------------
-# End Turn
-# -------------------------------------------------------------------
-
 @game_bp.route("/<int:match_id>/end_turn", methods=["POST"])
 @login_required
 def end_turn_route(match_id):
@@ -307,10 +444,6 @@ def end_turn_route(match_id):
     payload["match_over"] = ended
     return jsonify(payload)
 
-
-# -------------------------------------------------------------------
-# Timeout Handler
-# -------------------------------------------------------------------
 
 @game_bp.route("/<int:match_id>/timeout", methods=["POST"])
 @login_required
@@ -325,15 +458,10 @@ def timeout(match_id):
     return jsonify(payload)
 
 
-# -------------------------------------------------------------------
-# State Fetch
-# -------------------------------------------------------------------
-
 @game_bp.route("/<int:match_id>/state", methods=["GET"])
 @login_required
 def state(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    payload = get_client_state(match, user_num)
-    return jsonify(payload)
+    return jsonify(get_client_state(match, user_num))

@@ -1,5 +1,4 @@
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.ext.mutable import MutableDict
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import secrets
@@ -66,20 +65,48 @@ class User(db.Model):
 
 class WalletTransaction(db.Model):
     __tablename__ = 'wallet_transactions'
+
+    STATUS = {
+        'pending': 0,
+        'approved': 1,
+        'rejected': 2,
+    }
+    STATUS_LABEL = {v: k for k, v in STATUS.items()}
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
     type = db.Column(db.String(30), nullable=False)
     amount = db.Column(db.Integer, nullable=False)
+
     currency = db.Column(db.String(10), default='USD')
     crypto_address = db.Column(db.String(256), nullable=True)
     network = db.Column(db.String(50), nullable=True)
-    status = db.Column(db.String(20), default='pending')
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=STATUS['pending'],
+        nullable=False,
+        index=True
+    )
+
     description = db.Column(db.String(256), nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     processed_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship('User', backref='wallet_transactions')
 
+    @property
+    def status(self):
+        return self.STATUS_LABEL.get(int(self.status_code), 'pending')
+
+    @status.setter
+    def status(self, label):
+        if label not in self.STATUS:
+            raise ValueError(f"Invalid transaction status: {label}")
+        self.status_code = self.STATUS[label]
 
 class VIPProgress(db.Model):
     __tablename__ = 'vip_progress'
@@ -136,17 +163,45 @@ class VIPProgress(db.Model):
 
 class AffiliateCommission(db.Model):
     __tablename__ = 'affiliate_commissions'
+
+    STATUS = {
+        'pending': 0,
+        'approved': 1,
+        'paid': 2,
+    }
+    STATUS_LABEL = {v: k for k, v in STATUS.items()}
+
     id = db.Column(db.Integer, primary_key=True)
+
     referrer_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     referred_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     source_match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=True)
+
     amount = db.Column(db.Integer, nullable=False)
     rate = db.Column(db.Float, default=0.05)
-    status = db.Column(db.String(20), default='pending')
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=STATUS['pending'],
+        nullable=False,
+        index=True
+    )
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     referrer = db.relationship('User', foreign_keys=[referrer_id], backref='commissions_earned')
     referred_user = db.relationship('User', foreign_keys=[referred_user_id])
+
+    @property
+    def status(self):
+        return self.STATUS_LABEL.get(int(self.status_code), 'pending')
+
+    @status.setter
+    def status(self, label):
+        if label not in self.STATUS:
+            raise ValueError(f"Invalid commission status: {label}")
+        self.status_code = self.STATUS[label]
 
 
 GAME_MODES = {
@@ -162,50 +217,176 @@ GAME_MODE_LIST = list(GAME_MODES.keys())
 class Match(db.Model):
     __tablename__ = 'matches'
 
+    # ----------------------------
+    # ENUM STORAGE MAPS
+    # ----------------------------
+
+    MATCH_STATUS = {
+        'waiting': 0,
+        'active': 1,
+        'finished': 2,
+    }
+    MATCH_STATUS_LABEL = {v: k for k, v in MATCH_STATUS.items()}
+    _MATCH_STATUS_ALIASES = {
+        'completed': 'finished',
+    }
+
+    GAME_MODE_CODE = {mode: i for i, mode in enumerate(GAME_MODE_LIST)}
+    GAME_MODE_LABEL = {v: k for k, v in GAME_MODE_CODE.items()}
+
+    # ----------------------------
+    # CORE COLUMNS
+    # ----------------------------
+
     id = db.Column(db.Integer, primary_key=True)
+
     player1_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     player2_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
     stake = db.Column(db.Integer, nullable=False)
-    game_mode = db.Column(db.String(30), default='classic', nullable=False)
-    status = db.Column(db.String(20), default='waiting')
+
+    # Store integer codes in the existing column names
+    game_mode_code = db.Column(
+        'game_mode',
+        db.SmallInteger,
+        default=GAME_MODE_CODE['classic'],
+        nullable=False,
+        index=True
+    )
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=MATCH_STATUS['waiting'],
+        nullable=False,
+        index=True
+    )
+
     winner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    game_state = db.Column(MutableDict.as_mutable(db.JSON), nullable=True)
+
     decision_started_at = db.Column(db.Float, nullable=True)
     decision_type = db.Column(db.String(20), nullable=True)
+
     is_waiting_decision = db.Column(db.Boolean, default=False)
     is_spectatable = db.Column(db.Boolean, default=True)
+
     tournament_match_id = db.Column(db.Integer, db.ForeignKey('tournament_matches.id'), nullable=True)
+
     rake_amount = db.Column(db.Integer, default=0)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ----------------------------
+    # RELATIONSHIPS
+    # ----------------------------
 
     player1 = db.relationship('User', foreign_keys=[player1_id], backref='matches_as_p1')
     player2 = db.relationship('User', foreign_keys=[player2_id], backref='matches_as_p2')
     winner = db.relationship('User', foreign_keys=[winner_id])
 
+    # ----------------------------
+    # STRING-COMPATIBLE PROPERTIES
+    # ----------------------------
+
+    @property
+    def status(self) -> str:
+        return self.MATCH_STATUS_LABEL.get(int(self.status_code), 'waiting')
+
+    @status.setter
+    def status(self, label: str) -> None:
+        if label in self._MATCH_STATUS_ALIASES:
+            label = self._MATCH_STATUS_ALIASES[label]
+
+        if label not in self.MATCH_STATUS:
+            raise ValueError(f"Invalid match status: {label}")
+
+        self.status_code = self.MATCH_STATUS[label]
+
+    @property
+    def game_mode(self) -> str:
+        return self.GAME_MODE_LABEL.get(int(self.game_mode_code), 'classic')
+
+    @game_mode.setter
+    def game_mode(self, label: str) -> None:
+        if label not in self.GAME_MODE_CODE:
+            raise ValueError(f"Invalid game mode: {label}")
+
+        self.game_mode_code = self.GAME_MODE_CODE[label]
+
+    # ----------------------------
+    # INDEXES
+    # ----------------------------
+
     __table_args__ = (
-        db.Index('idx_match_status', 'status'),
         db.Index('idx_match_created', 'created_at'),
         db.Index('idx_match_player1', 'player1_id'),
         db.Index('idx_match_player2', 'player2_id'),
     )
 
-
 class Tournament(db.Model):
     __tablename__ = 'tournaments'
+
+    TOURNAMENT_STATUS = {
+        'waiting': 0,
+        'active': 1,
+        'completed': 2,
+    }
+    TOURNAMENT_STATUS_LABEL = {v: k for k, v in TOURNAMENT_STATUS.items()}
+
+    GAME_MODE_CODE = {mode: i for i, mode in enumerate(GAME_MODE_LIST)}
+    GAME_MODE_LABEL = {v: k for k, v in GAME_MODE_CODE.items()}
+
     id = db.Column(db.Integer, primary_key=True)
+
     stake_amount = db.Column(db.Integer, nullable=False)
     max_players = db.Column(db.Integer, default=8, nullable=False)
-    game_mode = db.Column(db.String(30), default='classic', nullable=False)
-    status = db.Column(db.String(20), default='waiting')
+
+    game_mode_code = db.Column(
+        'game_mode',
+        db.SmallInteger,
+        default=GAME_MODE_CODE['classic'],
+        nullable=False,
+        index=True
+    )
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=TOURNAMENT_STATUS['waiting'],
+        nullable=False,
+        index=True
+    )
+
     current_round = db.Column(db.String(20), default='round_1')
     prize_pool = db.Column(db.Integer, default=0)
     rake_amount = db.Column(db.Integer, default=0)
+
     started_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     entries = db.relationship('TournamentEntry', backref='tournament', lazy='dynamic')
     matches = db.relationship('TournamentMatch', backref='tournament', lazy='dynamic')
+
+    @property
+    def status(self):
+        return self.TOURNAMENT_STATUS_LABEL.get(int(self.status_code), 'waiting')
+
+    @status.setter
+    def status(self, label):
+        if label not in self.TOURNAMENT_STATUS:
+            raise ValueError(f"Invalid tournament status: {label}")
+        self.status_code = self.TOURNAMENT_STATUS[label]
+
+    @property
+    def game_mode(self):
+        return self.GAME_MODE_LABEL.get(int(self.game_mode_code), 'classic')
+
+    @game_mode.setter
+    def game_mode(self, label):
+        if label not in self.GAME_MODE_CODE:
+            raise ValueError(f"Invalid tournament game mode: {label}")
+        self.game_mode_code = self.GAME_MODE_CODE[label]
 
     STAKES = [500, 1000, 2500, 5000, 10000]
     PLAYER_SIZES = [8, 16, 32, 64, 128]
@@ -230,21 +411,66 @@ class TournamentEntry(db.Model):
 
 class TournamentMatch(db.Model):
     __tablename__ = 'tournament_matches'
+
+    # ----------------------------
+    # STATUS ENUM
+    # ----------------------------
+
+    STATUS = {
+        'pending': 0,
+        'active': 1,
+        'completed': 2,
+    }
+    STATUS_LABEL = {v: k for k, v in STATUS.items()}
+
+    # ----------------------------
+    # COLUMNS
+    # ----------------------------
+
     id = db.Column(db.Integer, primary_key=True)
+
     tournament_id = db.Column(db.Integer, db.ForeignKey('tournaments.id'), nullable=False)
     round = db.Column(db.String(20), nullable=False)
     bracket_position = db.Column(db.Integer, nullable=False)
+
     player1_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     player2_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
     match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=True)
     winner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    status = db.Column(db.String(20), default='pending')
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=STATUS['pending'],
+        nullable=False,
+        index=True
+    )
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ----------------------------
+    # RELATIONSHIPS
+    # ----------------------------
 
     player1 = db.relationship('User', foreign_keys=[player1_id])
     player2 = db.relationship('User', foreign_keys=[player2_id])
     winner = db.relationship('User', foreign_keys=[winner_id])
     game_match = db.relationship('Match', foreign_keys=[match_id])
+
+    # ----------------------------
+    # STRING PROPERTY
+    # ----------------------------
+
+    @property
+    def status(self):
+        return self.STATUS_LABEL.get(int(self.status_code), 'pending')
+
+    @status.setter
+    def status(self, label):
+        if label not in self.STATUS:
+            raise ValueError(f"Invalid tournament match status: {label}")
+        self.status_code = self.STATUS[label]
 
 
 class RakeTransaction(db.Model):
@@ -354,16 +580,47 @@ class RakebackProgress(db.Model):
 
 class JackpotPool(db.Model):
     __tablename__ = 'jackpot_pools'
+
+    # ----------------------------
+    # STATUS ENUM
+    # ----------------------------
+
+    STATUS = {
+        'inactive': 0,
+        'active': 1,
+        'paid': 2,
+    }
+    STATUS_LABEL = {v: k for k, v in STATUS.items()}
+
+    # ----------------------------
+    # COLUMNS
+    # ----------------------------
+
     id = db.Column(db.Integer, primary_key=True)
+
     stake_tier = db.Column(db.String(50), nullable=False, default='Main')
     pool_type = db.Column(db.String(20), nullable=False, default='standard')
+
     min_stake = db.Column(db.Integer, nullable=False, default=0)
     max_stake = db.Column(db.Integer, nullable=False, default=999999)
+
     pool_amount = db.Column(db.Integer, default=0, nullable=False)
-    status = db.Column(db.String(20), default='active', nullable=False)
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=STATUS['active'],
+        nullable=False,
+        index=True
+    )
+
     period_start = db.Column(db.DateTime, default=datetime.utcnow)
     paid_out_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ----------------------------
+    # RELATIONSHIPS
+    # ----------------------------
 
     entries = db.relationship('JackpotEntry', backref='jackpot', lazy='dynamic')
 
@@ -372,9 +629,31 @@ class JackpotPool(db.Model):
         'joker': 'Joker (Classic Joker & Interactive Joker)',
     }
 
+    # ----------------------------
+    # STRING PROPERTY
+    # ----------------------------
+
+    @property
+    def status(self):
+        return self.STATUS_LABEL.get(int(self.status_code), 'active')
+
+    @status.setter
+    def status(self, label):
+        if label not in self.STATUS:
+            raise ValueError(f"Invalid jackpot status: {label}")
+        self.status_code = self.STATUS[label]
+
+    # ----------------------------
+    # HELPERS
+    # ----------------------------
+
     @staticmethod
     def get_active_pool(pool_type='standard'):
-        pool = JackpotPool.query.filter_by(status='active', pool_type=pool_type).first()
+        pool = JackpotPool.query.filter(
+            JackpotPool.status_code == JackpotPool.STATUS['active'],
+            JackpotPool.pool_type == pool_type
+        ).first()
+
         if not pool:
             label = 'Standard' if pool_type == 'standard' else 'Joker'
             pool = JackpotPool(
@@ -383,10 +662,11 @@ class JackpotPool(db.Model):
                 min_stake=0,
                 max_stake=999999,
                 pool_amount=0,
-                status='active',
+                status='active'
             )
             db.session.add(pool)
             db.session.flush()
+
         return pool
 
     @staticmethod
@@ -517,6 +797,10 @@ class MatchState(db.Model):
     match_result_winner = db.Column(db.SmallInteger, nullable=True)
     match_result_reason = db.Column(db.String(40), nullable=True)
 
+    __table_args__ = (
+        db.Index('idx_match_state_phase', 'phase'),
+    )
+
 
 class MatchDrawDeckCard(db.Model):
     __tablename__ = 'match_draw_deck_cards'
@@ -541,7 +825,7 @@ class MatchTurn(db.Model):
     __tablename__ = 'match_turns'
 
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
-    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False, index=True)
     turn_index = db.Column(db.SmallInteger, nullable=False)
 
     player_role = db.Column(db.SmallInteger, nullable=False)
@@ -557,6 +841,7 @@ class MatchTurn(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('match_id', 'turn_index', name='uq_match_turn'),
+        db.Index('idx_turn_lookup', 'match_id', 'turn_index'),
     )
 
 
@@ -639,6 +924,32 @@ class MatchBox(db.Model):
 class MatchHand(db.Model):
     __tablename__ = 'match_hands'
 
+    # ----------------------------
+    # STATUS + RESULT ENUMS
+    # ----------------------------
+
+    STATUS = {
+        'active': 0,
+        'stand': 1,
+        'bust': 2,
+        'blackjack': 3,
+        'push': 4,
+        'lose': 5,
+    }
+    STATUS_LABEL = {v: k for k, v in STATUS.items()}
+
+    RESULT = {
+        'win': 1,
+        'lose': 2,
+        'push': 3,
+        'blackjack_win': 4,
+    }
+    RESULT_LABEL = {v: k for k, v in RESULT.items()}
+
+    # ----------------------------
+    # COLUMNS
+    # ----------------------------
+
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
 
     match_id = db.Column(db.Integer, db.ForeignKey('matches.id'), nullable=False, index=True)
@@ -648,12 +959,24 @@ class MatchHand(db.Model):
     hand_index = db.Column(db.SmallInteger, nullable=False)
 
     bet = db.Column(db.Integer, nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='active')
+
+    status_code = db.Column(
+        'status',
+        db.SmallInteger,
+        default=STATUS['active'],
+        nullable=False,
+        index=True
+    )
+
+    result_code = db.Column(
+        'result',
+        db.SmallInteger,
+        nullable=True,
+        index=True
+    )
 
     is_split = db.Column(db.Boolean, nullable=False, default=False)
     is_doubled = db.Column(db.Boolean, nullable=False, default=False)
-
-    result = db.Column(db.String(20), nullable=True)
 
     from_split_aces = db.Column(db.Boolean, nullable=False, default=False)
     from_split_jokers = db.Column(db.Boolean, nullable=False, default=False)
@@ -664,6 +987,35 @@ class MatchHand(db.Model):
         ),
         db.Index('idx_hand_lookup', 'match_id', 'turn_index', 'round_index'),
     )
+
+    # ----------------------------
+    # STRING PROPERTIES
+    # ----------------------------
+
+    @property
+    def status(self):
+        return self.STATUS_LABEL.get(int(self.status_code), 'active')
+
+    @status.setter
+    def status(self, label):
+        if label not in self.STATUS:
+            raise ValueError(f"Invalid hand status: {label}")
+        self.status_code = self.STATUS[label]
+
+    @property
+    def result(self):
+        if self.result_code is None:
+            return None
+        return self.RESULT_LABEL.get(int(self.result_code))
+
+    @result.setter
+    def result(self, label):
+        if label is None:
+            self.result_code = None
+            return
+        if label not in self.RESULT:
+            raise ValueError(f"Invalid hand result: {label}")
+        self.result_code = self.RESULT[label]
 
 class MatchHandCard(db.Model):
     __tablename__ = 'match_hand_cards'

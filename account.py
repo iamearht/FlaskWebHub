@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-from models import db, User, Match, WalletTransaction, VIPProgress
+from extensions import db
+from models import User, Match, WalletTransaction, VIPProgress
 from auth import login_required, get_current_user
 
 account_bp = Blueprint('account', __name__)

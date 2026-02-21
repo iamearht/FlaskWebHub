@@ -1,120 +1,91 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask_login import login_user, logout_user, login_required, current_user
 from extensions import db
 from models import User
-from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 
-auth_bp = Blueprint('auth', __name__)
-
-
-def _is_api_request():
-    # Treat any /api/* route as API (polling + AJAX calls)
-    return request.path.startswith('/api/')
+auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
-def login_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            if _is_api_request():
-                return jsonify({'error': 'Authentication required'}), 401
-            return redirect(url_for('auth.login'))
-
-        user = User.query.get(session['user_id'])
-        if not user:
-            session.clear()
-            if _is_api_request():
-                return jsonify({'error': 'Authentication required'}), 401
-            return redirect(url_for('auth.login'))
-
-        return f(*args, **kwargs)
-    return decorated
-
-
-def get_current_user():
-    if 'user_id' not in session:
-        return None
-    user = User.query.get(session['user_id'])
-    if not user:
-        session.clear()
-        return None
-    return user
-
-
-@auth_bp.route('/')
-def index():
-    if 'user_id' in session:
-        return redirect(url_for('game.lobby'))
-    return redirect(url_for('auth.login'))
-
-
-@auth_bp.route('/register', methods=['GET', 'POST'])
+@auth_bp.route("/register", methods=["GET", "POST"])
 def register():
-    ref_code = request.args.get('ref', '')
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        email = request.form.get('email', '').strip()
-        password = request.form.get('password', '').strip()
-        referral_code = request.form.get('referral_code', '').strip()
+    if current_user.is_authenticated:
+        return redirect(url_for("game.lobby"))
 
-        if not username or not password:
-            flash('Username and password are required.', 'error')
-            return render_template('register.html', ref_code=ref_code)
-        if len(username) < 3:
-            flash('Username must be at least 3 characters.', 'error')
-            return render_template('register.html', ref_code=ref_code)
-        if len(password) < 4:
-            flash('Password must be at least 4 characters.', 'error')
-            return render_template('register.html', ref_code=ref_code)
-        if User.query.filter(db.func.lower(User.username) == username.lower()).first():
-            flash('Username already taken.', 'error')
-            return render_template('register.html', ref_code=ref_code)
-        if email and User.query.filter_by(email=email).first():
-            flash('Email already in use.', 'error')
-            return render_template('register.html', ref_code=ref_code)
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
 
-        user = User(username=username)
-        if email:
-            user.email = email
-        user.set_password(password)
+        if not username or not email or not password:
+            flash("All fields are required.", "danger")
+            return render_template("register.html")
 
-        if referral_code:
-            referrer = User.query.filter_by(affiliate_code=referral_code).first()
-            if referrer:
-                user.referred_by_id = referrer.id
-            else:
-                flash('Invalid referral code, registration continues without it.', 'error')
+        if password != confirm_password:
+            flash("Passwords do not match.", "danger")
+            return render_template("register.html")
 
-        db.session.add(user)
-        db.session.flush()
-        user.ensure_affiliate_code()
-        db.session.commit()
+        if User.query.filter_by(username=username).first():
+            flash("Username already taken.", "danger")
+            return render_template("register.html")
 
-        session['user_id'] = user.id
-        flash('Registration successful! You start with 1000 coins.', 'success')
-        return redirect(url_for('game.lobby'))
+        if User.query.filter_by(email=email).first():
+            flash("Email already registered.", "danger")
+            return render_template("register.html")
 
-    return render_template('register.html', ref_code=ref_code)
+        try:
+            user = User(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+            )
+            db.session.add(user)
+            db.session.commit()
+
+            login_user(user)
+            flash("Registration successful!", "success")
+            return redirect(url_for("game.lobby"))
+
+        except Exception as e:
+            db.session.rollback()
+            flash("An error occurred during registration.", "danger")
+            return render_template("register.html")
+
+    return render_template("register.html")
 
 
-@auth_bp.route('/login', methods=['GET', 'POST'])
+@auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
+    if current_user.is_authenticated:
+        return redirect(url_for("game.lobby"))
 
-        user = User.query.filter(db.func.lower(User.username) == username.lower()).first()
-        if user and user.check_password(password):
-            session['user_id'] = user.id
-            return redirect(url_for('game.lobby'))
+    if request.method == "POST":
+        username_or_email = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
 
-        flash('Invalid username or password.', 'error')
+        if not username_or_email or not password:
+            flash("Please enter username/email and password.", "danger")
+            return render_template("login.html")
 
-    return render_template('login.html')
+        user = User.query.filter(
+            (User.username == username_or_email) |
+            (User.email == username_or_email.lower())
+        ).first()
+
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
+            flash("Logged in successfully.", "success")
+            return redirect(url_for("game.lobby"))
+
+        flash("Invalid credentials.", "danger")
+
+    return render_template("login.html")
 
 
-@auth_bp.route('/logout')
+@auth_bp.route("/logout")
+@login_required
 def logout():
-    session.clear()
-    flash('Logged out.', 'success')
-
-    return redirect(url_for('auth.login'))
+    logout_user()
+    flash("Logged out successfully.", "success")
+    return redirect(url_for("auth.login"))

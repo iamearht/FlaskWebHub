@@ -2,7 +2,7 @@ from flask import (
     Blueprint, request, jsonify, abort,
     session, render_template, redirect, url_for
 )
-from auth import login_required
+from flask_login import login_required, current_user
 from extensions import db
 from models import Match, User, JackpotPool
 from engine import (
@@ -31,13 +31,10 @@ game_bp = Blueprint("game", __name__, url_prefix="/game")
 # -------------------------------------------------------------------
 
 def _get_user_or_401() -> User:
-    user_id = session.get("user_id")
-    if not user_id:
+    # Flask-Login source of truth
+    if not current_user.is_authenticated:
         abort(401)
-    user = db.session.get(User, user_id)
-    if not user:
-        abort(401)
-    return user
+    return current_user
 
 def _get_match_or_404(match_id: int) -> Match:
     match = db.session.get(Match, match_id)
@@ -46,9 +43,10 @@ def _get_match_or_404(match_id: int) -> Match:
     return match
 
 def _get_user_player_num(match: Match) -> int:
-    user_id = session.get("user_id")
-    if not user_id:
+    if not current_user.is_authenticated:
         abort(401, "Not authenticated")
+
+    user_id = current_user.id
 
     if user_id == match.player1_id:
         return 1
@@ -230,29 +228,41 @@ def cancel_match(match_id):
 @game_bp.route("/join_match/<int:match_id>", methods=["POST"])
 @login_required
 def join_match(match_id):
-    user = _get_user_or_401()
+    # Flask-Login authenticated user
+    if not current_user.is_authenticated:
+        abort(401)
+
+    user = current_user
     match = _get_match_or_404(match_id)
 
+    # Must be waiting
     if match.status != "waiting":
         abort(400, "Match is not joinable")
+
+    # Already has opponent
     if match.player2_id is not None:
         abort(400, "Match already has an opponent")
+
+    # Cannot join your own match
     if match.player1_id == user.id:
         abort(400, "You cannot join your own match")
 
+    # Ensure sufficient balance
     if int(user.coins) < int(match.stake):
         abort(400, "Not enough coins to join")
 
-    # lock joiner stake
+    # Lock joiner stake
     user.coins = int(user.coins) - int(match.stake)
 
+    # Activate match
     match.player2_id = user.id
     match.status = "active"
 
-    db.session.commit()
-
-    # initialize game SQL state once both players exist
+    # Initialize SQL game state BEFORE commit
     init_game_state(match)
+
+    # Single atomic commit
+    db.session.commit()
 
     return redirect(url_for("game.play", match_id=match.id))
 

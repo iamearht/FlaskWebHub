@@ -30,13 +30,10 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-fallback-key')
 
     database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is not set")
 
-    if database_url:
-        app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    else:
-        app.config['SQLALCHEMY_DATABASE_URI'] = \
-            'sqlite:////home/IAMEARTH/Flask-Web-Hub/database.db'
-
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {

@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
-from models import db, User
+from extensions import db
+from models import User
 from functools import wraps
 
 auth_bp = Blueprint('auth', __name__)
@@ -115,4 +116,5 @@ def login():
 def logout():
     session.clear()
     flash('Logged out.', 'success')
+
     return redirect(url_for('auth.login'))

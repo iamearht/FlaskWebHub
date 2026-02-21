@@ -89,3 +89,11 @@ def logout():
     logout_user()
     flash("Logged out successfully.", "success")
     return redirect(url_for("auth.login"))
+
+
+
+
+
+def get_current_user():
+    return current_user if current_user.is_authenticated else None
+

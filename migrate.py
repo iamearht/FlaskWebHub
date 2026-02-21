@@ -1,4 +1,3 @@
-import os
 from sqlalchemy import text
 from extensions import db
 
@@ -14,7 +13,7 @@ def run_migrations():
     migrations = [
 
         # ------------------------------------------------------------------
-        # FIX jackpot_pools.status TYPE (VARCHAR -> SMALLINT)
+        # FIX jackpot_pools.status (VARCHAR -> SMALLINT)
         # ------------------------------------------------------------------
 
         """
@@ -48,7 +47,41 @@ def run_migrations():
         """,
 
         # ------------------------------------------------------------------
-        # ENSURE is_spectatable EXISTS ON match
+        # FIX matches.status (VARCHAR -> SMALLINT)  <-- THIS FIXES YOUR ERROR
+        # ------------------------------------------------------------------
+
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name='matches'
+                AND column_name='status'
+                AND data_type='character varying'
+            ) THEN
+                ALTER TABLE matches
+                ALTER COLUMN status TYPE SMALLINT
+                USING (
+                    CASE
+                        WHEN status ~ '^\\d+$' THEN status::smallint
+                        WHEN lower(status)='waiting' THEN 0
+                        WHEN lower(status)='active' THEN 1
+                        WHEN lower(status)='finished' THEN 2
+                        ELSE 0
+                    END
+                );
+            END IF;
+        END $$;
+        """,
+
+        """
+        ALTER TABLE matches
+        ALTER COLUMN status SET DEFAULT 0;
+        """,
+
+        # ------------------------------------------------------------------
+        # ENSURE is_spectatable EXISTS ON matches
         # ------------------------------------------------------------------
 
         """
@@ -57,17 +90,17 @@ def run_migrations():
             IF NOT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
-                WHERE table_name='match'
+                WHERE table_name='matches'
                 AND column_name='is_spectatable'
             ) THEN
-                ALTER TABLE match
+                ALTER TABLE matches
                 ADD COLUMN is_spectatable BOOLEAN DEFAULT TRUE;
             END IF;
         END $$;
         """,
 
         # ------------------------------------------------------------------
-        # ENSURE game_mode EXISTS ON match
+        # ENSURE game_mode EXISTS ON matches
         # ------------------------------------------------------------------
 
         """
@@ -76,17 +109,17 @@ def run_migrations():
             IF NOT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
-                WHERE table_name='match'
+                WHERE table_name='matches'
                 AND column_name='game_mode'
             ) THEN
-                ALTER TABLE match
+                ALTER TABLE matches
                 ADD COLUMN game_mode VARCHAR(50) DEFAULT 'classic';
             END IF;
         END $$;
         """,
 
         # ------------------------------------------------------------------
-        # ENSURE winner_id EXISTS ON match
+        # ENSURE winner_id EXISTS ON matches
         # ------------------------------------------------------------------
 
         """
@@ -95,10 +128,10 @@ def run_migrations():
             IF NOT EXISTS (
                 SELECT 1
                 FROM information_schema.columns
-                WHERE table_name='match'
+                WHERE table_name='matches'
                 AND column_name='winner_id'
             ) THEN
-                ALTER TABLE match
+                ALTER TABLE matches
                 ADD COLUMN winner_id INTEGER;
             END IF;
         END $$;
@@ -125,7 +158,6 @@ def run_migrations():
             match_result_reason VARCHAR(255)
         );
         """,
-
     ]
 
     for migration in migrations:

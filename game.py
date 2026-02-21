@@ -56,11 +56,13 @@ def create_match():
     if not user_id:
         abort(401)
 
-    # Create new match with current user as player1
     match = Match(
         player1_id=user_id,
         player2_id=None,
-        started=False
+        started=False,
+        is_spectatable=True,
+        rake_amount=0,
+        game_mode="classic"
     )
 
     db.session.add(match)
@@ -72,7 +74,7 @@ def create_match():
 # -------------------------------------------------------------------
 
 def _get_match_or_404(match_id: int) -> Match:
-    match = Match.query.get(match_id)
+    match = db.session.get(Match, match_id)
     if not match:
         abort(404, "Match not found")
     return match

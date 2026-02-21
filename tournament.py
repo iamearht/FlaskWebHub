@@ -3,8 +3,9 @@ from datetime import datetime
 import secrets
 import math
 
+from extensions import db
 from models import (
-    db, User, Match, Tournament, TournamentEntry, TournamentMatch,
+    User, Match, Tournament, TournamentEntry, TournamentMatch,
     RakeTransaction, get_tournament_rake_percent, get_tournament_payouts,
     GAME_MODES, GAME_MODE_LIST
 )
@@ -45,22 +46,28 @@ def get_round_display_name(round_name, total_rounds=None):
 
 
 def get_or_create_waiting_tournament(stake, max_players, game_mode='classic'):
-    tournament = Tournament.query.filter_by(
-        stake_amount=stake,
-        max_players=max_players,
-        game_mode=game_mode,
-        status='waiting'
+    # IMPORTANT: filter by *_code columns, not string properties
+    game_mode_code = Tournament.GAME_MODE_CODE.get(game_mode, Tournament.GAME_MODE_CODE['classic'])
+    waiting_code = Tournament.TOURNAMENT_STATUS['waiting']
+
+    tournament = Tournament.query.filter(
+        Tournament.stake_amount == stake,
+        Tournament.max_players == max_players,
+        Tournament.game_mode_code == game_mode_code,
+        Tournament.status_code == waiting_code,
     ).first()
+
     if not tournament:
         tournament = Tournament(
             stake_amount=stake,
             max_players=max_players,
-            game_mode=game_mode,
-            status='waiting',
+            game_mode=game_mode,   # property setter -> game_mode_code
+            status='waiting',      # property setter -> status_code
             prize_pool=0
         )
         db.session.add(tournament)
         db.session.flush()
+
     return tournament
 
 
@@ -123,7 +130,7 @@ def start_tournament(tournament):
             bracket_position=bracket_pos,
             player1_id=p1.user_id,
             player2_id=p2.user_id,
-            status='active',
+            status='active',   # property setter -> status_code
         )
         db.session.add(tm)
         db.session.flush()
@@ -147,7 +154,7 @@ def start_tournament(tournament):
                 tournament_id=tournament.id,
                 round=round_name,
                 bracket_position=pos,
-                status='pending',
+                status='pending',  # property setter -> status_code
             ))
 
     # Create third place slot
@@ -155,7 +162,7 @@ def start_tournament(tournament):
         tournament_id=tournament.id,
         round='third_place',
         bracket_position=0,
-        status='pending',
+        status='pending',  # property setter -> status_code
     ))
 
     db.session.commit()
@@ -186,7 +193,6 @@ def advance_tournament(tournament, completed_match_id, winner_id, loser_id):
         entry.eliminated_at = datetime.utcnow()
 
     total_rounds = int(math.log2(tournament.max_players))
-
     all_rounds = [get_round_name(r, total_rounds) for r in range(1, total_rounds + 1)]
 
     current_round_idx = None
@@ -298,9 +304,9 @@ def _create_game_match(tournament, player1_id, player2_id, tournament_match_id, 
         player1_id=player1_id,
         player2_id=player2_id,
         stake=0,
-        status='active',
+        status='active',               # property setter -> status_code
         is_spectatable=True,
-        game_mode=tournament.game_mode,
+        game_mode=tournament.game_mode,  # property setter -> game_mode_code
         tournament_match_id=tournament_match_id,
     )
     db.session.add(game_match)
@@ -313,7 +319,6 @@ def _create_game_match(tournament, player1_id, player2_id, tournament_match_id, 
     except TypeError:
         # Engine signature is init_game_state(match)
         init_game_state(game_match)
-        # If your init doesn't set is_heads_up, you should set it inside init_game_state itself.
 
     return game_match
 
@@ -362,7 +367,7 @@ def _check_tournament_complete(tournament):
         placements[3] = third.winner_id
         placements[4] = third_loser
     elif third and not third.player1_id and not third.player2_id:
-        third.status = 'cancelled'
+        third.status = 'cancelled'  # Note: your TournamentMatch.STATUS does not include 'cancelled'
 
     payouts = get_tournament_payouts(tournament.max_players)
 
@@ -397,6 +402,11 @@ def tournaments_page():
     if game_mode not in GAME_MODE_LIST:
         game_mode = 'classic'
 
+    game_mode_code = Tournament.GAME_MODE_CODE.get(game_mode, Tournament.GAME_MODE_CODE['classic'])
+    waiting_code = Tournament.TOURNAMENT_STATUS['waiting']
+    active_code = Tournament.TOURNAMENT_STATUS['active']
+    completed_code = Tournament.TOURNAMENT_STATUS['completed']
+
     my_entries = TournamentEntry.query.filter_by(user_id=user.id).all()
     my_tournament_ids = {e.tournament_id for e in my_entries}
 
@@ -404,9 +414,13 @@ def tournaments_page():
     for stake in Tournament.STAKES:
         stake_variants = []
         for size in Tournament.PLAYER_SIZES:
-            waiting = Tournament.query.filter_by(
-                stake_amount=stake, max_players=size, game_mode=game_mode, status='waiting'
+            waiting = Tournament.query.filter(
+                Tournament.stake_amount == stake,
+                Tournament.max_players == size,
+                Tournament.game_mode_code == game_mode_code,
+                Tournament.status_code == waiting_code
             ).first()
+
             entry_count = 0
             user_joined = False
             waiting_id = None
@@ -415,8 +429,11 @@ def tournaments_page():
                 user_joined = waiting.id in my_tournament_ids
                 waiting_id = waiting.id
 
-            active_list = Tournament.query.filter_by(
-                stake_amount=stake, max_players=size, game_mode=game_mode, status='active'
+            active_list = Tournament.query.filter(
+                Tournament.stake_amount == stake,
+                Tournament.max_players == size,
+                Tournament.game_mode_code == game_mode_code,
+                Tournament.status_code == active_code
             ).order_by(Tournament.started_at.desc()).limit(2).all()
 
             rake_pct = get_tournament_rake_percent(stake, size)
@@ -442,12 +459,18 @@ def tournaments_page():
             'variants': stake_variants,
         })
 
-    completed = Tournament.query.filter_by(status='completed')\
-        .order_by(Tournament.completed_at.desc()).limit(10).all()
+    completed = Tournament.query.filter(
+        Tournament.status_code == completed_code
+    ).order_by(Tournament.completed_at.desc()).limit(10).all()
 
-    return render_template('tournaments.html', user=user,
-                           tournament_data=tournament_data, completed=completed,
-                           game_mode=game_mode, game_modes=GAME_MODES)
+    return render_template(
+        'tournaments.html',
+        user=user,
+        tournament_data=tournament_data,
+        completed=completed,
+        game_mode=game_mode,
+        game_modes=GAME_MODES
+    )
 
 
 @tournament_bp.route('/tournament/join/<int:stake>/<int:size>', methods=['POST'])
@@ -478,7 +501,7 @@ def join_tournament(stake, size):
     ).first()
     if existing:
         flash('Already registered for this tournament.', 'error')
-        return redirect(url_for('tournament.tournaments_page'))
+        return redirect(url_for('tournament.tournaments_page', mode=game_mode))
 
     user.coins -= stake
     entry = TournamentEntry(tournament_id=tournament.id, user_id=user.id)
@@ -490,7 +513,7 @@ def join_tournament(stake, size):
         start_tournament(tournament)
 
     flash(f'Joined {stake} coin tournament! ({entry_count}/{size} players)', 'success')
-    return redirect(url_for('tournament.tournaments_page'))
+    return redirect(url_for('tournament.tournaments_page', mode=game_mode))
 
 
 @tournament_bp.route('/tournament/unregister/<int:tournament_id>', methods=['POST'])
@@ -525,10 +548,10 @@ def view_tournament(tournament_id):
     user = get_current_user()
     tournament = Tournament.query.get_or_404(tournament_id)
 
-    matches = TournamentMatch.query.filter_by(tournament_id=tournament_id)\
+    matches = TournamentMatch.query.filter_by(tournament_id=tournament_id) \
         .order_by(TournamentMatch.round, TournamentMatch.bracket_position).all()
 
-    entries = TournamentEntry.query.filter_by(tournament_id=tournament_id)\
+    entries = TournamentEntry.query.filter_by(tournament_id=tournament_id) \
         .order_by(TournamentEntry.seed).all()
 
     total_rounds = int(math.log2(tournament.max_players))

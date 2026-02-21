@@ -15,14 +15,11 @@
     </a>
 
     <div class="nav-links">
-        {% if session.get('user_id') %}
-            {% set nav_user = get_current_user() %}
+        {% if current_user.is_authenticated %}
 
-            {% if nav_user %}
-                <span class="nav-coins">
-                    {{ nav_user.coins }} coins
-                </span>
-            {% endif %}
+            <span class="nav-coins">
+                {{ current_user.coins }} coins
+            </span>
 
             <!-- Main Navigation -->
             <a href="{{ url_for('game.lobby') }}" class="nav-link">Lobby</a>
@@ -30,11 +27,11 @@
             <a href="{{ url_for('jackpot.leaderboard') }}" class="nav-link">Jackpots</a>
             <a href="{{ url_for('tournament.tournaments_page') }}" class="nav-link">Tournaments</a>
             <a href="{{ url_for('wallet.index') }}" class="nav-link">Wallet</a>
-            <a href="{{ url_for('account.index') }}" class="nav-link">Account</a>
+            <a href="{{ url_for('account.account_page') }}" class="nav-link">Account</a>
 
-            {% if nav_user and nav_user.is_admin %}
-                <a href="{{ url_for('admin.index') }}" 
-                   class="nav-link" 
+            {% if current_user.is_admin %}
+                <a href="{{ url_for('admin.index') }}"
+                   class="nav-link"
                    style="color: #f9a825;">
                     Admin
                 </a>
@@ -72,4 +69,3 @@
 
 </body>
 </html>
-

@@ -85,21 +85,24 @@ def _set_timer_for_phase(match, state):
 
 
 def _settle_match(match, state):
-    # 🚨 Prevent double-settlement
+    # 🚨 Prevent double settlement
     if match.status == "finished":
         return
 
-    result = (state or {}).get('match_result') or {}
+    state = state or {}
+    result = state.get('match_result') or {}
     winner = result.get('winner')
 
-    total_pot = (match.stake or 0) * 2
+    stake = match.stake or 0
+    total_pot = stake * 2
     is_tournament = match.tournament_match_id is not None
 
     # --- Calculate rake ---
-    if is_tournament or match.stake == 0:
+    if is_tournament or stake == 0:
         rake = 0
+        rake_pct = 0
     else:
-        rake_pct = get_lobby_rake_percent(match.stake)
+        rake_pct = get_lobby_rake_percent(stake)
         rake = int(total_pot * rake_pct / 100)
 
     match.rake_amount = rake
@@ -116,23 +119,22 @@ def _settle_match(match, state):
     # --- Handle rake + jackpot ---
     if rake > 0 and match.winner_id:
 
-        rake_pct = get_lobby_rake_percent(match.stake)
-
+        # Record rake transaction
         rt = RakeTransaction(
             source_type='match',
             source_id=match.id,
             amount=rake,
-            stake_amount=match.stake,
+            stake_amount=stake,
             rake_percent=rake_pct,
         )
         db.session.add(rt)
 
+        # Calculate jackpot contribution
         jackpot_pct = get_jackpot_rake_percent()
         jackpot_contribution = int(rake * jackpot_pct / 100)
 
-        # 🔥 DO NOT create jackpot entry if zero
+        # Only create jackpot entry if contribution > 0
         if jackpot_contribution > 0:
-
             pool_type = JackpotPool.pool_type_for_mode(match.game_mode)
             pool = JackpotPool.get_active_pool(pool_type)
 
@@ -144,7 +146,7 @@ def _settle_match(match, state):
                     jackpot_id=pool.id,
                     user_id=match.winner_id,
                     match_id=match.id,
-                    match_stake=match.stake,
+                    match_stake=stake,
                     score=0,
                     finishing_chips=0
                 )
@@ -152,11 +154,11 @@ def _settle_match(match, state):
 
     # --- Pay winner ---
     if match.winner_id and winnings > 0:
-        user = User.query.get(match.winner_id)
-        if user:
-            user.coins += winnings
+        winner_user = User.query.get(match.winner_id)
+        if winner_user:
+            winner_user.coins += winnings
 
-    # --- Finalize ---
+    # --- Finalize match ---
     match.status = "finished"
 
 

@@ -37,7 +37,7 @@ def create_app():
     db.init_app(app)
 
     # ---------------------------------------------------
-    # BLUEPRINTS
+    # REGISTER BLUEPRINTS
     # ---------------------------------------------------
     app.register_blueprint(auth_bp)
     app.register_blueprint(game_bp)
@@ -49,14 +49,13 @@ def create_app():
     app.register_blueprint(jackpot_bp)
 
     # ---------------------------------------------------
-    # CREATE TABLES (FREE PLAN FRIENDLY)
+    # CREATE TABLES (SAFE FOR FREE PLAN)
     # ---------------------------------------------------
     with app.app_context():
         try:
             db.create_all()
             print("Tables ensured.")
         except Exception as e:
-            # Don't crash the whole service on startup; print so it's visible in Render logs
             print("Table creation error:", e)
 
     # ---------------------------------------------------
@@ -72,6 +71,31 @@ def create_app():
     @app.route("/health")
     def health_check():
         return "ok", 200
+
+    # ---------------------------------------------------
+    # TEMP ADMIN BOOTSTRAP (REMOVE AFTER USE)
+    # Visit:
+    # /make_admin/<SECRET>/IAMEARTH
+    # ---------------------------------------------------
+    @app.route("/make_admin/<secret>/<username>")
+    def make_admin(secret, username):
+        admin_secret = os.environ.get("ADMIN_BOOTSTRAP_SECRET")
+        if not admin_secret or secret != admin_secret:
+            return "forbidden", 403
+
+        from models import User
+
+        user = User.query.filter(
+            db.func.lower(User.username) == username.lower()
+        ).first()
+
+        if not user:
+            return "user not found", 404
+
+        user.is_admin = True
+        db.session.commit()
+
+        return f"{user.username} is now admin", 200
 
     # ---------------------------------------------------
     # CONTEXT PROCESSOR

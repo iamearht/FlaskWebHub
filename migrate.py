@@ -47,7 +47,7 @@ def run_migrations():
         """,
 
         # ------------------------------------------------------------------
-        # FIX matches.status (VARCHAR -> SMALLINT)  <-- THIS FIXES YOUR ERROR
+        # FIX matches.status (VARCHAR -> SMALLINT)
         # ------------------------------------------------------------------
 
         """
@@ -100,7 +100,7 @@ def run_migrations():
         """,
 
         # ------------------------------------------------------------------
-        # ENSURE game_mode EXISTS ON matches
+        # ENSURE game_mode EXISTS AND IS SMALLINT
         # ------------------------------------------------------------------
 
         """
@@ -113,7 +113,27 @@ def run_migrations():
                 AND column_name='game_mode'
             ) THEN
                 ALTER TABLE matches
-                ADD COLUMN game_mode VARCHAR(50) DEFAULT 'classic';
+                ADD COLUMN game_mode SMALLINT DEFAULT 0;
+
+            ELSIF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name='matches'
+                AND column_name='game_mode'
+                AND data_type='character varying'
+            ) THEN
+                ALTER TABLE matches
+                ALTER COLUMN game_mode TYPE SMALLINT
+                USING (
+                    CASE
+                        WHEN game_mode ~ '^\\d+$' THEN game_mode::smallint
+                        WHEN lower(game_mode)='classic' THEN 0
+                        WHEN lower(game_mode)='interactive' THEN 1
+                        WHEN lower(game_mode)='classic_joker' THEN 2
+                        WHEN lower(game_mode)='interactive_joker' THEN 3
+                        ELSE 0
+                    END
+                );
             END IF;
         END $$;
         """,
@@ -138,24 +158,27 @@ def run_migrations():
         """,
 
         # ------------------------------------------------------------------
-        # ENSURE match_state TABLE EXISTS
+        # ENSURE match_state TABLE EXISTS (MATCHES MODEL EXACTLY)
         # ------------------------------------------------------------------
 
         """
         CREATE TABLE IF NOT EXISTS match_state (
-            id SERIAL PRIMARY KEY,
-            match_id INTEGER NOT NULL,
-            phase VARCHAR(50),
-            is_heads_up BOOLEAN DEFAULT FALSE,
-            draw_deck_pos INTEGER DEFAULT 0,
-            draw_winner INTEGER,
-            chooser INTEGER,
-            choice_made BOOLEAN DEFAULT FALSE,
+            match_id INTEGER PRIMARY KEY REFERENCES matches(id),
+
+            phase VARCHAR(30) NOT NULL DEFAULT 'CARD_DRAW',
+            is_heads_up BOOLEAN NOT NULL DEFAULT FALSE,
+
+            draw_deck_pos SMALLINT NOT NULL DEFAULT 0,
+            draw_winner SMALLINT,
+            chooser SMALLINT,
+            choice_made BOOLEAN NOT NULL DEFAULT FALSE,
             draw_timestamp DOUBLE PRECISION,
-            current_turn INTEGER DEFAULT 0,
-            match_over BOOLEAN DEFAULT FALSE,
-            match_result_winner INTEGER,
-            match_result_reason VARCHAR(255)
+
+            current_turn SMALLINT NOT NULL DEFAULT 0,
+
+            match_over BOOLEAN NOT NULL DEFAULT FALSE,
+            match_result_winner SMALLINT,
+            match_result_reason VARCHAR(40)
         );
         """,
     ]
@@ -170,3 +193,17 @@ def run_migrations():
             print("Migration skipped or failed safely:", e)
 
     print("Database migrations complete.")
+
+
+if __name__ == "__main__":
+    from flask import Flask
+    import os
+
+    app = Flask(__name__)
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    db.init_app(app)
+
+    with app.app_context():
+        run_migrations()

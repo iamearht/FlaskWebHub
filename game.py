@@ -27,14 +27,11 @@ game_bp = Blueprint("game", __name__, url_prefix="/game")
 # Lobby Route
 # -------------------------------------------------------------------
 
+from engine import GAME_MODES
+
 @game_bp.route("/lobby", methods=["GET"])
 @login_required
 def lobby():
-    """
-    Main game lobby page.
-    Required because auth.py redirects to url_for('game.lobby')
-    """
-
     user_id = session.get("user_id")
     if not user_id:
         abort(401)
@@ -43,7 +40,11 @@ def lobby():
     if not user:
         abort(403)
 
-    return render_template("lobby.html", user=user)
+    return render_template(
+        "lobby.html",
+        user=user,
+        game_modes=GAME_MODES
+    )
 
 # -------------------------------------------------------------------
 # Create Match

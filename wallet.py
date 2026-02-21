@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
-from models import db, User, WalletTransaction
+from extensions import db
+from models import User, WalletTransaction
 from auth import login_required, get_current_user
 from datetime import datetime
 

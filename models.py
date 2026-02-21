@@ -85,7 +85,7 @@ class VIPProgress(db.Model):
     __tablename__ = 'vip_progress'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
-    total_wagered = db.Column(db.Integer, default=0.0)
+    total_wagered = db.Column(db.Integer, default=0, nullable=False)
     tier = db.Column(db.String(20), default='Bronze')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -292,7 +292,7 @@ class RakebackProgress(db.Model):
     __tablename__ = 'rakeback_progress'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
-    total_rake_paid = db.Column(db.Integer, default=0.0)
+    total_rake_paid = db.Column(db.Integer, default=0, nullable=False)
     tier = db.Column(db.String(20), default='Bronze')
     period_start = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

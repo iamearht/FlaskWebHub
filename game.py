@@ -85,14 +85,13 @@ def _set_timer_for_phase(match, state):
 
 
 def _settle_match(match, state):
-    # Safely get result
     result = state.get('match_result') or {}
     winner = result.get('winner')
 
     total_pot = match.stake * 2
     is_tournament = match.tournament_match_id is not None
 
-    # Determine rake
+    # --- Calculate rake ---
     if is_tournament or match.stake == 0:
         rake = 0
     else:
@@ -101,6 +100,14 @@ def _settle_match(match, state):
 
     match.rake_amount = rake
     winnings = total_pot - rake
+
+    # --- Assign winner first ---
+    if winner == 1:
+        match.winner_id = match.player1_id
+    elif winner == 2:
+        match.winner_id = match.player2_id
+    else:
+        match.winner_id = None
 
     # --- Handle rake + jackpot ---
     if rake > 0:
@@ -118,7 +125,7 @@ def _settle_match(match, state):
         jackpot_pct = get_jackpot_rake_percent()
         jackpot_contribution = int(rake * jackpot_pct / 100)
 
-        if jackpot_contribution > 0:
+        if jackpot_contribution > 0 and match.winner_id:
             pool_type = JackpotPool.pool_type_for_mode(match.game_mode)
             pool = JackpotPool.get_active_pool(pool_type)
 
@@ -126,26 +133,16 @@ def _settle_match(match, state):
                 pool.pool_amount += jackpot_contribution
                 db.session.add(pool)
 
-                # Add jackpot entry for winner
-                if winner in (1, 2):
-                    winner_id = (
-                        match.player1_id if winner == 1 else match.player2_id
-                    )
-                    if winner_id:
-                        je = JackpotEntry(
-                            user_id=winner_id,
-                            match_id=match.id,
-                            amount=jackpot_contribution,
-                        )
-                        db.session.add(je)
-
-    # --- Assign winner ---
-    if winner == 1:
-        match.winner_id = match.player1_id
-    elif winner == 2:
-        match.winner_id = match.player2_id
-    else:
-        match.winner_id = None
+                # ✅ CORRECT JackpotEntry creation
+                je = JackpotEntry(
+                    jackpot_id=pool.id,
+                    user_id=match.winner_id,
+                    match_id=match.id,
+                    match_stake=match.stake,
+                    score=0,
+                    finishing_chips=0
+                )
+                db.session.add(je)
 
     # --- Pay winner ---
     if match.winner_id and winnings > 0:

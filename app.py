@@ -1,7 +1,7 @@
 import os
 import time
 
-from flask import Flask
+from flask import Flask, request, abort
 from extensions import db, login_manager
 
 from auth import auth_bp, get_current_user
@@ -13,8 +13,7 @@ from affiliate import affiliate_bp
 from admin import admin_bp
 from jackpot import jackpot_bp
 
-# 🔥 NEW IMPORTS FOR AUTO PROGRESSION
-from models import Match
+from models import Match, User
 from engine import check_timeout, apply_timeout
 
 
@@ -47,8 +46,6 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
 
-    from models import User
-
     @login_manager.user_loader
     def load_user(user_id):
         try:
@@ -69,49 +66,40 @@ def create_app():
     app.register_blueprint(jackpot_bp)
 
     # ---------------------------------------------------
-    # AUTO-PROGRESS STALE MATCHES
+    # AUTO-PROGRESS ON ANY REQUEST
     # ---------------------------------------------------
     @app.before_request
     def auto_progress_stale_matches():
         """
-        Ensures matches continue progressing even if both
-        players disconnect.
-
-        Runs synchronously on every request.
+        Ensures matches progress if timers expired.
+        Runs on every request.
         """
 
         try:
-            now = int(time.time())
-
-            # ⚡ IMPORTANT:
-            # Only load active matches.
-            # Do NOT scan finished or waiting matches.
             active_matches = (
                 Match.query
                 .filter(Match.status == "active")
-                .limit(50)  # safety cap per request
+                .limit(50)
                 .all()
             )
 
             updated = False
 
             for match in active_matches:
-                # Drain ALL expired transitions
                 loop_guard = 0
+
                 while check_timeout(match):
                     apply_timeout(match)
                     updated = True
 
                     loop_guard += 1
                     if loop_guard > 20:
-                        # Absolute safety guard against misconfigured engine logic
                         break
 
             if updated:
                 db.session.commit()
 
         except Exception as e:
-            # Never break the request pipeline
             print("Auto-progress error:", e)
             db.session.rollback()
 
@@ -135,18 +123,53 @@ def create_app():
             print("Startup error:", e)
 
     # ---------------------------------------------------
-    # ROOT ENTRY (Render health probe safe)
+    # ROOT ENTRY
     # ---------------------------------------------------
     @app.route("/")
     def home():
         return "OK", 200
 
     # ---------------------------------------------------
-    # HEALTH CHECK (Render uses this)
+    # HEALTH CHECK
     # ---------------------------------------------------
     @app.route("/health")
     def health_check():
         return "ok", 200
+
+    # ---------------------------------------------------
+    # CRON CLEANUP ENDPOINT
+    # ---------------------------------------------------
+    @app.route("/internal/cleanup")
+    def internal_cleanup():
+
+        # Security validation
+        if request.headers.get("X-CRON-KEY") != os.environ.get("CRON_SECRET"):
+            abort(403)
+
+        active_matches = (
+            Match.query
+            .filter(Match.status == "active")
+            .all()
+        )
+
+        updated = False
+
+        for match in active_matches:
+            loop_guard = 0
+
+            # Drain ALL expired transitions
+            while check_timeout(match):
+                apply_timeout(match)
+                updated = True
+
+                loop_guard += 1
+                if loop_guard > 50:
+                    break
+
+        if updated:
+            db.session.commit()
+
+        return "cleanup complete", 200
 
     # ---------------------------------------------------
     # TEMPLATE CONTEXT
@@ -156,7 +179,7 @@ def create_app():
         return dict(get_current_user=get_current_user)
 
     # ---------------------------------------------------
-    # DISABLE CACHING (important for live game state)
+    # DISABLE CACHING
     # ---------------------------------------------------
     @app.after_request
     def add_header(response):

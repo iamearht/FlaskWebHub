@@ -1,4 +1,5 @@
 import os
+import time
 
 from flask import Flask
 from extensions import db, login_manager
@@ -11,6 +12,10 @@ from tournament import tournament_bp
 from affiliate import affiliate_bp
 from admin import admin_bp
 from jackpot import jackpot_bp
+
+# 🔥 NEW IMPORTS FOR AUTO PROGRESSION
+from models import Match
+from engine import check_timeout, apply_timeout
 
 
 def create_app():
@@ -42,7 +47,6 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
 
-    # Required for Flask-Login session loading
     from models import User
 
     @login_manager.user_loader
@@ -63,6 +67,53 @@ def create_app():
     app.register_blueprint(affiliate_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(jackpot_bp)
+
+    # ---------------------------------------------------
+    # AUTO-PROGRESS STALE MATCHES
+    # ---------------------------------------------------
+    @app.before_request
+    def auto_progress_stale_matches():
+        """
+        Ensures matches continue progressing even if both
+        players disconnect.
+
+        Runs synchronously on every request.
+        """
+
+        try:
+            now = int(time.time())
+
+            # ⚡ IMPORTANT:
+            # Only load active matches.
+            # Do NOT scan finished or waiting matches.
+            active_matches = (
+                Match.query
+                .filter(Match.status == "active")
+                .limit(50)  # safety cap per request
+                .all()
+            )
+
+            updated = False
+
+            for match in active_matches:
+                # Drain ALL expired transitions
+                loop_guard = 0
+                while check_timeout(match):
+                    apply_timeout(match)
+                    updated = True
+
+                    loop_guard += 1
+                    if loop_guard > 20:
+                        # Absolute safety guard against misconfigured engine logic
+                        break
+
+            if updated:
+                db.session.commit()
+
+        except Exception as e:
+            # Never break the request pipeline
+            print("Auto-progress error:", e)
+            db.session.rollback()
 
     # ---------------------------------------------------
     # CREATE TABLES + AUTO PROMOTE ADMIN

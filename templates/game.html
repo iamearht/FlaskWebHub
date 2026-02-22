@@ -225,8 +225,7 @@ async function apiCall(endpoint, method, body) {
             headers: {'Content-Type': 'application/json'}
         };
         if (body) opts.body = JSON.stringify(body);
-
-        const r = await fetch('/api/match/' + MATCH_ID + '/' + endpoint, opts);
+        const r = await fetch('/game/' + MATCH_ID + '/' + endpoint, opts);
         if (!r.ok) return null;
 
         const data = await r.json();
@@ -247,7 +246,7 @@ async function fetchState() {
     isFetching = true;
 
     try {
-        const r = await fetch(`/api/match/${MATCH_ID}/state`);
+        const r = await fetch(`/game/${MATCH_ID}/state`);
         if (!r.ok) return;
 
         const data = await r.json();

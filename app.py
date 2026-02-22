@@ -1,6 +1,6 @@
 import os
 
-from flask import Flask
+from flask import Flask, request, abort
 from extensions import db, login_manager
 
 from auth import auth_bp, get_current_user
@@ -95,6 +95,39 @@ def create_app():
     @app.route("/health")
     def health_check():
         return "ok", 200
+
+    # ---------------------------------------------------
+    # CRON CLEANUP ENDPOINT
+    # ---------------------------------------------------
+    @app.route("/internal/cleanup")
+    def internal_cleanup():
+        from models import Match
+        from engine import check_timeout, apply_timeout
+        from extensions import db
+
+        # Security validation
+        if request.headers.get("X-CRON-KEY") != os.environ.get("CRON_SECRET"):
+            abort(403)
+
+        active_matches = Match.query.filter(Match.status == "active").all()
+
+        updated = False
+
+        for match in active_matches:
+            loop_guard = 0
+
+            while check_timeout(match):
+                apply_timeout(match)
+                updated = True
+
+                loop_guard += 1
+                if loop_guard > 50:
+                    break
+
+        if updated:
+            db.session.commit()
+
+        return "cleanup complete", 200
 
     # ---------------------------------------------------
     # TEMPLATE CONTEXT

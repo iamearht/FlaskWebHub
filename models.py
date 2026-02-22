@@ -345,36 +345,14 @@ class Match(db.Model):
 class Tournament(db.Model):
     __tablename__ = 'tournaments'
 
-    TOURNAMENT_STATUS = {
-        'waiting': 0,
-        'active': 1,
-        'completed': 2,
-    }
-    TOURNAMENT_STATUS_LABEL = {v: k for k, v in TOURNAMENT_STATUS.items()}
-
-    GAME_MODE_CODE = {mode: i for i, mode in enumerate(GAME_MODE_LIST)}
-    GAME_MODE_LABEL = {v: k for k, v in GAME_MODE_CODE.items()}
-
     id = db.Column(db.Integer, primary_key=True)
 
     stake_amount = db.Column(db.Integer, nullable=False)
     max_players = db.Column(db.Integer, default=8, nullable=False)
 
-    game_mode_code = db.Column(
-        'game_mode',
-        db.SmallInteger,
-        default=GAME_MODE_CODE['classic'],
-        nullable=False,
-        index=True
-    )
-
-    status_code = db.Column(
-        'status',
-        db.SmallInteger,
-        default=TOURNAMENT_STATUS['waiting'],
-        nullable=False,
-        index=True
-    )
+    # 🔥 MUST match production DB schema (VARCHAR columns)
+    game_mode = db.Column(db.String(30), nullable=False, default='classic', index=True)
+    status = db.Column(db.String(20), nullable=False, default='waiting', index=True)
 
     current_round = db.Column(db.String(20), default='round_1')
     prize_pool = db.Column(db.Integer, default=0)
@@ -386,26 +364,6 @@ class Tournament(db.Model):
 
     entries = db.relationship('TournamentEntry', backref='tournament', lazy='dynamic')
     matches = db.relationship('TournamentMatch', backref='tournament', lazy='dynamic')
-
-    @property
-    def status(self):
-        return self.TOURNAMENT_STATUS_LABEL.get(int(self.status_code), 'waiting')
-
-    @status.setter
-    def status(self, label):
-        if label not in self.TOURNAMENT_STATUS:
-            raise ValueError(f"Invalid tournament status: {label}")
-        self.status_code = self.TOURNAMENT_STATUS[label]
-
-    @property
-    def game_mode(self):
-        return self.GAME_MODE_LABEL.get(int(self.game_mode_code), 'classic')
-
-    @game_mode.setter
-    def game_mode(self, label):
-        if label not in self.GAME_MODE_CODE:
-            raise ValueError(f"Invalid tournament game mode: {label}")
-        self.game_mode_code = self.GAME_MODE_CODE[label]
 
     STAKES = [500, 1000, 2500, 5000, 10000]
     PLAYER_SIZES = [8, 16, 32, 64, 128]

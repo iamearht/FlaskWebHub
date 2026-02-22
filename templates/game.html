@@ -337,11 +337,11 @@ function renderState(s) {
         return;
     }
 
-    if (s.phase === 'CARD_DRAW' || (s.phase === 'CHOICE' && !drawAnimationDone)) {
-        phaseEl.textContent = 'Card Draw';
-        showCardDrawAnimation(s);
-        return;
-    }
+    if (s.phase === 'CARD_DRAW') {
+    phaseEl.textContent = 'Card Draw';
+    showCardDrawAnimation(s);
+    return;
+}
 
     if (s.phase === 'CHOICE') {
         phaseEl.textContent = 'Choose Role';
@@ -359,6 +359,7 @@ function renderState(s) {
     }
 
     if (!s.is_my_turn) {
+
         if (s.round && s.phase !== 'WAITING_BETS') {
             phaseEl.textContent = s.i_am_dealer ? "Watching Player" : "Watching Opponent";
             showTable(s);

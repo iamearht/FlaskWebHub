@@ -293,7 +293,7 @@ def advance_tournament(tournament, completed_match_id, winner_id, loser_id):
 
 
 # ------------------------------------------------------------
-# Match creation (SQL-only engine init)
+# Match creation helpers
 # ------------------------------------------------------------
 
 def _create_game_match(tournament, player1_id, player2_id, tournament_match_id, is_heads_up):
@@ -437,6 +437,11 @@ def tournaments_page():
             ).order_by(Tournament.started_at.desc()).limit(2).all()
 
             rake_pct = get_tournament_rake_percent(stake, size)
+            try:
+                rake_pct = float(rake_pct)
+            except (TypeError, ValueError):
+                rake_pct = 5.0  # safe fallback
+
             payouts = get_tournament_payouts(size)
             total_entry = stake * size
             rake = int(total_entry * rake_pct / 100)

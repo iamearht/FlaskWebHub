@@ -367,7 +367,7 @@ def _check_tournament_complete(tournament):
         placements[3] = third.winner_id
         placements[4] = third_loser
     elif third and not third.player1_id and not third.player2_id:
-        third.status = 'cancelled'  # Note: your TournamentMatch.STATUS does not include 'cancelled'
+        third.status = 'completed' # Note: your TournamentMatch.STATUS does not include 'cancelled'
 
     payouts = get_tournament_payouts(tournament.max_players)
 

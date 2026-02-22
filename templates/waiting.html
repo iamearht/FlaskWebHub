@@ -1,108 +1,85 @@
-{% extends "base.html" %}
-{% block title %}Waiting for Opponent{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waiting Room</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body { background:#111; color:#fff; font-family:Arial, sans-serif; margin:0; }
+        .wrap { max-width:900px; margin:30px auto; padding:20px; }
+        .card {
+            background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: 0 0 25px rgba(0,0,0,0.55);
+        }
+        .row { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+        .btn {
+            background:#222; border:1px solid #444; color:#fff;
+            padding:8px 14px; border-radius:8px; cursor:pointer;
+            transition:0.15s; text-decoration:none; display:inline-block;
+        }
+        .btn:hover { background:#333; }
+        .muted { opacity:0.75; }
+        .badge {
+            display:inline-block; padding:3px 8px; border-radius:999px;
+            background:rgba(0,0,0,0.25);
+            border:1px solid rgba(255,255,255,0.15);
+            margin-left:6px; font-size:12px;
+        }
+    </style>
+</head>
+<body>
 
-{% block content %}
-<div class="waiting-room" style="text-align:center; padding:40px;">
-    <h1>Waiting for Opponent</h1>
+{% include 'base.html' %}
 
-    <p style="font-size:18px;">
-        Match Stake: <strong>{{ match.stake }} coins</strong>
-    </p>
+<div class="wrap">
+    <div class="card">
+        <div class="row">
+            <div>
+                <div class="muted">Waiting for opponent…</div>
+                <div>
+                    <span class="muted">Match</span>
+                    <span class="badge">#{{ match.id }}</span>
+                </div>
+            </div>
+            <div>
+                <a class="btn" href="{{ url_for('main.lobby') }}">Back</a>
+            </div>
+        </div>
 
-    <div class="spinner" style="margin:30px auto;"></div>
-
-    <p style="opacity:0.8;">
-        Share this page with a friend to play!
-    </p>
-
-    <form method="POST" action="/cancel_match/{{ match.id }}">
-        <button type="submit" class="btn btn-danger">
-            Cancel Match
-        </button>
-    </form>
+        <p class="muted" style="margin-top:14px;">
+            This page will auto-refresh game state and redirect when ready.
+        </p>
+    </div>
 </div>
 
-<!-- Notification container -->
-<div id="matchNotificationContainer"></div>
-
-{% endblock %}
-
-
-{% block scripts %}
 <script>
-(function() {
-    var matchId = {{ match.id }};
-    var notificationShown = false;
-    var intervalId = null;
+    const matchId = {{ match.id }};
 
-    function checkMatchStatus() {
-        if (notificationShown) return;
+    async function poll() {
+        try {
+            const r = await fetch('/game/' + matchId + '/state');
+            if (!r.ok) return;
 
-        fetch('/api/match/' + matchId + '/state')
-            .then(function(response) {
-                return response.json();
-            })
-            .then(function(data) {
-                if (data.status === 'active' && !notificationShown) {
-                    notificationShown = true;
-                    clearInterval(intervalId);
-                    showNotification();
-                }
-            })
-            .catch(function() {
-                // silently ignore polling errors
-            });
+            const j = await r.json();
+
+            // If server tells client to enter game, redirect.
+            // (Your backend may set flags like `ready_to_play` or similar.)
+            if (j && (j.ready_to_play || j.can_start || j.phase)) {
+                // Send player into game play page
+                window.location.href = "{{ url_for('game.play', match_id=match.id) }}";
+            }
+        } catch (e) {
+            console.error(e);
+        }
     }
 
-    function showNotification() {
-        var container = document.getElementById("matchNotificationContainer");
-
-        container.innerHTML = `
-            <div style="
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: #1f2937;
-                color: white;
-                padding: 20px;
-                border-radius: 12px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-                z-index: 9999;
-                min-width: 220px;
-                animation: fadeIn 0.3s ease-in-out;
-            ">
-                <div style="font-size:16px; font-weight:bold; margin-bottom:10px;">
-                    Opponent Joined!
-                </div>
-
-                <button id="playButton" style="
-                    background: #22c55e;
-                    border: none;
-                    padding: 8px 14px;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    width: 100%;
-                ">
-                    Play
-                </button>
-            </div>
-        `;
-
-        document.getElementById("playButton").addEventListener("click", function() {
-            window.location.href = "/match/" + matchId;
-        });
-    }
-
-    // Start polling every 2 seconds
-    intervalId = setInterval(checkMatchStatus, 2000);
-})();
+    setInterval(poll, 1200);
+    poll();
 </script>
 
-<style>
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-</style>
-{% endblock %}
+</body>
+</html>

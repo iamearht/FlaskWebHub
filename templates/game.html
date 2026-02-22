@@ -1,866 +1,334 @@
-{% extends "base.html" %}
-{% block title %}Match #{{ match.id }} - Blackjack 1v1{% endblock %}
-{% block content %}
-<div class="game-container" id="game" data-match-id="{{ match.id }}" data-player-num="{{ player_num }}" data-game-mode="{{ match.game_mode }}">
-    <div class="game-mode-indicator mode-{{ match.game_mode }}">{{ game_modes[match.game_mode].name if match.game_mode in game_modes else match.game_mode }}</div>
-    <div class="game-header">
-        <div class="player-info p1 {% if player_num == 1 %}you{% endif %}">
-            <span class="player-name">{{ p1.username }}{% if player_num == 1 %} (You){% endif %}</span>
-            <span class="player-score" id="p1-score"></span>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            margin: 0;
+        }
+        .table {
+            background: #1f8f3a;
+            border-radius: 20px;
+            margin: 20px auto;
+            max-width: 1100px;
+            min-height: 650px;
+            position: relative;
+            padding: 20px;
+            box-shadow: 0 0 35px rgba(0,0,0,0.6);
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn {
+            background: #222;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .btn:hover { background: #333; }
+        .btn.primary { background: #0f62fe; border-color: #0f62fe; }
+        .btn.danger { background: #d93025; border-color: #d93025; }
+        .game-area {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 20px;
+        }
+        .panel {
+            background: rgba(0,0,0,0.25);
+            border-radius: 14px;
+            padding: 14px;
+            min-height: 220px;
+        }
+        .cards {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .card {
+            width: 55px;
+            height: 78px;
+            border-radius: 10px;
+            background: #eee;
+            color: #111;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+        }
+        .card.back {
+            background: linear-gradient(135deg, #444, #111);
+            color: #eee;
+        }
+        .status {
+            margin-top: 12px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .actions {
+            margin-top: 14px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .log {
+            margin-top: 12px;
+            background: rgba(0,0,0,0.25);
+            border-radius: 12px;
+            padding: 10px;
+            font-size: 13px;
+            max-height: 170px;
+            overflow: auto;
+        }
+        .muted { opacity: 0.75; }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.15);
+            margin-left: 6px;
+            font-size: 12px;
+        }
+        .center {
+            text-align: center;
+        }
+        .money {
+            font-weight: bold;
+        }
+        .small {
+            font-size: 12px;
+        }
+        .timer {
+            font-weight: bold;
+            opacity: 0.9;
+        }
+        .panel h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .panel h4 {
+            margin: 10px 0 0;
+            font-size: 15px;
+            opacity: 0.95;
+        }
+        .split-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .alert {
+            background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 10px;
+            margin-top: 12px;
+        }
+        .alert.good { border-color: rgba(60,210,120,0.5); }
+        .alert.bad { border-color: rgba(220,60,60,0.5); }
+    </style>
+</head>
+<body>
+
+{% include 'base.html' %}
+
+<div class="table">
+    <div class="top-bar">
+        <div>
+            <span class="muted">Match</span>
+            <span class="badge">#{{ match.id }}</span>
+            {% if match.tournament_match_id %}
+                <span class="badge">Tournament</span>
+            {% endif %}
         </div>
-        <div class="game-meta">
-            <span class="stake-info">Stake: {{ match.stake }} coins</span>
-            <span class="turn-info" id="turn-info"></span>
-            <div class="timer-display" id="timer-display" style="display:none">
-                <span class="timer-bar-container"><span class="timer-bar" id="timer-bar"></span></span>
-                <span class="timer-text" id="timer-text"></span>
-            </div>
-        </div>
-        <div class="player-info p2 {% if player_num == 2 %}you{% endif %}">
-            <span class="player-name">{{ p2.username }}{% if player_num == 2 %} (You){% endif %}</span>
-            <span class="player-score" id="p2-score"></span>
+        <div>
+            <a class="btn" href="{{ url_for('main.lobby') }}">Back</a>
+            {% if match.is_spectatable %}
+                <a class="btn" href="{{ url_for('main.watch', match_id=match.id) }}">Watch</a>
+            {% endif %}
         </div>
     </div>
 
-    <div class="game-board" id="game-board">
-        <div id="phase-display" class="phase-display"></div>
-
-        <div id="card-draw-area" class="game-area" style="display:none">
-            <h2>Card Draw</h2>
-            <p>Drawing cards to determine who chooses their role...</p>
-            <div id="draw-cards-display" class="draw-cards-display"></div>
-            <div id="draw-result-text" class="draw-result-text"></div>
+    <div class="game-area">
+        <div class="panel" id="dealerPanel">
+            <h3>Dealer</h3>
+            <div class="cards" id="dealerCards"></div>
+            <div class="status" id="dealerStatus"></div>
         </div>
 
-        <div id="choice-area" class="game-area" style="display:none">
-            <h2 id="choice-title"></h2>
-            <p id="choice-pattern-text">The match has 4 turns in a 1-2-2-1 pattern. If you go first as Player, you'll play: Player, Bank, Bank, Player.</p>
-            <div id="choice-draw-cards" class="draw-cards-display"></div>
-            <div class="choice-buttons">
-                <button class="btn btn-primary" id="btn-go-player">Go First as Player</button>
-                <button class="btn btn-secondary" id="btn-go-bank">Go First as Bank</button>
-            </div>
-        </div>
+        <div class="panel" id="playerPanel">
+            <h3>You</h3>
+            <div class="cards" id="playerCards"></div>
+            <div class="status" id="playerStatus"></div>
 
-        <div id="betting-area" class="game-area" style="display:none">
-            <h3>Place Your Bets <span id="chips-display" class="chips-badge"></span></h3>
-            <div class="bet-boxes">
-                <div class="bet-box">
-                    <label>Box 1</label>
-                    <input type="number" id="bet1" min="1" value="10" class="bet-input">
-                </div>
-                <div class="bet-box">
-                    <label>Box 2 (optional)</label>
-                    <input type="number" id="bet2" min="0" value="0" class="bet-input">
-                </div>
-                <div class="bet-box">
-                    <label>Box 3 (optional)</label>
-                    <input type="number" id="bet3" min="0" value="0" class="bet-input">
-                </div>
-            </div>
-            <button class="btn btn-primary" id="btn-place-bets">Deal</button>
-        </div>
+            <div class="actions" id="actionButtons"></div>
 
-        <div id="insurance-area" class="game-area" style="display:none">
-            <h3>Dealer shows an Ace! Insurance?</h3>
-            <p>Insurance costs half of each hand's bet. Pays 2:1 if dealer has Blackjack.</p>
-            <div id="insurance-hands"></div>
-            <button class="btn btn-primary" id="btn-insurance-submit">Confirm Insurance</button>
-        </div>
-
-        <div id="table-area" class="game-area" style="display:none">
-            <div id="table-top-section"></div>
-            <div id="table-bottom-section"></div>
-        </div>
-
-        <div id="joker-choice-area" class="game-area" style="display:none">
-            <h3>Choose Joker Value</h3>
-            <p id="joker-choice-desc">Pick a value (A,2-10) for your Joker:</p>
-            <div id="joker-choice-hand" class="card-row"></div>
-            <div id="joker-value-selectors"></div>
-            <button class="btn btn-primary" id="btn-joker-confirm" disabled>Confirm</button>
-        </div>
-
-        <div id="dealer-joker-choice-area" class="game-area" style="display:none">
-            <h3>Dealer: Choose Joker Value</h3>
-            <p>Pick a value (A,2-10) for the dealer's Joker:</p>
-            <div id="dealer-joker-hand" class="card-row"></div>
-            <div id="dealer-joker-value-selectors"></div>
-            <button class="btn btn-primary" id="btn-dealer-joker-confirm" disabled>Confirm</button>
-        </div>
-
-        <div id="action-area" class="action-area" style="display:none">
-            <button class="btn btn-primary" id="btn-hit">Hit</button>
-            <button class="btn btn-warning" id="btn-stand">Stand</button>
-            <button class="btn btn-info" id="btn-double">Double</button>
-            <button class="btn btn-secondary" id="btn-split">Split</button>
-        </div>
-
-        <div id="dealer-action-area" class="action-area" style="display:none">
-            <span id="dealer-action-label" class="dealer-label"></span>
-            <button class="btn btn-primary" id="btn-dealer-hit">Hit</button>
-            <button class="btn btn-warning" id="btn-dealer-stand">Stand</button>
-        </div>
-
-        <div id="round-result-area" class="game-area" style="display:none">
-            <h3>Round Complete</h3>
-            <p id="round-result-chips"></p>
-            <p id="round-result-auto" style="color:#aaa;font-size:0.85em"></p>
-        </div>
-
-        <div id="waiting-opponent" class="game-area" style="display:none">
-            <h3 id="waiting-opponent-title">Opponent's Turn</h3>
-            <p id="waiting-opponent-desc">Watching the other player...</p>
-            <div class="spinner"></div>
-        </div>
-
-        <div id="match-over-area" class="game-area" style="display:none">
-            <h2 id="match-over-title"></h2>
-            <div id="match-over-details"></div>
-            <a href="/match/{{ match.id }}" class="btn btn-primary">View Full Results</a>
+            <div class="log" id="logBox"></div>
         </div>
     </div>
 </div>
-{% endblock %}
-{% block scripts %}
+
 <script>
-const MATCH_ID = {{ match.id }};
-const PLAYER_NUM = {{ player_num }};
-let currentState = null;
-let polling = null;
-let actionLock = false;
-let timerInterval = null;
-let timerEnd = null;
-let drawAnimationDone = false;
-let drawRevealTimeout = null;
-let localDrawStart = null;
-let roundResultAutoTimer = null;
-let lastPhase = null;
-let isFetching = false;
+    const MATCH_ID = {{ match.id }};
+    const USER_ID = {{ user.id }};
 
-const GAME_MODE = document.getElementById('game').dataset.gameMode;
+    let state = null;
+    let pollTimer = null;
 
-function cardHtml(card) {
-    if (card.rank === '?') return '<div class="card card-back">?</div>';
-    if (card.rank === 'JOKER' || card.suit === 'joker') {
-        if (card.chosen_value !== undefined && card.chosen_value !== null) {
-            return '<div class="card card-joker joker-assigned">JKR<span class="joker-value">' + card.chosen_value + '</span><span class="suit">&#9733;</span></div>';
-        }
-        return '<div class="card card-joker joker-unassigned">JKR<span class="suit">&#9733;</span></div>';
-    }
-    const suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
-    const color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
-    return '<div class="card card-' + color + '">' + card.rank + '<span class="suit">' + suitSymbols[card.suit] + '</span></div>';
-}
-
-function cardBackHtml() {
-    return '<div class="card card-back">?</div>';
-}
-
-function startTimer(seconds) {
-
-    const timerEl   = document.getElementById('timer-display');
-    const timerText = document.getElementById('timer-text');
-    const timerBar  = document.getElementById('timer-bar');
-
-    // Clear any existing timer
-    if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
+    function el(id) { return document.getElementById(id); }
+    function log(msg) {
+        const box = el('logBox');
+        const line = document.createElement('div');
+        line.textContent = msg;
+        box.appendChild(line);
+        box.scrollTop = box.scrollHeight;
     }
 
-    // Hide if no valid time
-    if (!seconds || seconds <= 0) {
-        timerEl.style.display = 'none';
-        return;
+    function renderCards(container, cards) {
+        container.innerHTML = '';
+        if (!cards) return;
+        for (const c of cards) {
+            const div = document.createElement('div');
+            div.className = 'card' + (c.hidden ? ' back' : '');
+            div.textContent = c.hidden ? '🂠' : (c.rank + c.suit);
+            container.appendChild(div);
+        }
     }
 
-    timerEl.style.display = 'block';
+    function setStatus(elem, txt) {
+        elem.textContent = txt || '';
+    }
 
-    const totalTime = seconds;
-    timerEnd = Date.now() + (seconds * 1000);
+    function clearActions() {
+        el('actionButtons').innerHTML = '';
+    }
 
-    timerInterval = setInterval(() => {
+    function addBtn(label, endpoint, payload=null, cls='btn') {
+        const b = document.createElement('button');
+        b.className = cls;
+        b.textContent = label;
+        b.onclick = async () => {
+            try {
+                await callAction(endpoint, payload);
+            } catch (e) {
+                console.error(e);
+                log('Action failed: ' + e);
+            }
+        };
+        el('actionButtons').appendChild(b);
+    }
 
-        const remainingMs = timerEnd - Date.now();
-        const remaining   = Math.max(0, remainingMs / 1000);
-
-        // Update text
-        timerText.textContent = Math.ceil(remaining) + 's';
-
-        // Update bar width
-        const percent = (remaining / totalTime) * 100;
-        timerBar.style.width = percent + '%';
-
-        // Critical styling under 5s
-        if (remaining <= 5) {
-            timerBar.classList.add('timer-critical');
-        } else {
-            timerBar.classList.remove('timer-critical');
-        }
-
-        // Time expired
-        if (remaining <= 0) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-
-            timerBar.style.width = '0%';
-
-            // Small delay avoids race with server update
-            setTimeout(() => {
-                fetchState();
-            }, 80);
-        }
-
-    }, 100);
-}
-
-async function apiCall(endpoint, method, body) {
-    if (actionLock) return null;
-    actionLock = true;
-
-    try {
+    async function callAction(endpoint, payload=null) {
         const opts = {
-            method: method,
-            headers: {'Content-Type': 'application/json'}
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload ? JSON.stringify(payload) : null
         };
-        if (body) opts.body = JSON.stringify(body);
-
-        const r = await fetch('/api/match/' + MATCH_ID + '/' + endpoint, opts);
-        if (!r.ok) return null;
-
-        const data = await r.json();
-        if (data.error) return null;
-
-        // 🔥 FORCE FAST RESYNC AFTER ACTION
-        setTimeout(fetchState, 120);
-
-        return data;
-
-    } finally {
-        actionLock = false;
-    }
-}
-
-async function fetchState() {
-    if (isFetching) return;   // prevent overlap
-    isFetching = true;
-
-    try {
-        const r = await fetch(`/api/match/${MATCH_ID}/state`);
-        if (!r.ok) return;
-
-        const data = await r.json();
-        if (!data) return;
-
-        // 🔥 PHASE CHANGE = INSTANT HARD RENDER
-        if (data.phase !== lastPhase) {
-            lastPhase = data.phase;
-            renderState(data);
-            return;
+        const r = await fetch('/game/' + MATCH_ID + '/' + endpoint, opts);
+        if (!r.ok) {
+            const t = await r.text();
+            throw new Error(r.status + ' ' + t);
         }
-
-        renderState(data);
-
-    } catch (e) {
-        console.warn("State fetch failed");
-    } finally {
-        isFetching = false;
-    }
-}
-
-function hideAll() {
-    var els = document.querySelectorAll('.game-area, #action-area, #dealer-action-area, #joker-choice-area, #dealer-joker-choice-area');
-    for (var i = 0; i < els.length; i++) els[i].style.display = 'none';
-}
-
-function getPlayerScoreText(s, playerKey) {
-    var last = null;
-    var lastIdx = 0;
-    for (var i = 4; i >= 1; i--) {
-        var val = s.results[playerKey + '_turn' + i];
-        if (val !== null && val !== undefined) {
-            last = val;
-            lastIdx = i;
-            break;
-        }
-    }
-    if (last === null) return '-';
-    var maxTurns = s.is_heads_up ? 4 : 2;
-    if (lastIdx >= maxTurns) return 'Final: ' + last;
-    return 'R' + lastIdx + ': ' + last;
-}
-
-function renderState(s) {
-    currentState = s;
-    hideAll();
-
-    // Ensure joker UI never stays visible after phase change
-    if (s.phase !== 'JOKER_CHOICE') {
-        document.getElementById('joker-choice-area').style.display = 'none';
+        const j = await r.json();
+        state = j;
+        renderState();
     }
 
-    if (s.phase !== 'DEALER_JOKER_CHOICE') {
-        document.getElementById('dealer-joker-choice-area').style.display = 'none';
-    }
+    function renderState() {
+        if (!state) return;
 
-    // rest of renderState continues here...
+        // Cards
+        renderCards(el('dealerCards'), state.dealer_cards);
+        renderCards(el('playerCards'), state.player_cards);
 
-    // If we left the setup phases, reset the draw animation state (prevents getting stuck)
-    if (s.phase !== 'CARD_DRAW' && s.phase !== 'CHOICE') {
-        drawAnimationDone = false;
-        localDrawStart = null;
-        if (drawRevealTimeout) { clearTimeout(drawRevealTimeout); drawRevealTimeout = null; }
-    }
+        // Status text
+        setStatus(el('dealerStatus'), state.dealer_status_text);
+        setStatus(el('playerStatus'), state.player_status_text);
 
-    var allBtns = document.querySelectorAll('.game-area button, #action-area button, #dealer-action-area button');
-    for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = false;
+        // Actions
+        clearActions();
 
-    document.getElementById('p1-score').textContent = getPlayerScoreText(s, 'player1');
-    document.getElementById('p2-score').textContent = getPlayerScoreText(s, 'player2');
+        // Primary flow
+        if (state.can_start) addBtn('Start', 'start', null, 'btn primary');
+        if (state.can_draw) addBtn('Draw', 'draw');
+        if (state.can_stand) addBtn('Stand', 'end_turn');
 
-    var turnText = '';
-    if (s.phase === 'CARD_DRAW' || s.phase === 'CHOICE') {
-        turnText = 'Setup';
-    } else {
-        var totalTurns = s.total_turns || 4;
-        turnText = 'Turn ' + Math.min(s.current_turn + 1, totalTurns) + '/' + totalTurns;
-    }
-    document.getElementById('turn-info').textContent = turnText;
-
-    var phaseEl = document.getElementById('phase-display');
-
-    if (s.match_over || s.phase === 'MATCH_OVER') {
-        phaseEl.textContent = 'Match Over';
-        showMatchOver(s);
-        stopPolling();
-        document.getElementById('timer-display').style.display = 'none';
-        return;
-    }
-
-    if (s.phase === 'CARD_DRAW' || (s.phase === 'CHOICE' && !drawAnimationDone)) {
-        phaseEl.textContent = 'Card Draw';
-        showCardDrawAnimation(s);
-        return;
-    }
-
-    if (s.phase === 'CHOICE') {
-        phaseEl.textContent = 'Choose Role';
-        showChoice(s);
-        if (s.is_my_turn) {
-            stopPolling();
-            if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
-                startTimer(s.timer_remaining);
+        // Choice-based actions
+        if (state.can_choice && state.choice_options) {
+            for (const opt of state.choice_options) {
+                addBtn(opt.label, 'choice', { choice: opt.value });
             }
-        } else {
-            document.getElementById('timer-display').style.display = 'none';
-            startPolling();
         }
-        return;
-    }
 
-    if (!s.is_my_turn) {
-        if (s.round && s.phase !== 'WAITING_BETS') {
-            phaseEl.textContent = s.i_am_dealer ? "Watching Player" : "Watching Opponent";
-            showTable(s);
-            document.getElementById('waiting-opponent').style.display = 'block';
-            document.getElementById('waiting-opponent-title').textContent = s.i_am_dealer ? "Player's Turn" : "Opponent's Turn";
-            document.getElementById('waiting-opponent-desc').textContent = 'Watching live...';
-        } else {
-            phaseEl.textContent = "Opponent's Turn";
-            document.getElementById('waiting-opponent').style.display = 'block';
-            document.getElementById('waiting-opponent-title').textContent = "Opponent's Turn";
-            document.getElementById('waiting-opponent-desc').textContent = 'Waiting for the other player...';
-        }
-        document.getElementById('timer-display').style.display = 'none';
-        startPolling();
-        return;
-    }
-
-    stopPolling();
-
-    if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
-        startTimer(s.timer_remaining);
-    }
-
-    if (s.phase === 'WAITING_BETS') {
-        phaseEl.textContent = 'Place Bets';
-        showBetting(s);
-    } else if (s.phase === 'INSURANCE') {
-        phaseEl.textContent = 'Insurance';
-        showTable(s);
-        showInsurance(s);
-    } else if (s.phase === 'JOKER_CHOICE') {
-        phaseEl.textContent = 'Choose Joker Value';
-        showTable(s);
-        showJokerChoice(s);
-    } else if (s.phase === 'DEALER_JOKER_CHOICE') {
-        phaseEl.textContent = 'Dealer: Choose Joker Value';
-        showTable(s);
-        showDealerJokerChoice(s);
-    } else if (s.phase === 'PLAYER_TURN') {
-        phaseEl.textContent = 'Your Turn';
-        showTable(s);
-        showActions(s);
-    } else if (s.phase === 'DEALER_TURN') {
-        if (GAME_MODE === 'classic' || GAME_MODE === 'classic_joker') {
-            phaseEl.textContent = 'Dealer Playing...';
-            showTable(s);
-        } else {
-            phaseEl.textContent = 'Dealer Decision';
-            showTable(s);
-            showDealerActions(s);
-        }
-    } else if (s.phase === 'ROUND_RESULT') {
-        phaseEl.textContent = 'Round Result';
-        showTable(s);
-        showRoundResult(s);
-    }
-}
-
-function showCardDrawAnimation(s) {
-    var area = document.getElementById('card-draw-area');
-    area.style.display = 'block';
-    document.getElementById('timer-display').style.display = 'none';
-
-    var p1Cards = s.draw_cards.player1;
-    var p2Cards = s.draw_cards.player2;
-
-    // Use server timestamp if reasonable, but guard against clock skew / ms-vs-sec bugs.
-    var nowSec = Date.now() / 1000;
-    var ts = (s.draw_timestamp !== null && s.draw_timestamp !== undefined) ? s.draw_timestamp : nowSec;
-    if (ts > 1000000000000) ts = ts / 1000; // looks like ms -> convert to seconds
-
-    if (localDrawStart === null) localDrawStart = nowSec;
-
-    var elapsed = nowSec - ts;
-
-    // If server time is ahead (elapsed < 0) or timestamp looks wildly off, fall back to local timing.
-    if (elapsed < 0 || elapsed > 120) {
-        elapsed = nowSec - localDrawStart;
-    } else {
-        elapsed = Math.max(0, elapsed);
-    }
-
-    var revealDelay = 3;
-
-    if (elapsed < revealDelay) {
-        var html = '<div class="draw-hands">';
-        html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
-        for (var i = 0; i < p1Cards.length; i++) html += cardBackHtml();
-        html += '</div></div>';
-        html += '<div class="draw-vs">VS</div>';
-        html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
-        for (var i = 0; i < p2Cards.length; i++) html += cardBackHtml();
-        html += '</div></div>';
-        html += '</div>';
-        document.getElementById('draw-cards-display').innerHTML = html;
-        document.getElementById('draw-result-text').textContent = 'Revealing cards...';
-
-        var timeLeft = (revealDelay - elapsed) * 1000;
-        if (drawRevealTimeout) clearTimeout(drawRevealTimeout);
-        drawRevealTimeout = setTimeout(function() {
-            drawAnimationDone = true;
-            drawRevealTimeout = null;
-            // Re-fetch to ensure we render the latest phase (CHOICE/WAITING_BETS) even if server advanced.
-            fetchState();
-        }, Math.max(0, timeLeft));
-        return;
-    }
-
-    drawAnimationDone = true;
-
-    var html = '<div class="draw-hands">';
-    html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
-    for (var i = 0; i < p1Cards.length; i++) html += cardHtml(p1Cards[i]);
-    html += '</div></div>';
-    html += '<div class="draw-vs">VS</div>';
-    html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
-    for (var i = 0; i < p2Cards.length; i++) html += cardHtml(p2Cards[i]);
-    html += '</div></div>';
-    html += '</div>';
-    document.getElementById('draw-cards-display').innerHTML = html;
-
-    var winnerText = '';
-    if (s.draw_winner === PLAYER_NUM) {
-        winnerText = 'You drew the higher card!';
-    } else {
-        winnerText = 'Opponent drew the higher card!';
-    }
-
-    var tieDraws = p1Cards.length - 1;
-    if (tieDraws > 0) {
-        winnerText = tieDraws + ' tie(s) before deciding. ' + winnerText;
-    }
-    document.getElementById('draw-result-text').textContent = winnerText;
-
-    if (s.phase === 'CHOICE') {
-        // After showing the revealed draw, jump to the chooser UI using the latest state.
-        if (drawRevealTimeout) clearTimeout(drawRevealTimeout);
-        drawRevealTimeout = setTimeout(function() {
-            drawRevealTimeout = null;
-            fetchState();
-        }, 800);
-    }
-}
-
-function showChoice(s) {
-    var area = document.getElementById('choice-area');
-    area.style.display = 'block';
-
-    var html = '<div class="draw-hands">';
-    var p1Cards = s.draw_cards.player1;
-    var p2Cards = s.draw_cards.player2;
-
-    html += '<div class="draw-player"><h4>Player 1</h4><div class="card-row">';
-    for (var i = 0; i < p1Cards.length; i++) html += cardHtml(p1Cards[i]);
-    html += '</div></div>';
-
-    html += '<div class="draw-vs">VS</div>';
-
-    html += '<div class="draw-player"><h4>Player 2</h4><div class="card-row">';
-    for (var i = 0; i < p2Cards.length; i++) html += cardHtml(p2Cards[i]);
-    html += '</div></div>';
-    html += '</div>';
-
-    document.getElementById('choice-draw-cards').innerHTML = html;
-
-    var patternText = document.getElementById('choice-pattern-text');
-    if (s.is_heads_up) {
-        patternText.textContent = 'This is a heads-up final! 8 turns in a 1-2-2-1-1-2-2-1 pattern. If you go first as Player, you\'ll play: Player, Bank, Bank, Player, Player, Bank, Bank, Player.';
-    } else {
-        patternText.textContent = 'The match has 4 turns in a 1-2-2-1 pattern. If you go first as Player, you\'ll play: Player, Bank, Bank, Player.';
-    }
-
-    var title = document.getElementById('choice-title');
-    if (s.chooser === PLAYER_NUM) {
-        title.textContent = 'You won the draw! Choose your starting role:';
-        document.getElementById('btn-go-player').style.display = '';
-        document.getElementById('btn-go-bank').style.display = '';
-    } else {
-        title.textContent = 'Opponent won the draw. Waiting for their choice...';
-        document.getElementById('btn-go-player').style.display = 'none';
-        document.getElementById('btn-go-bank').style.display = 'none';
-    }
-}
-
-function showBetting(s) {
-    document.getElementById('betting-area').style.display = 'block';
-    document.getElementById('chips-display').textContent = 'Chips: ' + s.chips;
-    document.getElementById('bet1').max = s.chips;
-}
-
-function showInsurance(s) {
-    document.getElementById('insurance-area').style.display = 'block';
-    var handsDiv = document.getElementById('insurance-hands');
-    var html = '';
-    var handIdx = 0;
-    for (var bi = 0; bi < s.round.boxes.length; bi++) {
-        var box = s.round.boxes[bi];
-        for (var hi = 0; hi < box.hands.length; hi++) {
-            var hand = box.hands[hi];
-            var insCost = Math.floor(hand.bet / 2);
-            if (insCost < 1) insCost = 1;
-            var label = 'Box ' + (bi + 1);
-            if (box.hands.length > 1) label += ' Hand ' + (hi + 1);
-            html += '<div class="insurance-hand-option">';
-            html += '<label><input type="checkbox" class="insurance-check" data-idx="' + handIdx + '"> ';
-            html += label + ' (Bet: ' + hand.bet + ') — Insurance cost: ' + insCost + ' chips';
-            html += '</label>';
-            html += '<div class="card-row" style="margin-top:4px">' + hand.cards.map(cardHtml).join('') + '</div>';
-            html += '</div>';
-            handIdx++;
-        }
-    }
-    handsDiv.innerHTML = html;
-}
-
-function buildDealerHtml(s) {
-    var dealerLabel = s.i_am_dealer ? 'Your Cards (Dealer)' : 'Dealer';
-    var valueText = s.round.resolved || s.i_am_dealer ? 'Value: ' + s.round.dealer_value : '';
-    return '<div class="dealer-section"><h3>' + dealerLabel + '</h3>' +
-        '<div class="card-row">' + s.round.dealer_cards.map(cardHtml).join('') + '</div>' +
-        '<span class="hand-value">' + valueText + '</span></div>';
-}
-
-function buildBoxesHtml(s) {
-    var boxesLabel = s.i_am_dealer ? "Opponent's Hands" : 'Your Hands';
-    var html = '<div class="boxes-section"><h3 class="boxes-label">' + boxesLabel + '</h3>';
-    for (var bi = 0; bi < s.round.boxes.length; bi++) {
-        var box = s.round.boxes[bi];
-        html += '<div class="box-container">';
-        for (var hi = 0; hi < box.hands.length; hi++) {
-            var hand = box.hands[hi];
-            var isActive = s.phase === 'PLAYER_TURN' && bi === s.round.current_box && hi === s.round.current_hand && hand.status === 'active';
-            var cls = 'hand-container' + (isActive ? ' active-hand' : '') + (hand.result ? ' result-' + hand.result : '');
-
-            var label = 'Box ' + (bi + 1);
-            if (box.hands.length > 1) label += ' Hand ' + (hi + 1);
-            var statusText = '';
-            if (hand.result) {
-                var labels = {win: 'WIN', lose: 'LOSE', push: 'PUSH', blackjack_win: 'BLACKJACK!'};
-                statusText = '<span class="hand-result result-' + hand.result + '">' + (labels[hand.result] || hand.result) + '</span>';
+        // Betting
+        if (state.can_bet && state.bet_options) {
+            for (const b of state.bet_options) {
+                addBtn('Bet ' + b, 'bet', { amount: b });
             }
-
-            html += '<div class="' + cls + '">' +
-                '<div class="hand-header">' + label + ' (Bet: ' + hand.bet + ')' +
-                (hand.is_doubled ? ' [DOUBLED]' : '') + (hand.is_split ? ' [SPLIT]' : '') + '</div>' +
-                '<div class="card-row">' + hand.cards.map(cardHtml).join('') + '</div>' +
-                '<div class="hand-value">Value: ' + hand.value + ' ' + statusText + '</div></div>';
         }
-        html += '</div>';
-    }
-    html += '</div>';
-    return html;
-}
 
-function showTable(s) {
-    document.getElementById('table-area').style.display = 'block';
-    var topSection = document.getElementById('table-top-section');
-    var bottomSection = document.getElementById('table-bottom-section');
-
-    if (s.i_am_dealer) {
-        topSection.innerHTML = buildBoxesHtml(s);
-        bottomSection.innerHTML = buildDealerHtml(s);
-    } else {
-        topSection.innerHTML = buildDealerHtml(s);
-        bottomSection.innerHTML = buildBoxesHtml(s);
-    }
-}
-
-function showActions(s) {
-    var rnd = s.round;
-    if (rnd.current_box >= rnd.boxes.length) return;
-    var box = rnd.boxes[rnd.current_box];
-    if (rnd.current_hand >= box.hands.length) return;
-    var hand = box.hands[rnd.current_hand];
-    if (hand.status !== 'active') return;
-
-    document.getElementById('action-area').style.display = 'flex';
-    document.getElementById('btn-double').style.display = hand.can_double ? '' : 'none';
-    document.getElementById('btn-split').style.display = hand.can_split ? '' : 'none';
-}
-
-function showDealerActions(s) {
-    document.getElementById('dealer-action-area').style.display = 'flex';
-    document.getElementById('dealer-action-label').innerHTML = 'Your hand is at <strong>' + s.round.dealer_value + '</strong> — Hit or Stand?';
-}
-
-var jokerSelectedValues = [];
-
-function buildJokerValueSelector(numJokers, containerId, prefix) {
-    const container = document.getElementById(containerId);
-    const VALUES = ["A","2","3","4","5","6","7","8","9","10"];
-
-    let html = '';
-
-    for (let ji = 0; ji < numJokers; ji++) {
-        const label = numJokers > 1 ? 'Joker ' + (ji + 1) + ':' : 'Value:';
-        html += '<div class="joker-selector-row">';
-        html += '<span class="joker-selector-label">' + label + '</span>';
-        html += '<div class="joker-value-grid">';
-
-        VALUES.forEach(function(val) {
-            html += '<button class="joker-val-btn" ' +
-                    'data-prefix="' + prefix + '" ' +
-                    'data-joker="' + ji + '" ' +
-                    'data-val="' + val + '">' + val + '</button>';
-        });
-
-        html += '</div></div>';
-    }
-
-    container.innerHTML = html;
-    return new Array(numJokers).fill(null);
-}
-
-function showJokerChoice(s) {
-    var area = document.getElementById('joker-choice-area');
-    area.style.display = 'block';
-    var jc = s.joker_choice;
-    if (!jc) return;
-
-    var box = s.round.boxes[jc.box];
-    var hand = box.hands[jc.hand];
-    document.getElementById('joker-choice-hand').innerHTML = hand.cards.map(cardHtml).join('');
-
-    var numJokers = jc.indices.length;
-    document.getElementById('joker-choice-desc').textContent = numJokers > 1
-        ? 'Pick values (1-11) for your ' + numJokers + ' Jokers:'
-        : 'Pick a value (1-11) for your Joker:';
-
-    jokerSelectedValues = buildJokerValueSelector(numJokers, 'joker-value-selectors', 'player');
-    document.getElementById('btn-joker-confirm').disabled = true;
-
-    document.querySelectorAll('.joker-val-btn[data-prefix="player"]').forEach(function(btn) {
-        btn.onclick = function() {
-            var ji = parseInt(this.dataset.joker);
-            var val = this.dataset.val;
-            jokerSelectedValues[ji] = val;
-            document.querySelectorAll('.joker-val-btn[data-prefix="player"][data-joker="' + ji + '"]').forEach(function(b) {
-                b.classList.remove('selected');
-            });
-            this.classList.add('selected');
-            document.getElementById('btn-joker-confirm').disabled = jokerSelectedValues.some(function(v) { return v === null; });
-        };
-    });
-}
-
-var dealerJokerSelectedValues = [];
-
-function showDealerJokerChoice(s) {
-    var area = document.getElementById('dealer-joker-choice-area');
-    area.style.display = 'block';
-
-    var indices = s.dealer_joker_indices || [];
-    document.getElementById('dealer-joker-hand').innerHTML = s.round.dealer_cards.map(cardHtml).join('');
-
-    var numJokers = indices.length;
-    dealerJokerSelectedValues = buildJokerValueSelector(numJokers, 'dealer-joker-value-selectors', 'dealer');
-    document.getElementById('btn-dealer-joker-confirm').disabled = true;
-
-    document.querySelectorAll('.joker-val-btn[data-prefix="dealer"]').forEach(function(btn) {
-        btn.onclick = function() {
-            var ji = parseInt(this.dataset.joker);
-            var val = this.dataset.val;
-            dealerJokerSelectedValues[ji] = val;
-            document.querySelectorAll('.joker-val-btn[data-prefix="dealer"][data-joker="' + ji + '"]').forEach(function(b) {
-                b.classList.remove('selected');
-            });
-            this.classList.add('selected');
-            document.getElementById('btn-dealer-joker-confirm').disabled = dealerJokerSelectedValues.some(function(v) { return v === null; });
-        };
-    });
-}
-
-function showRoundResult(s) {
-    document.getElementById('round-result-area').style.display = 'block';
-    var msg = 'Chips remaining: ' + s.chips;
-    if (s.cut_card_reached) msg += ' | Cut card reached - turn will end';
-    if (s.chips <= 0) msg += ' | No chips left - turn will end';
-    document.getElementById('round-result-chips').textContent = msg;
-    document.getElementById('round-result-auto').textContent = 'Continuing automatically...';
-
-    if (roundResultAutoTimer) clearTimeout(roundResultAutoTimer);
-    roundResultAutoTimer = setTimeout(async function() {
-        var data = await apiCall('next_round', 'POST');
-        if (data) renderState(data);
-    }, 3000);
-}
-
-function showMatchOver(s) {
-    document.getElementById('match-over-area').style.display = 'block';
-    var r = s.match_result;
-    var title = document.getElementById('match-over-title');
-    var details = document.getElementById('match-over-details');
-
-    if (r.forfeit) {
-        if (r.winner === PLAYER_NUM) {
-            title.textContent = 'Opponent Forfeited - You Win!';
-            title.className = 'win-text';
-        } else {
-            title.textContent = 'You Forfeited';
-            title.className = 'lose-text';
+        // Insurance
+        if (state.can_insurance && state.insurance_options) {
+            for (const opt of state.insurance_options) {
+                addBtn(opt.label, 'insurance', { take: opt.value });
+            }
         }
-        details.innerHTML = '<p>Match ended by forfeit.</p>';
-        return;
+
+        // Dealer action (rare)
+        if (state.can_dealer_action) addBtn('Dealer Action', 'dealer_action');
+
+        // Joker
+        if (state.can_joker) addBtn('Joker', 'joker');
+        if (state.can_dealer_joker) addBtn('Dealer Joker', 'dealer_joker');
+
+        // Next / continue
+        if (state.can_next) addBtn('Next', 'next', null, 'btn primary');
+
+        // Timeout (debug)
+        if (state.can_timeout) addBtn('Timeout', 'timeout', null, 'btn danger');
+
+        // Log-ish
+        if (state.message) {
+            log(state.message);
+        }
+        if (state.error) {
+            log('ERROR: ' + state.error);
+        }
     }
 
-    if (r.winner === 0) {
-        title.textContent = "It's a Tie!";
-    } else if (r.winner === PLAYER_NUM) {
-        title.textContent = 'You Won!';
-        title.className = 'win-text';
-    } else {
-        title.textContent = 'You Lost';
-        title.className = 'lose-text';
+    async function fetchState() {
+        try {
+            const r = await fetch(`/game/${MATCH_ID}/state`);
+            if (!r.ok) return;
+            const j = await r.json();
+            state = j;
+            renderState();
+        } catch (e) {
+            console.error(e);
+        }
     }
-    details.innerHTML = '<p>Player 1 Final Chips: ' + r.player1_total + '</p><p>Player 2 Final Chips: ' + r.player2_total + '</p>';
-}
 
-function startPolling() {
-    if (polling) return;
-    polling = setInterval(fetchState, 800);
-}
-
-function stopPolling() {
-    if (polling) { clearInterval(polling); polling = null; }
-}
-
-document.getElementById('btn-go-player').addEventListener('click', async function() {
-    var data = await apiCall('choice', 'POST', {go_first_as_player: true});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-go-bank').addEventListener('click', async function() {
-    var data = await apiCall('choice', 'POST', {go_first_as_player: false});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-place-bets').addEventListener('click', async function() {
-    var bets = [];
-    var b1 = parseInt(document.getElementById('bet1').value) || 0;
-    var b2 = parseInt(document.getElementById('bet2').value) || 0;
-    var b3 = parseInt(document.getElementById('bet3').value) || 0;
-    if (b1 > 0) bets.push(b1);
-    if (b2 > 0) bets.push(b2);
-    if (b3 > 0) bets.push(b3);
-    if (bets.length === 0) { alert('Place at least one bet'); return; }
-    var data = await apiCall('bet', 'POST', {bets: bets});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-insurance-submit').addEventListener('click', async function() {
-    var checks = document.querySelectorAll('.insurance-check');
-    var decisions = [];
-    for (var i = 0; i < checks.length; i++) {
-        decisions.push(checks[i].checked);
-    }
-    var data = await apiCall('insurance', 'POST', {decisions: decisions});
-    if (data) renderState(data);
-});
-
-['hit', 'stand', 'double', 'split'].forEach(function(action) {
-    document.getElementById('btn-' + action).addEventListener('click', async function() {
-        var data = await apiCall('action', 'POST', {action: action});
-        if (data) renderState(data);
-    });
-});
-
-document.getElementById('btn-dealer-hit').addEventListener('click', async function() {
-    var data = await apiCall('dealer_action', 'POST', {action: 'hit'});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-dealer-stand').addEventListener('click', async function() {
-    var data = await apiCall('dealer_action', 'POST', {action: 'stand'});
-    if (data) renderState(data);
-});
-
-document.getElementById('btn-joker-confirm').addEventListener('click', async function() {
-
-    if (jokerSelectedValues.some(v => v === null)) return;
-
-    // 🔒 prevent double submit
-    this.disabled = true;
-
-    const data = await apiCall('joker', 'POST', { values: jokerSelectedValues });
-
-    if (data) {
-        renderState(data);
-    } else {
-        // If backend rejected because phase already changed
+    function startPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(fetchState, 1200);
         fetchState();
     }
-});
 
-document.getElementById('btn-dealer-joker-confirm').addEventListener('click', async function() {
-    if (dealerJokerSelectedValues.some(function(v) { return v === null; })) return;
-    var data = await apiCall('dealer_joker', 'POST', {values: dealerJokerSelectedValues});
-    if (data) renderState(data);
-});
-
-fetchState();
-startPolling();
+    startPolling();
 </script>
-{% endblock %}
+
+</body>
+</html>

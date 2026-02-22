@@ -35,6 +35,7 @@ from engine import (
     assign_dealer_joker_values,
     next_round_or_end_turn,
     end_turn,
+    check_timeout,      # <-- ADD
     apply_timeout,
     get_client_state,
 )
@@ -318,6 +319,10 @@ def start_game(match_id):
     match = _get_match_or_404(match_id)
     _ = _get_user_player_num(match)
 
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
+
     if match.status != "active":
         return jsonify({"error": "Match is not active"}), 400
 
@@ -338,6 +343,10 @@ def draw_card(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
+
     do_card_draw(match)
     return jsonify(get_client_state(match, user_num))
 
@@ -347,6 +356,10 @@ def draw_card(match_id):
 def choice(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
+
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
 
     data = request.get_json() or {}
 
@@ -363,6 +376,10 @@ def choice(match_id):
 def bet(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
+
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
 
     data = request.get_json() or {}
     bets = data.get("bets", [])
@@ -381,6 +398,10 @@ def insurance(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
+
     data = request.get_json() or {}
     decisions = data.get("decisions", [])
     handle_insurance(match, decisions)
@@ -394,6 +415,10 @@ def action(match_id):
     try:
         match = _get_match_or_404(match_id)
         user_num = _get_user_player_num(match)
+
+        # Apply any overdue automatic actions BEFORE proceeding
+        while check_timeout(match):
+            apply_timeout(match)
 
         # Safely parse JSON
         data = request.get_json(silent=True)
@@ -431,6 +456,10 @@ def dealer_action_route(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
+
     data = request.get_json() or {}
     action_type = data.get("action")
 
@@ -448,6 +477,10 @@ def assign_joker(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
+
     data = request.get_json() or {}
     values = data.get("values", [])
     assign_joker_values(match, values)
@@ -460,6 +493,10 @@ def assign_joker(match_id):
 def assign_dealer_joker(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
+
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
 
     data = request.get_json() or {}
     values = data.get("values", [])
@@ -475,6 +512,10 @@ def next_round(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
+
     ended = next_round_or_end_turn(match)
 
     payload = get_client_state(match, user_num)
@@ -487,6 +528,10 @@ def next_round(match_id):
 def end_turn_route(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
+
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
 
     ended = end_turn(match)
 
@@ -501,7 +546,10 @@ def timeout(match_id):
     match = _get_match_or_404(match_id)
     user_num = _get_user_player_num(match)
 
-    changed = apply_timeout(match)
+    # Apply ALL overdue automatic actions BEFORE proceeding
+    changed = False
+    while check_timeout(match):
+        changed = apply_timeout(match) or changed
 
     payload = get_client_state(match, user_num)
     payload["timeout_applied"] = changed
@@ -515,6 +563,10 @@ def state(match_id):
 
     if current_user.id not in (match.player1_id, match.player2_id):
         return jsonify({"error": "Not part of this match"}), 403
+
+    # Apply any overdue automatic actions BEFORE proceeding
+    while check_timeout(match):
+        apply_timeout(match)
 
     player_num = 1 if match.player1_id == current_user.id else 2
     return jsonify(get_client_state(match, player_num))

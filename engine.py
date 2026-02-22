@@ -1086,13 +1086,145 @@ def player_action(match: Match, action: str) -> None:
         return
 
     # --------------------------------------------------
+        # SPLIT
+        # --------------------------------------------------
+            # --------------------------------------------------
     # SPLIT
     # --------------------------------------------------
     if action == 'split':
-        # (your existing split logic remains unchanged)
-        # IMPORTANT: split ends by committing and returning.
-        # Next state handled by _advance_to_active().
-        ...
+        # Validate split eligibility
+        if h.is_split:
+            raise ValueError("Cannot split again")
+
+        if not _can_split(cards, int(t.chips), int(h.bet)):
+            raise ValueError("Cannot split")
+
+        # Deduct additional bet for the new hand
+        t.chips = int(t.chips) - int(h.bet)
+
+        # Determine the insert index: place new hand immediately after current hand.
+        insert_hi = hand_index + 1
+
+        # Shift any existing hands (and dependent rows) up by 1 to make room.
+        existing_his = (
+            MatchHand.query.filter_by(
+                match_id=match.id,
+                turn_index=turn_index,
+                round_index=round_index,
+                box_index=box_index
+            )
+            .with_entities(MatchHand.hand_index)
+            .order_by(MatchHand.hand_index.desc())
+            .all()
+        )
+        existing_his = [int(r[0]) for r in existing_his]
+        for hi in existing_his:
+            if hi >= insert_hi:
+                # Hands
+                MatchHand.query.filter_by(
+                    match_id=match.id,
+                    turn_index=turn_index,
+                    round_index=round_index,
+                    box_index=box_index,
+                    hand_index=hi
+                ).update({'hand_index': hi + 1})
+                # Hand cards
+                MatchHandCard.query.filter_by(
+                    match_id=match.id,
+                    turn_index=turn_index,
+                    round_index=round_index,
+                    box_index=box_index,
+                    hand_index=hi
+                ).update({'hand_index': hi + 1})
+                # Insurance rows (if any)
+                MatchHandInsurance.query.filter_by(
+                    match_id=match.id,
+                    turn_index=turn_index,
+                    round_index=round_index,
+                    box_index=box_index,
+                    hand_index=hi
+                ).update({'hand_index': hi + 1})
+
+        new_hi = insert_hi
+
+        # Create the new hand with duplicated bet
+        new_hand = MatchHand(
+            match_id=match.id,
+            turn_index=turn_index,
+            round_index=round_index,
+            box_index=box_index,
+            hand_index=new_hi,
+            bet=int(h.bet),
+            is_split=True,
+            is_doubled=False,
+            from_split_aces=(cards[0]['rank'] == 'A'),
+            from_split_jokers=(cards[0]['rank'] == 'JOKER'),
+        )
+        db.session.add(new_hand)
+
+        # Mark original hand as a split hand too
+        h.is_split = True
+        h.from_split_aces = (cards[0]['rank'] == 'A')
+        h.from_split_jokers = (cards[0]['rank'] == 'JOKER')
+
+        # Move the second card from original hand to the new hand.
+        second_row = MatchHandCard.query.filter_by(
+            match_id=match.id,
+            turn_index=turn_index,
+            round_index=round_index,
+            box_index=box_index,
+            hand_index=hand_index,
+            seq=1
+        ).first()
+        if not second_row:
+            raise RuntimeError("Cannot split: missing second card")
+
+        second_row.hand_index = new_hi
+        second_row.seq = 0
+
+        # Draw one card to original hand, then one card to the new hand.
+        def _draw_to_specific_hand(target_hi: int) -> bool:
+            """Returns True if drawn card is an unassigned joker."""
+            deck_card = MatchTurnDeckCard.query.filter_by(
+                match_id=match.id,
+                turn_index=turn_index,
+                pos=int(t.cards_dealt)
+            ).first()
+            if not deck_card:
+                raise RuntimeError("Turn deck depleted")
+
+            seq = MatchHandCard.query.filter_by(
+                match_id=match.id,
+                turn_index=turn_index,
+                round_index=round_index,
+                box_index=box_index,
+                hand_index=target_hi
+            ).count()
+
+            db.session.add(MatchHandCard(
+                match_id=match.id,
+                turn_index=turn_index,
+                round_index=round_index,
+                box_index=box_index,
+                hand_index=target_hi,
+                seq=seq,
+                rank_code=deck_card.rank_code,
+                suit_code=deck_card.suit_code,
+                joker_chosen_value=None,
+            ))
+
+            t.cards_dealt = int(t.cards_dealt) + 1
+            if int(t.cards_dealt) >= CUT_CARD_POSITION:
+                t.cut_card_reached = True
+
+            return CODE_TO_RANK[int(deck_card.rank_code)] == 'JOKER'
+
+        _draw_to_specific_hand(hand_index)
+        _draw_to_specific_hand(new_hi)
+
+        # Let the state machine pick the next active hand (and joker-choice phase if needed)
+        db.session.flush()
+        _advance_to_active(match)
         return
 
     raise ValueError(f"Unknown action: {action}")

@@ -31,13 +31,14 @@
 
 <div style="margin-top: 18px;">
     <div class="boxes-label">Log</div>
-    <div id="logBox" style="height:160px; overflow:auto; border:1px solid #1e5030; background:#0a2010; padding:10px; border-radius:10px;"></div>
+    <div id="logBox"
+         style="height:160px; overflow:auto; border:1px solid #1e5030; background:#0a2010; padding:10px; border-radius:10px;">
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Safe for JavaScript:
     const MATCH_ID = {{ match.id | tojson }};
     const USER_ID  = {{ current_user.id | tojson }};
 
@@ -62,157 +63,113 @@
 
         for (const c of cards) {
             const div = document.createElement('div');
-
-            // Your CSS uses .card-back, but your old code used "back".
-            // We'll set both to be safe.
-            const isBack = !!c.hidden;
-            div.className = 'card' + (isBack ? ' card-back back' : '');
-
-            div.textContent = isBack ? '🂠' : (c.rank + c.suit);
+            div.className = 'card';
+            div.textContent = c.rank + c.suit;
             container.appendChild(div);
         }
     }
 
-    function setStatus(elem, txt) {
-        if (!elem) return;
-        elem.textContent = txt || '';
-    }
-
     function clearActions() {
-        const a = el('actionButtons');
-        if (!a) return;
-        a.innerHTML = '';
+        const area = el('actionButtons');
+        if (area) area.innerHTML = '';
     }
 
-    function addBtn(label, endpoint, payload=null, cls='btn') {
+    function addBtn(label, endpoint, payload=null) {
         const area = el('actionButtons');
         if (!area) return;
 
         const b = document.createElement('button');
-        b.className = cls;
+        b.className = 'btn primary';
         b.textContent = label;
 
         b.onclick = async () => {
-            try {
-                await callAction(endpoint, payload);
-            } catch (e) {
-                console.error(e);
-                log("ERROR: " + (e && e.message ? e.message : String(e)));
-            }
+            const r = await fetch(`/game/${MATCH_ID}/${endpoint}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload ? JSON.stringify(payload) : null
+            });
+
+            state = await r.json();
+            renderState();
         };
 
         area.appendChild(b);
     }
 
-    async function callAction(endpoint, payload=null) {
-        const opts = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        };
-        if (payload) opts.body = JSON.stringify(payload);
-
-        const r = await fetch(`/game/${MATCH_ID}/${endpoint}`, opts);
-
-        if (!r.ok) {
-            const t = await r.text();
-            throw new Error(t || ("HTTP " + r.status));
-        }
-
-        state = await r.json();
-        renderState();
-    }
-
     function renderState() {
         if (!state) return;
 
-        renderCards(el('dealerCards'), state.dealer_cards);
-        renderCards(el('playerCards'), state.player_cards);
-
-        setStatus(el('dealerStatus'), state.dealer_status_text);
-        setStatus(el('playerStatus'), state.player_status_text);
-
         clearActions();
 
-        // -----------------------------
-        // FLOW ACTIONS
-        // -----------------------------
-        if (state.can_start) {
-            addBtn('Start', 'start', null, 'btn primary');
-        }
-        if (state.can_draw) {
-            addBtn('Hit', 'action', { action: 'hit' });
-        }
-        if (state.can_stand) {
-            addBtn('Stand', 'action', { action: 'stand' });
+        // =========================
+        // PHASE: CHOICE
+        // =========================
+        if (state.phase === "CHOICE") {
+
+            const p1 = state.draw_cards?.player1 || [];
+            const p2 = state.draw_cards?.player2 || [];
+
+            renderCards(el("playerCards"), p1);
+            renderCards(el("dealerCards"), p2);
+
+            if (!state.choice_made) {
+
+                if (state.chooser === USER_ID) {
+                    addBtn("Go First", "choice", { goes_first: true });
+                    addBtn("Go Second", "choice", { goes_first: false });
+                } else {
+                    log("Waiting for opponent to choose...");
+                }
+            }
+
+            return;
         }
 
-        // -----------------------------
-        // CHOICE
-        // -----------------------------
-        if (state.can_choice && state.choice_options) {
-            for (const opt of state.choice_options) {
-                addBtn(opt.label, 'choice', { goes_first: opt.value });
+        // =========================
+        // PHASE: BET
+        // =========================
+        if (state.phase === "BET") {
+
+            if (state.bet_options) {
+                for (const b of state.bet_options) {
+                    addBtn("Bet " + b, "bet", { bets: [b] });
+                }
+            }
+
+            return;
+        }
+
+        // =========================
+        // PHASE: PLAY
+        // =========================
+        if (state.phase === "PLAY") {
+
+            renderCards(el("dealerCards"), state.dealer_cards);
+            renderCards(el("playerCards"), state.player_cards);
+
+            if (state.current_turn === USER_ID) {
+                addBtn("Hit", "action", { action: "hit" });
+                addBtn("Stand", "action", { action: "stand" });
+            }
+
+            return;
+        }
+
+        // =========================
+        // MATCH OVER
+        // =========================
+        if (state.match_over) {
+            log("Match Over");
+            if (state.match_result) {
+                log("Result: " + state.match_result);
             }
         }
-
-        // -----------------------------
-        // BETTING
-        // -----------------------------
-        if (state.can_bet && state.bet_options) {
-            for (const b of state.bet_options) {
-                addBtn('Bet ' + b, 'bet', { bets: [b] });
-            }
-        }
-
-        // -----------------------------
-        // INSURANCE
-        // -----------------------------
-        if (state.can_insurance && state.insurance_options) {
-            for (const opt of state.insurance_options) {
-                addBtn(opt.label, 'insurance', { decisions: [opt.value] });
-            }
-        }
-
-        // -----------------------------
-        // DEALER ACTION
-        // -----------------------------
-        if (state.can_dealer_action) {
-            addBtn('Dealer Action', 'dealer_action');
-        }
-
-        // -----------------------------
-        // JOKER
-        // -----------------------------
-        if (state.can_joker) {
-            addBtn('Assign Joker', 'joker', { values: [] });
-        }
-        if (state.can_dealer_joker) {
-            addBtn('Dealer Joker', 'dealer_joker', { values: [] });
-        }
-
-        // -----------------------------
-        // NEXT ROUND
-        // -----------------------------
-        if (state.can_next) {
-            addBtn('Next', 'next', null, 'btn primary');
-        }
-        if (state.can_timeout) {
-            addBtn('Timeout', 'timeout', null, 'btn danger');
-        }
-
-        if (state.message) log(state.message);
-        if (state.error) log("ERROR: " + state.error);
     }
 
     async function fetchState() {
-        try {
-            const r = await fetch(`/game/${MATCH_ID}/state`);
-            if (!r.ok) return;
-            state = await r.json();
-            renderState();
-        } catch (e) {
-            console.error(e);
-        }
+        const r = await fetch(`/game/${MATCH_ID}/state`);
+        state = await r.json();
+        renderState();
     }
 
     function startPolling() {

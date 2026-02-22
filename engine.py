@@ -416,10 +416,12 @@ def do_card_draw(match: Match, commit: bool = True) -> None:
         ms.draw_winner = 1
         ms.chooser = 1
         ms.phase = 'CHOICE'
+        set_decision_timer(match, "CHOICE")
     elif v2 > v1:
         ms.draw_winner = 2
         ms.chooser = 2
         ms.phase = 'CHOICE'
+        set_decision_timer(match, "CHOICE")
     else:
         ms.draw_winner = None
 
@@ -490,6 +492,7 @@ def make_choice(match: Match, chooser_goes_first_as_player: bool) -> None:
 
     ms.choice_made = True
     ms.current_turn = 0
+    clear_decision_timer(match)
 
     db.session.commit()
     enter_turn(match)
@@ -525,6 +528,7 @@ def enter_turn(match: Match) -> None:
         db.session.add(MatchTurnDeckCard(match_id=match.id, turn_index=turn_index, pos=pos, rank_code=r, suit_code=s))
 
     ms.phase = 'WAITING_BETS'
+    set_decision_timer(match, "BET")
     db.session.commit()
 
 
@@ -849,6 +853,7 @@ def _advance_to_active(match: Match) -> None:
                 return
 
             ms.phase = 'PLAYER_TURN'
+            set_decision_timer(match, "ACTION")
             db.session.commit()
             return
 
@@ -1254,6 +1259,7 @@ def _play_dealer(match: Match) -> None:
     dealer_val = hand_value(dealer)
     if dealer_val <= 20:
         ms.phase = 'DEALER_TURN'
+        set_decision_timer(match, "ACTION")
         db.session.commit()
         return
 

@@ -480,11 +480,7 @@ def state(match_id):
 
     ms = MatchState.query.filter_by(match_id=match_id).first()
     if not ms:
-        return jsonify({"error": "Match state missing"}), 500
-
-    # ===============================
-    # BASE STATE
-    # ===============================
+        return jsonify({"error": "MatchState missing"}), 500
 
     state = {
         "phase": ms.phase,
@@ -503,7 +499,7 @@ def state(match_id):
     }
 
     # ===============================
-    # TURN INFO
+    # TURN
     # ===============================
 
     turn = MatchTurn.query.filter_by(
@@ -555,7 +551,7 @@ def state(match_id):
         return jsonify(state)
 
     # ===============================
-    # ROUND DATA
+    # ROUND SAFE LOAD
     # ===============================
 
     round_obj = MatchRound.query.filter_by(
@@ -571,6 +567,7 @@ def state(match_id):
         "current_hand": round_obj.current_hand,
         "resolved": round_obj.resolved,
         "cut_card_reached": turn.cut_card_reached if turn else False,
+        "dealer_cards": [],
         "boxes": []
     }
 
@@ -584,18 +581,15 @@ def state(match_id):
         round_index=round_obj.round_index
     ).order_by(MatchDealerCard.seq).all()
 
-    dealer_json = []
     for c in dealer_cards:
-        dealer_json.append({
+        round_data["dealer_cards"].append({
             "rank": CARD_RANKS[c.rank_code],
             "suit": CARD_SUITS[c.suit_code],
             "chosen_value": c.joker_chosen_value
         })
 
-    round_data["dealer_cards"] = dealer_json
-
     # ---------------------------
-    # Boxes & Hands
+    # Boxes
     # ---------------------------
 
     boxes = MatchBox.query.filter_by(
@@ -626,6 +620,7 @@ def state(match_id):
             ).order_by(MatchHandCard.seq).all()
 
             card_json = []
+
             for c in cards:
                 card_json.append({
                     "rank": CARD_RANKS[c.rank_code],
@@ -647,10 +642,6 @@ def state(match_id):
         round_data["boxes"].append(box_json)
 
     state["round"] = round_data
-
-    # ===============================
-    # MATCH RESULT
-    # ===============================
 
     if ms.match_over:
         state["match_result"] = {

@@ -391,18 +391,38 @@ def insurance(match_id):
 @game_bp.route("/<int:match_id>/action", methods=["POST"])
 @login_required
 def action(match_id):
-    match = _get_match_or_404(match_id)
-    user_num = _get_user_player_num(match)
-
-    data = request.get_json() or {}
-    action_type = data.get("action")
-
     try:
-        player_action(match, action_type)
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        match = _get_match_or_404(match_id)
+        user_num = _get_user_player_num(match)
 
-    return jsonify(get_client_state(match, user_num))
+        # Safely parse JSON
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"error": "No JSON body provided"}), 400
+
+        action_type = data.get("action")
+        if not action_type:
+            return jsonify({"error": "Missing 'action' field"}), 400
+
+        # Validate player exists
+        if user_num is None:
+            return jsonify({"error": "User not part of this match"}), 403
+
+        # Perform action
+        try:
+            player_action(match, action_type)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+        # Return updated state
+        return jsonify(get_client_state(match, user_num))
+
+    except Exception as e:
+        # Log full traceback to Render logs
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({"error": "Internal server error"}), 500
 
 
 @game_bp.route("/<int:match_id>/dealer_action", methods=["POST"])

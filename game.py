@@ -469,6 +469,7 @@ def assign_dealer_joker(match_id):
 
 
 @game_bp.route("/<int:match_id>/next", methods=["POST"])
+@game_bp.route("/<int:match_id>/next_round", methods=["POST"])  # <-- ADD THIS
 @login_required
 def next_round(match_id):
     match = _get_match_or_404(match_id)
@@ -516,164 +517,9 @@ def state(match_id):
         return jsonify({"error": "Not part of this match"}), 403
 
     player_num = 1 if match.player1_id == current_user.id else 2
-
     return jsonify(get_client_state(match, player_num))
 
 
 
-    # ===============================
-    # TURN
-    # ===============================
 
-    turn = MatchTurn.query.filter_by(
-        match_id=match_id,
-        turn_index=ms.current_turn
-    ).first()
 
-    # ---- CHOICE PHASE (does NOT require turn) ----
-    if ms.phase == "CHOICE":
-        state["is_my_turn"] = (ms.chooser == player_num)
-
-    # ---- Other phases that require turn ----
-    elif turn:
-        state["chips"] = turn.chips
-        state["i_am_dealer"] = (turn.dealer_role == player_num)
-
-        if ms.phase == "PLAYER_TURN":
-            state["is_my_turn"] = (turn.player_role == player_num)
-
-        elif ms.phase == "DEALER_TURN":
-            state["is_my_turn"] = (turn.dealer_role == player_num)
-
-        elif ms.phase == "WAITING_BETS":
-            state["is_my_turn"] = True
-    # ===============================
-    # DRAW PHASE
-    # ===============================
-
-    if ms.phase in ["CARD_DRAW", "CHOICE"]:
-
-        draw_cards = {"player1": [], "player2": []}
-
-        draw_rows = MatchDrawCard.query.filter_by(
-            match_id=match_id
-        ).order_by(MatchDrawCard.seq).all()
-
-        for row in draw_rows:
-            card = {
-                "rank": CARD_RANKS[row.rank_code],
-                "suit": CARD_SUITS[row.suit_code]
-            }
-            if row.player_num == 1:
-                draw_cards["player1"].append(card)
-            else:
-                draw_cards["player2"].append(card)
-
-        state.update({
-            "draw_cards": draw_cards,
-            "draw_winner": ms.draw_winner,
-            "draw_timestamp": ms.draw_timestamp
-        })
-
-        return jsonify(state)
-
-    # ===============================
-    # ROUND SAFE LOAD
-    # ===============================
-
-    round_obj = MatchRound.query.filter_by(
-        match_id=match_id,
-        turn_index=ms.current_turn
-    ).first()
-
-    if not round_obj:
-        return jsonify(state)
-
-    round_data = {
-        "current_box": round_obj.current_box,
-        "current_hand": round_obj.current_hand,
-        "resolved": round_obj.resolved,
-        "cut_card_reached": turn.cut_card_reached if turn else False,
-        "dealer_cards": [],
-        "boxes": []
-    }
-
-    # ---------------------------
-    # Dealer Cards
-    # ---------------------------
-
-    dealer_cards = MatchDealerCard.query.filter_by(
-        match_id=match_id,
-        turn_index=ms.current_turn,
-        round_index=round_obj.round_index
-    ).order_by(MatchDealerCard.seq).all()
-
-    for c in dealer_cards:
-        round_data["dealer_cards"].append({
-            "rank": CARD_RANKS[c.rank_code],
-            "suit": CARD_SUITS[c.suit_code],
-            "chosen_value": c.joker_chosen_value
-        })
-
-    # ---------------------------
-    # Boxes
-    # ---------------------------
-
-    boxes = MatchBox.query.filter_by(
-        match_id=match_id,
-        turn_index=ms.current_turn,
-        round_index=round_obj.round_index
-    ).order_by(MatchBox.box_index).all()
-
-    for box in boxes:
-
-        box_json = {"hands": []}
-
-        hands = MatchHand.query.filter_by(
-            match_id=match_id,
-            turn_index=ms.current_turn,
-            round_index=round_obj.round_index,
-            box_index=box.box_index
-        ).order_by(MatchHand.hand_index).all()
-
-        for hand in hands:
-
-            cards = MatchHandCard.query.filter_by(
-                match_id=match_id,
-                turn_index=ms.current_turn,
-                round_index=round_obj.round_index,
-                box_index=box.box_index,
-                hand_index=hand.hand_index
-            ).order_by(MatchHandCard.seq).all()
-
-            card_json = []
-
-            for c in cards:
-                card_json.append({
-                    "rank": CARD_RANKS[c.rank_code],
-                    "suit": CARD_SUITS[c.suit_code],
-                    "chosen_value": c.joker_chosen_value
-                })
-
-            hand_json = {
-                "cards": card_json,
-                "bet": hand.bet,
-                "status": hand.status,
-                "result": hand.result,
-                "is_split": hand.is_split,
-                "is_doubled": hand.is_doubled
-            }
-
-            box_json["hands"].append(hand_json)
-
-        round_data["boxes"].append(box_json)
-
-    state["round"] = round_data
-
-    if ms.match_over:
-        state["match_result"] = {
-            "winner": ms.match_result_winner,
-            "reason": ms.match_result_reason
-        }
-
-    return jsonify(state)

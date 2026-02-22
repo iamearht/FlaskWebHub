@@ -1,6 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Match #{{ match.id }}{% endblock %}
+
+{% block content %}
+<div class="dealer-section">
+    <div class="boxes-label">
+        Match #{{ match.id }}
+    </div>
+
+    <div class="hand-container">
+        <div class="hand-header">Dealer</div>
+        <div id="dealerCards" class="card-row"></div>
+        <div id="dealerStatus" class="hand-value"></div>
+    </div>
+</div>
+
+<div class="boxes-section">
+    <div class="box-container">
+        <div class="hand-container">
+            <div class="hand-header">You</div>
+            <div id="playerCards" class="card-row"></div>
+            <div id="playerStatus" class="hand-value"></div>
+        </div>
+    </div>
+</div>
+
+<div style="margin-top: 18px; text-align: center;">
+    <div id="actionButtons"></div>
+</div>
+
+<div style="margin-top: 18px;">
+    <div class="boxes-label">Log</div>
+    <div id="logBox" style="height:160px; overflow:auto; border:1px solid #1e5030; background:#0a2010; padding:10px; border-radius:10px;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-    const MATCH_ID = {{ match.id }};
-    const USER_ID = {{ current_user.id | tojson }};
+    // Safe for JavaScript:
+    const MATCH_ID = {{ match.id | tojson }};
+    const USER_ID  = {{ current_user.id | tojson }};
 
     let state = null;
     let pollTimer = null;
@@ -9,6 +48,7 @@
 
     function log(msg) {
         const box = el('logBox');
+        if (!box) return;
         const line = document.createElement('div');
         line.textContent = msg;
         box.appendChild(line);
@@ -16,56 +56,69 @@
     }
 
     function renderCards(container, cards) {
+        if (!container) return;
         container.innerHTML = '';
         if (!cards) return;
 
         for (const c of cards) {
             const div = document.createElement('div');
-            div.className = 'card' + (c.hidden ? ' back' : '');
-            div.textContent = c.hidden ? '🂠' : (c.rank + c.suit);
+
+            // Your CSS uses .card-back, but your old code used "back".
+            // We'll set both to be safe.
+            const isBack = !!c.hidden;
+            div.className = 'card' + (isBack ? ' card-back back' : '');
+
+            div.textContent = isBack ? '🂠' : (c.rank + c.suit);
             container.appendChild(div);
         }
     }
 
     function setStatus(elem, txt) {
+        if (!elem) return;
         elem.textContent = txt || '';
     }
 
     function clearActions() {
-        el('actionButtons').innerHTML = '';
+        const a = el('actionButtons');
+        if (!a) return;
+        a.innerHTML = '';
     }
 
     function addBtn(label, endpoint, payload=null, cls='btn') {
+        const area = el('actionButtons');
+        if (!area) return;
+
         const b = document.createElement('button');
         b.className = cls;
         b.textContent = label;
+
         b.onclick = async () => {
             try {
                 await callAction(endpoint, payload);
             } catch (e) {
                 console.error(e);
-                log("ERROR: " + e.message);
+                log("ERROR: " + (e && e.message ? e.message : String(e)));
             }
         };
-        el('actionButtons').appendChild(b);
+
+        area.appendChild(b);
     }
 
     async function callAction(endpoint, payload=null) {
         const opts = {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload ? JSON.stringify(payload) : null
+            headers: { 'Content-Type': 'application/json' }
         };
+        if (payload) opts.body = JSON.stringify(payload);
 
         const r = await fetch(`/game/${MATCH_ID}/${endpoint}`, opts);
 
         if (!r.ok) {
             const t = await r.text();
-            throw new Error(t || r.status);
+            throw new Error(t || ("HTTP " + r.status));
         }
 
-        const j = await r.json();
-        state = j;
+        state = await r.json();
         renderState();
     }
 
@@ -83,15 +136,12 @@
         // -----------------------------
         // FLOW ACTIONS
         // -----------------------------
-
         if (state.can_start) {
             addBtn('Start', 'start', null, 'btn primary');
         }
-
         if (state.can_draw) {
             addBtn('Hit', 'action', { action: 'hit' });
         }
-
         if (state.can_stand) {
             addBtn('Stand', 'action', { action: 'stand' });
         }
@@ -99,7 +149,6 @@
         // -----------------------------
         // CHOICE
         // -----------------------------
-
         if (state.can_choice && state.choice_options) {
             for (const opt of state.choice_options) {
                 addBtn(opt.label, 'choice', { goes_first: opt.value });
@@ -109,7 +158,6 @@
         // -----------------------------
         // BETTING
         // -----------------------------
-
         if (state.can_bet && state.bet_options) {
             for (const b of state.bet_options) {
                 addBtn('Bet ' + b, 'bet', { bets: [b] });
@@ -119,7 +167,6 @@
         // -----------------------------
         // INSURANCE
         // -----------------------------
-
         if (state.can_insurance && state.insurance_options) {
             for (const opt of state.insurance_options) {
                 addBtn(opt.label, 'insurance', { decisions: [opt.value] });
@@ -129,7 +176,6 @@
         // -----------------------------
         // DEALER ACTION
         // -----------------------------
-
         if (state.can_dealer_action) {
             addBtn('Dealer Action', 'dealer_action');
         }
@@ -137,11 +183,9 @@
         // -----------------------------
         // JOKER
         // -----------------------------
-
         if (state.can_joker) {
             addBtn('Assign Joker', 'joker', { values: [] });
         }
-
         if (state.can_dealer_joker) {
             addBtn('Dealer Joker', 'dealer_joker', { values: [] });
         }
@@ -149,30 +193,22 @@
         // -----------------------------
         // NEXT ROUND
         // -----------------------------
-
         if (state.can_next) {
             addBtn('Next', 'next', null, 'btn primary');
         }
-
         if (state.can_timeout) {
             addBtn('Timeout', 'timeout', null, 'btn danger');
         }
 
-        if (state.message) {
-            log(state.message);
-        }
-
-        if (state.error) {
-            log("ERROR: " + state.error);
-        }
+        if (state.message) log(state.message);
+        if (state.error) log("ERROR: " + state.error);
     }
 
     async function fetchState() {
         try {
             const r = await fetch(`/game/${MATCH_ID}/state`);
             if (!r.ok) return;
-            const j = await r.json();
-            state = j;
+            state = await r.json();
             renderState();
         } catch (e) {
             console.error(e);
@@ -187,3 +223,4 @@
 
     startPolling();
 </script>
+{% endblock %}

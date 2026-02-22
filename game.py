@@ -349,8 +349,11 @@ def choice(match_id):
     user_num = _get_user_player_num(match)
 
     data = request.get_json() or {}
-    goes_first = bool(data.get("goes_first"))
-    make_choice(match, goes_first)
+
+    # 🔥 FIXED KEY NAME
+    goes_first_as_player = bool(data.get("go_first_as_player"))
+
+    make_choice(match, goes_first_as_player)
 
     return jsonify(get_client_state(match, user_num))
 
@@ -484,35 +487,19 @@ def timeout(match_id):
     return jsonify(payload)
 
 
-@game_bp.route('/<int:match_id>/state')
+@game_bp.route("/<int:match_id>/state")
 @login_required
 def state(match_id):
-    match = Match.query.get_or_404(match_id)
+    match = _get_match_or_404(match_id)
 
-    if current_user.id not in [match.player1_id, match.player2_id]:
+    if current_user.id not in (match.player1_id, match.player2_id):
         return jsonify({"error": "Not part of this match"}), 403
 
     player_num = 1 if match.player1_id == current_user.id else 2
 
-    ms = MatchState.query.filter_by(match_id=match_id).first()
-    if not ms:
-        return jsonify({"error": "MatchState missing"}), 500
+    return jsonify(get_client_state(match, player_num))
 
-    state = {
-        "phase": ms.phase,
-        "chooser": ms.chooser,
-        "choice_made": ms.choice_made,
-        "current_turn": ms.current_turn,
-        "total_turns": 4,
-        "game_mode": match.game_mode,
-        "is_heads_up": ms.is_heads_up,
-        "match_over": ms.match_over,
-        "match_result": None,
-        "timer_remaining": None,
-        "is_my_turn": False,
-        "i_am_dealer": False,
-        "chips": 0,
-    }
+
 
     # ===============================
     # TURN

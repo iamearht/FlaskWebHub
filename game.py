@@ -478,43 +478,184 @@ def state(match_id):
 
     player_num = 1 if match.player1_id == current_user.id else 2
 
-    # Determine turn ownership
-    is_my_turn = False
-    if match.phase == "CHOICE":
-        is_my_turn = (match.chooser == player_num)
-    elif match.phase == "WAITING_BETS":
-        is_my_turn = True
-    elif match.phase == "PLAYER_TURN":
-        is_my_turn = match.current_player_role == player_num
-    elif match.phase == "DEALER_TURN":
-        is_my_turn = match.current_dealer_role == player_num
+    ms = MatchState.query.filter_by(match_id=match_id).first()
+    if not ms:
+        return jsonify({"error": "Match state missing"}), 500
+
+    # ===============================
+    # BASE STATE
+    # ===============================
 
     state = {
-        "phase": match.phase,
-        "chooser": match.chooser,
-        "choice_made": match.choice_made,
-        "current_turn": match.current_turn,
-        "total_turns": match.total_turns,
+        "phase": ms.phase,
+        "chooser": ms.chooser,
+        "choice_made": ms.choice_made,
+        "current_turn": ms.current_turn,
+        "total_turns": 4,
         "game_mode": match.game_mode,
-        "is_heads_up": match.is_heads_up,
-        "match_over": match.match_over,
-        "match_result": match.match_result,
-        "timer_remaining": match.timer_remaining,
-        "is_my_turn": is_my_turn,
-        "i_am_dealer": match.current_dealer_role == player_num,
-        "chips": match.player1_chips if player_num == 1 else match.player2_chips,
+        "is_heads_up": ms.is_heads_up,
+        "match_over": ms.match_over,
+        "match_result": None,
+        "timer_remaining": None,
+        "is_my_turn": False,
+        "i_am_dealer": False,
+        "chips": 0,
     }
 
-    # Draw phase info
-    if match.phase in ["CARD_DRAW", "CHOICE"]:
+    # ===============================
+    # TURN INFO
+    # ===============================
+
+    turn = MatchTurn.query.filter_by(
+        match_id=match_id,
+        turn_index=ms.current_turn
+    ).first()
+
+    if turn:
+        state["chips"] = turn.chips
+        state["i_am_dealer"] = (turn.dealer_role == player_num)
+
+        if ms.phase == "PLAYER_TURN":
+            state["is_my_turn"] = (turn.player_role == player_num)
+        elif ms.phase == "DEALER_TURN":
+            state["is_my_turn"] = (turn.dealer_role == player_num)
+        elif ms.phase == "WAITING_BETS":
+            state["is_my_turn"] = True
+        elif ms.phase == "CHOICE":
+            state["is_my_turn"] = (ms.chooser == player_num)
+
+    # ===============================
+    # DRAW PHASE
+    # ===============================
+
+    if ms.phase in ["CARD_DRAW", "CHOICE"]:
+
+        draw_cards = {"player1": [], "player2": []}
+
+        draw_rows = MatchDrawCard.query.filter_by(
+            match_id=match_id
+        ).order_by(MatchDrawCard.seq).all()
+
+        for row in draw_rows:
+            card = {
+                "rank": CARD_RANKS[row.rank_code],
+                "suit": CARD_SUITS[row.suit_code]
+            }
+            if row.player_num == 1:
+                draw_cards["player1"].append(card)
+            else:
+                draw_cards["player2"].append(card)
+
         state.update({
-            "draw_cards": match.draw_cards,
-            "draw_winner": match.draw_winner,
-            "draw_timestamp": match.draw_timestamp,
+            "draw_cards": draw_cards,
+            "draw_winner": ms.draw_winner,
+            "draw_timestamp": ms.draw_timestamp
         })
 
-    # Round data (if exists)
-    if match.round_data:
-        state["round"] = match.round_data
+        return jsonify(state)
+
+    # ===============================
+    # ROUND DATA
+    # ===============================
+
+    round_obj = MatchRound.query.filter_by(
+        match_id=match_id,
+        turn_index=ms.current_turn
+    ).first()
+
+    if not round_obj:
+        return jsonify(state)
+
+    round_data = {
+        "current_box": round_obj.current_box,
+        "current_hand": round_obj.current_hand,
+        "resolved": round_obj.resolved,
+        "cut_card_reached": turn.cut_card_reached if turn else False,
+        "boxes": []
+    }
+
+    # ---------------------------
+    # Dealer Cards
+    # ---------------------------
+
+    dealer_cards = MatchDealerCard.query.filter_by(
+        match_id=match_id,
+        turn_index=ms.current_turn,
+        round_index=round_obj.round_index
+    ).order_by(MatchDealerCard.seq).all()
+
+    dealer_json = []
+    for c in dealer_cards:
+        dealer_json.append({
+            "rank": CARD_RANKS[c.rank_code],
+            "suit": CARD_SUITS[c.suit_code],
+            "chosen_value": c.joker_chosen_value
+        })
+
+    round_data["dealer_cards"] = dealer_json
+
+    # ---------------------------
+    # Boxes & Hands
+    # ---------------------------
+
+    boxes = MatchBox.query.filter_by(
+        match_id=match_id,
+        turn_index=ms.current_turn,
+        round_index=round_obj.round_index
+    ).order_by(MatchBox.box_index).all()
+
+    for box in boxes:
+
+        box_json = {"hands": []}
+
+        hands = MatchHand.query.filter_by(
+            match_id=match_id,
+            turn_index=ms.current_turn,
+            round_index=round_obj.round_index,
+            box_index=box.box_index
+        ).order_by(MatchHand.hand_index).all()
+
+        for hand in hands:
+
+            cards = MatchHandCard.query.filter_by(
+                match_id=match_id,
+                turn_index=ms.current_turn,
+                round_index=round_obj.round_index,
+                box_index=box.box_index,
+                hand_index=hand.hand_index
+            ).order_by(MatchHandCard.seq).all()
+
+            card_json = []
+            for c in cards:
+                card_json.append({
+                    "rank": CARD_RANKS[c.rank_code],
+                    "suit": CARD_SUITS[c.suit_code],
+                    "chosen_value": c.joker_chosen_value
+                })
+
+            hand_json = {
+                "cards": card_json,
+                "bet": hand.bet,
+                "status": hand.status,
+                "result": hand.result,
+                "is_split": hand.is_split,
+                "is_doubled": hand.is_doubled
+            }
+
+            box_json["hands"].append(hand_json)
+
+        round_data["boxes"].append(box_json)
+
+    state["round"] = round_data
+
+    # ===============================
+    # MATCH RESULT
+    # ===============================
+
+    if ms.match_over:
+        state["match_result"] = {
+            "winner": ms.match_result_winner,
+            "reason": ms.match_result_reason
+        }
 
     return jsonify(state)

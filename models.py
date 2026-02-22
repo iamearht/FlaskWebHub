@@ -1,9 +1,8 @@
-from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timedelta
+from datetime import datetime
 import secrets
 import string
-import json
 
 from extensions import db
 
@@ -13,25 +12,44 @@ def generate_affiliate_code():
     return ''.join(secrets.choice(chars) for _ in range(8))
 
 
-class User(db.Model):
+class User(UserMixin, db.Model):  # 🔥 Added UserMixin
     __tablename__ = 'users'
+
     id = db.Column(db.Integer, primary_key=True)
+
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=True)
+
     password_hash = db.Column(db.String(256), nullable=False)
+
     coins = db.Column(db.Integer, default=0, nullable=False)
+
     affiliate_code = db.Column(db.String(20), unique=True, nullable=True)
     referred_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    referred_by = db.relationship('User', remote_side=[id], foreign_keys=[referred_by_id])
+    referred_by = db.relationship(
+        'User',
+        remote_side=[id],
+        foreign_keys=[referred_by_id]
+    )
+
+    # -------------------------
+    # AUTH METHODS
+    # -------------------------
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    # -------------------------
+    # BUSINESS LOGIC
+    # -------------------------
 
     def ensure_affiliate_code(self):
         if not self.affiliate_code:

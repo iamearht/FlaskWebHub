@@ -23,7 +23,25 @@
     </div>
 
     <div class="game-board" id="game-board">
+
+
+
+
+
         <div id="phase-display" class="phase-display"></div>
+        
+        <div class="game-stats-bar">
+            <div class="stats-item">
+                <strong>Your Chips:</strong>
+                <span id="global-chips-display">0</span>
+            </div>
+            <div class="stats-item">
+                <strong>Cards Dealt:</strong>
+                <span id="cut-progress-display">0/65</span>
+            </div>
+        </div>
+
+    
 
         <div id="card-draw-area" class="game-area" style="display:none">
             <h2>Card Draw</h2>
@@ -294,6 +312,18 @@ function renderState(s) {
     currentState = s;
     hideAll();
 
+    // ---- ALWAYS UPDATE GLOBAL STATS ----
+    if (s.chips !== undefined) {
+        document.getElementById('global-chips-display').textContent = s.chips;
+    }
+
+    if (s.cards_dealt !== undefined && s.cut_card_position !== undefined) {
+        document.getElementById('cut-progress-display').textContent =
+            s.cards_dealt + '/' + s.cut_card_position;
+    }
+
+    // rest of renderState continues...
+
     // Ensure joker UI never stays visible after phase change
     if (s.phase !== 'JOKER_CHOICE') {
         document.getElementById('joker-choice-area').style.display = 'none';
@@ -546,7 +576,7 @@ function showChoice(s) {
 
 function showBetting(s) {
     document.getElementById('betting-area').style.display = 'block';
-    document.getElementById('chips-display').textContent = 'Chips: ' + s.chips;
+    document.getElementById('chips-display').textContent = s.chips;
     document.getElementById('bet1').max = s.chips;
 }
 

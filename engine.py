@@ -1183,18 +1183,20 @@ def _play_dealer(match: Match) -> None:
     rnd = _get_active_round(match.id, turn_index)
     if not rnd:
         return
-    round_index = int(rnd.round_index)
 
+    round_index = int(rnd.round_index)
     game_mode = match.game_mode
 
-    # any standing/blackjack hands?
-    any_standing = (
-        MatchHand.query
-        .filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index)
-        .filter(MatchHand.status_code.in_([MatchHand.STATUS['stand'], MatchHand.STATUS['blackjack']]))
-        .count()
-        > 0
-    )
+    # --------------------------------------------------
+    # 1️⃣ Check if any player hands are standing/blackjack
+    # --------------------------------------------------
+    hands = MatchHand.query.filter_by(
+        match_id=match.id,
+        turn_index=turn_index,
+        round_index=round_index
+    ).all()
+
+    any_standing = any(h.status in ('stand', 'blackjack') for h in hands)
 
     if not any_standing:
         _resolve_hands(match)
@@ -1202,67 +1204,104 @@ def _play_dealer(match: Match) -> None:
 
     dealer = _dealer_cards(match.id, turn_index, round_index)
 
-    # dealer joker handling
+    # --------------------------------------------------
+    # 2️⃣ Dealer Joker Handling
+    # --------------------------------------------------
     if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
         if _is_classic_mode(game_mode):
-            # auto assign dealer jokers in classic
             _auto_assign_jokers_in_place(dealer)
-            # persist those assigned values back to DB
+
             for seq, c in enumerate(dealer):
                 if c['rank'] == 'JOKER' and 'chosen_value' in c:
                     row = MatchDealerCard.query.filter_by(
-                        match_id=match.id, turn_index=turn_index, round_index=round_index, seq=seq
+                        match_id=match.id,
+                        turn_index=turn_index,
+                        round_index=round_index,
+                        seq=seq
                     ).first()
                     if row and row.joker_chosen_value is None:
                         row.joker_chosen_value = int(c['chosen_value'])
+
             db.session.commit()
             dealer = _dealer_cards(match.id, turn_index, round_index)
+
         else:
             ms.phase = 'DEALER_JOKER_CHOICE'
             db.session.commit()
             return
 
-    # classic dealer auto-play
+    # --------------------------------------------------
+    # 3️⃣ Classic Mode — Auto Dealer Play
+    # --------------------------------------------------
     if _is_classic_mode(game_mode):
+
         while hand_value(dealer) < 17:
-            deck_card = MatchTurnDeckCard.query.filter_by(match_id=match.id, turn_index=turn_index, pos=int(t.cards_dealt)).first()
+            deck_card = MatchTurnDeckCard.query.filter_by(
+                match_id=match.id,
+                turn_index=turn_index,
+                pos=int(t.cards_dealt)
+            ).first()
+
             if not deck_card:
                 raise RuntimeError("Turn deck depleted")
-            seq = MatchDealerCard.query.filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index).count()
+
+            seq = MatchDealerCard.query.filter_by(
+                match_id=match.id,
+                turn_index=turn_index,
+                round_index=round_index
+            ).count()
+
             db.session.add(MatchDealerCard(
-                match_id=match.id, turn_index=turn_index, round_index=round_index,
-                seq=seq, rank_code=deck_card.rank_code, suit_code=deck_card.suit_code, joker_chosen_value=None
+                match_id=match.id,
+                turn_index=turn_index,
+                round_index=round_index,
+                seq=seq,
+                rank_code=deck_card.rank_code,
+                suit_code=deck_card.suit_code,
+                joker_chosen_value=None
             ))
+
             t.cards_dealt = int(t.cards_dealt) + 1
+
             if int(t.cards_dealt) >= CUT_CARD_POSITION:
                 t.cut_card_reached = True
+
             db.session.commit()
 
             dealer = _dealer_cards(match.id, turn_index, round_index)
+
             if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
                 _auto_assign_jokers_in_place(dealer)
-                # persist unassigned dealer jokers immediately
+
                 for seq_i, c in enumerate(dealer):
                     if c['rank'] == 'JOKER' and 'chosen_value' in c:
                         row = MatchDealerCard.query.filter_by(
-                            match_id=match.id, turn_index=turn_index, round_index=round_index, seq=seq_i
+                            match_id=match.id,
+                            turn_index=turn_index,
+                            round_index=round_index,
+                            seq=seq_i
                         ).first()
                         if row and row.joker_chosen_value is None:
                             row.joker_chosen_value = int(c['chosen_value'])
+
                 db.session.commit()
                 dealer = _dealer_cards(match.id, turn_index, round_index)
 
         _resolve_hands(match)
         return
 
-    # interactive dealer: stop at 21+ or prompt dealer
+    # --------------------------------------------------
+    # 4️⃣ Interactive Mode — Dealer Decision Phase
+    # --------------------------------------------------
     dealer_val = hand_value(dealer)
+
     if dealer_val <= 20:
         ms.phase = 'DEALER_TURN'
         set_decision_timer(match, "ACTION")
         db.session.commit()
         return
 
+    # Dealer already 21+
     _resolve_hands(match)
 
 

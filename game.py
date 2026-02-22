@@ -14,10 +14,12 @@ from models import (
     MatchHand,
     MatchHandCard,
     MatchDrawCard,
-    CARD_RANKS,
-    CARD_SUITS,
     MatchHandInsurance,
     MatchTurnResult,
+    JackpotPool,      # 🔥 ADD THIS
+    User,             # 🔥 ADD THIS
+    CARD_RANKS,
+    CARD_SUITS,
 )
 from engine import (
     GAME_MODES,

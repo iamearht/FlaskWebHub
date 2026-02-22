@@ -267,13 +267,38 @@ def _can_double(hand_cards_list: List[Dict[str, Any]], chips: int, bet: int) -> 
     return len(hand_cards_list) == 2 and chips >= bet
 
 
+def _effective_split_value(card: Dict[str, Any]) -> Optional[int]:
+    """
+    Returns the value used for split comparison.
+    - Jokers use chosen_value
+    - Face cards count as 10
+    """
+    if card['rank'] == 'JOKER':
+        return card.get('chosen_value')
+
+    if is_ten_value(card['rank']):
+        return 10
+
+    return CARD_VALUES.get(card['rank'])
+
+
 def _can_split(hand_cards_list: List[Dict[str, Any]], chips: int, bet: int) -> bool:
     if len(hand_cards_list) != 2:
         return False
-    r1, r2 = hand_cards_list[0]['rank'], hand_cards_list[1]['rank']
-    same_rank = r1 == r2
-    both_tens = is_ten_value(r1) and is_ten_value(r2)
-    return (same_rank or both_tens) and chips >= bet
+
+    if chips < bet:
+        return False
+
+    c1, c2 = hand_cards_list
+
+    v1 = _effective_split_value(c1)
+    v2 = _effective_split_value(c2)
+
+    # Cannot split if joker not yet assigned
+    if v1 is None or v2 is None:
+        return False
+
+    return v1 == v2
 
 
 def _auto_assign_jokers_in_place(cards: List[Dict[str, Any]]) -> None:
@@ -679,11 +704,6 @@ def place_bets(match: Match, bets: List[int]) -> None:
         db.session.commit()
         return
 
-    # dealer blackjack immediately if ten-up and blackjack
-    if is_ten_value(dealer_up) and is_blackjack(dealer):
-        _resolve_dealer_blackjack(match, turn_index, round_index)
-        db.session.commit()
-        return
 
     # mark player blackjacks that are already deterministically blackjack
     _mark_player_blackjacks(match, turn_index, round_index)
@@ -1012,6 +1032,7 @@ def player_action(match: Match, action: str) -> None:
 
         return rank, is_unassigned_joker
 
+
     # --------------------------------------------------
     # HIT
     # --------------------------------------------------
@@ -1021,7 +1042,6 @@ def player_action(match: Match, action: str) -> None:
 
         cards = _hand_cards(match.id, turn_index, round_index, box_index, hand_index)
 
-        # Joker branch
         if _is_joker_mode(game_mode) and joker and _has_unassigned_jokers(cards):
             ms.phase = 'JOKER_CHOICE'
             set_decision_timer(match, "JOKER")
@@ -1042,10 +1062,10 @@ def player_action(match: Match, action: str) -> None:
             _next_hand(match)
             return
 
-        # Still active → refresh timer
         set_decision_timer(match, "ACTION")
         db.session.commit()
         return
+
 
     # --------------------------------------------------
     # STAND
@@ -1055,6 +1075,7 @@ def player_action(match: Match, action: str) -> None:
         db.session.commit()
         _next_hand(match)
         return
+
 
     # --------------------------------------------------
     # DOUBLE
@@ -1085,16 +1106,11 @@ def player_action(match: Match, action: str) -> None:
         _next_hand(match)
         return
 
+
     # --------------------------------------------------
-        # SPLIT
-        # --------------------------------------------------
-            # --------------------------------------------------
     # SPLIT
     # --------------------------------------------------
     if action == 'split':
-        # Validate split eligibility
-        if h.is_split:
-            raise ValueError("Cannot split again")
 
         if not _can_split(cards, int(t.chips), int(h.bet)):
             raise ValueError("Cannot split")
@@ -1319,6 +1335,7 @@ def _play_dealer(match: Match) -> None:
     turn_index = int(ms.current_turn)
     t = _get_turn(match.id, turn_index)
     rnd = _get_active_round(match.id, turn_index)
+
     if not rnd:
         return
 
@@ -1326,7 +1343,8 @@ def _play_dealer(match: Match) -> None:
     game_mode = match.game_mode
 
     # --------------------------------------------------
-    # 1) If no player hands are standing/blackjack, nothing to compare -> resolve now
+    # 1) If no player hands are standing/blackjack,
+    #    nothing to compare -> resolve immediately
     # --------------------------------------------------
     hands = MatchHand.query.filter_by(
         match_id=match.id,
@@ -1345,8 +1363,9 @@ def _play_dealer(match: Match) -> None:
     # 2) Dealer Joker Handling
     # --------------------------------------------------
     if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
+
         if _is_classic_mode(game_mode):
-            # Classic: auto-assign immediately (no decision phase)
+            # Classic: auto-assign immediately
             _auto_assign_jokers_in_place(dealer)
 
             for seq, c in enumerate(dealer):
@@ -1364,17 +1383,19 @@ def _play_dealer(match: Match) -> None:
             dealer = _dealer_cards(match.id, turn_index, round_index)
 
         else:
-            # Interactive: must enter dealer joker choice with a timer
+            # Interactive joker choice
             ms.phase = 'DEALER_JOKER_CHOICE'
             set_decision_timer(match, "DEALER_JOKER")
             db.session.commit()
             return
 
     # --------------------------------------------------
-    # 3) Classic Mode — Auto Dealer Play
+    # 3) Classic Mode — Auto Dealer Play (<17 rule)
     # --------------------------------------------------
     if _is_classic_mode(game_mode):
+
         while hand_value(dealer) < 17:
+
             deck_card = MatchTurnDeckCard.query.filter_by(
                 match_id=match.id,
                 turn_index=turn_index,
@@ -1405,10 +1426,9 @@ def _play_dealer(match: Match) -> None:
                 t.cut_card_reached = True
 
             db.session.commit()
-
             dealer = _dealer_cards(match.id, turn_index, round_index)
 
-            # If a joker appears mid-loop in classic joker mode, auto-assign immediately
+            # Auto-assign joker mid-loop if needed
             if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
                 _auto_assign_jokers_in_place(dealer)
 
@@ -1430,19 +1450,20 @@ def _play_dealer(match: Match) -> None:
         return
 
     # --------------------------------------------------
-    # 4) Interactive Mode — Dealer Decision Phase
+    # 4) Interactive Mode — Dealer Fully Controlled
     # --------------------------------------------------
     dealer_val = hand_value(dealer)
 
-    # Standard blackjack dealer logic: act while < 17; otherwise resolve.
-    # (Timeout rule will force 'stand' in DEALER_TURN anyway.)
-    if dealer_val < 17:
-        ms.phase = 'DEALER_TURN'
-        set_decision_timer(match, "ACTION")
-        db.session.commit()
+    # Dealer must stand only on 21 or blackjack
+    if dealer_val >= 21:
+        _resolve_hands(match)
         return
 
-    _resolve_hands(match)
+    # Otherwise dealer may choose freely (1–20)
+    ms.phase = 'DEALER_TURN'
+    set_decision_timer(match, "ACTION")
+    db.session.commit()
+    return
 
 
 def dealer_action(match: Match, action: str) -> None:

@@ -1,6 +1,6 @@
 <script>
     const MATCH_ID = {{ match.id }};
-    const USER_ID = {{ user.id }};
+    const USER_ID = {{ current_user.id | tojson }};
 
     let state = null;
     let pollTimer = null;

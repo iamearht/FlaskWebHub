@@ -1,25 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Match #{{ match.id }} - Blackjack 1v1{% endblock %}
 {% block content %}
-<div class="game-container" id="game" data-match-id="{{ match.id }}" data-player-num="{{ player_num }}" data-game-mode="{{ match.game_mode }}">
-    <div class="game-mode-indicator mode-{{ match.game_mode }}">{{ game_modes[match.game_mode].name if match.game_mode in game_modes else match.game_mode }}</div>
+
+<div class="game-container"
+     id="game"
+     data-match-id="{{ match.id }}"
+     data-player-num="{{ player_num }}"
+     data-game-mode="{{ match.game_mode }}">
+
+    <div class="game-mode-indicator mode-{{ match.game_mode }}">
+        {{ game_modes[match.game_mode].name if match.game_mode in game_modes else match.game_mode }}
+    </div>
+
     <div class="game-header">
+
         <div class="player-info p1 {% if player_num == 1 %}you{% endif %}">
-            <span class="player-name">{{ p1.username }}{% if player_num == 1 %} (You){% endif %}</span>
+            <span class="player-name">
+                {{ p1.username }}{% if player_num == 1 %} (You){% endif %}
+            </span>
+            <span class="player-chips" id="p1-chips">100</span>
             <span class="player-score" id="p1-score"></span>
         </div>
+
         <div class="game-meta">
-            <span class="stake-info">Stake: {{ match.stake }} coins</span>
+            <span class="stake-info">
+                Stake: {{ match.stake }} coins
+            </span>
+
             <span class="turn-info" id="turn-info"></span>
+            <span class="cards-dealt-info" id="header-cut-display"></span>
+
             <div class="timer-display" id="timer-display" style="display:none">
-                <span class="timer-bar-container"><span class="timer-bar" id="timer-bar"></span></span>
+                <span class="timer-bar-container">
+                    <span class="timer-bar" id="timer-bar"></span>
+                </span>
                 <span class="timer-text" id="timer-text"></span>
             </div>
         </div>
+
         <div class="player-info p2 {% if player_num == 2 %}you{% endif %}">
-            <span class="player-name">{{ p2.username }}{% if player_num == 2 %} (You){% endif %}</span>
+            <span class="player-name">
+                {{ p2.username }}{% if player_num == 2 %} (You){% endif %}
+            </span>
+            <span class="player-chips" id="p2-chips">100</span>
             <span class="player-score" id="p2-score"></span>
         </div>
+
     </div>
 
     <div class="game-board" id="game-board">
@@ -27,19 +53,8 @@
 
 
 
-
         <div id="phase-display" class="phase-display"></div>
         
-        <div class="game-stats-bar">
-            <div class="stats-item">
-                <strong>Your Chips:</strong>
-                <span id="global-chips-display">0</span>
-            </div>
-            <div class="stats-item">
-                <strong>Cards Dealt:</strong>
-                <span id="cut-progress-display">0/65</span>
-            </div>
-        </div>
 
     
 
@@ -61,7 +76,7 @@
         </div>
 
         <div id="betting-area" class="game-area" style="display:none">
-            <h3>Place Your Bets <span id="chips-display" class="chips-badge"></span></h3>
+            <h3>Place Your Bets</h3>
             <div class="bet-boxes">
                 <div class="bet-box">
                     <label>Box 1</label>
@@ -312,19 +327,25 @@ function renderState(s) {
     currentState = s;
     hideAll();
 
-    // ---- ALWAYS UPDATE GLOBAL STATS ----
-    if (s.chips !== undefined) {
-        document.getElementById('global-chips-display').textContent = s.chips;
+    // --------------------------------------------------
+    // HEADER: Update player chips
+    // --------------------------------------------------
+    if (s.player1_chips !== undefined && s.player2_chips !== undefined) {
+        document.getElementById('p1-chips').textContent = s.player1_chips;
+        document.getElementById('p2-chips').textContent = s.player2_chips;
     }
 
+    // --------------------------------------------------
+    // HEADER: Update cut card progress
+    // --------------------------------------------------
     if (s.cards_dealt !== undefined && s.cut_card_position !== undefined) {
-        document.getElementById('cut-progress-display').textContent =
-            s.cards_dealt + '/' + s.cut_card_position;
+        document.getElementById('header-cut-display').textContent =
+            'Cards: ' + s.cards_dealt + '/' + s.cut_card_position;
     }
 
-    // rest of renderState continues...
-
-    // Ensure joker UI never stays visible after phase change
+    // --------------------------------------------------
+    // Hide Joker UIs if not active
+    // --------------------------------------------------
     if (s.phase !== 'JOKER_CHOICE') {
         document.getElementById('joker-choice-area').style.display = 'none';
     }
@@ -333,32 +354,59 @@ function renderState(s) {
         document.getElementById('dealer-joker-choice-area').style.display = 'none';
     }
 
-    // rest of renderState continues here...
-
-    // If we left the setup phases, reset the draw animation state (prevents getting stuck)
+    // --------------------------------------------------
+    // Reset draw animation state if needed
+    // --------------------------------------------------
     if (s.phase !== 'CARD_DRAW' && s.phase !== 'CHOICE') {
         drawAnimationDone = false;
         localDrawStart = null;
-        if (drawRevealTimeout) { clearTimeout(drawRevealTimeout); drawRevealTimeout = null; }
+        if (drawRevealTimeout) {
+            clearTimeout(drawRevealTimeout);
+            drawRevealTimeout = null;
+        }
     }
 
-    var allBtns = document.querySelectorAll('.game-area button, #action-area button, #dealer-action-area button');
-    for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = false;
+    // --------------------------------------------------
+    // Enable all buttons
+    // --------------------------------------------------
+    var allBtns = document.querySelectorAll(
+        '.game-area button, #action-area button, #dealer-action-area button'
+    );
+    for (var i = 0; i < allBtns.length; i++) {
+        allBtns[i].disabled = false;
+    }
 
-    document.getElementById('p1-score').textContent = getPlayerScoreText(s, 'player1');
-    document.getElementById('p2-score').textContent = getPlayerScoreText(s, 'player2');
+    // --------------------------------------------------
+    // Update Scores
+    // --------------------------------------------------
+    document.getElementById('p1-score').textContent =
+        getPlayerScoreText(s, 'player1');
 
+    document.getElementById('p2-score').textContent =
+        getPlayerScoreText(s, 'player2');
+
+    // --------------------------------------------------
+    // Update Turn Info
+    // --------------------------------------------------
     var turnText = '';
     if (s.phase === 'CARD_DRAW' || s.phase === 'CHOICE') {
         turnText = 'Setup';
     } else {
         var totalTurns = s.total_turns || 4;
-        turnText = 'Turn ' + Math.min(s.current_turn + 1, totalTurns) + '/' + totalTurns;
+        turnText =
+            'Turn ' +
+            Math.min(s.current_turn + 1, totalTurns) +
+            '/' +
+            totalTurns;
     }
+
     document.getElementById('turn-info').textContent = turnText;
 
     var phaseEl = document.getElementById('phase-display');
 
+    // --------------------------------------------------
+    // MATCH OVER
+    // --------------------------------------------------
     if (s.match_over || s.phase === 'MATCH_OVER') {
         phaseEl.textContent = 'Match Over';
         showMatchOver(s);
@@ -367,15 +415,22 @@ function renderState(s) {
         return;
     }
 
+    // --------------------------------------------------
+    // CARD DRAW
+    // --------------------------------------------------
     if (s.phase === 'CARD_DRAW') {
-    phaseEl.textContent = 'Card Draw';
-    showCardDrawAnimation(s);
-    return;
-}
+        phaseEl.textContent = 'Card Draw';
+        showCardDrawAnimation(s);
+        return;
+    }
 
+    // --------------------------------------------------
+    // ROLE CHOICE
+    // --------------------------------------------------
     if (s.phase === 'CHOICE') {
         phaseEl.textContent = 'Choose Role';
         showChoice(s);
+
         if (s.is_my_turn) {
             stopPolling();
             if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
@@ -385,28 +440,45 @@ function renderState(s) {
             document.getElementById('timer-display').style.display = 'none';
             startPolling();
         }
+
         return;
     }
 
+    // --------------------------------------------------
+    // NOT MY TURN
+    // --------------------------------------------------
     if (!s.is_my_turn) {
 
         if (s.round && s.phase !== 'WAITING_BETS') {
-            phaseEl.textContent = s.i_am_dealer ? "Watching Player" : "Watching Opponent";
+            phaseEl.textContent =
+                s.i_am_dealer ? "Watching Player" : "Watching Opponent";
+
             showTable(s);
+
             document.getElementById('waiting-opponent').style.display = 'block';
-            document.getElementById('waiting-opponent-title').textContent = s.i_am_dealer ? "Player's Turn" : "Opponent's Turn";
-            document.getElementById('waiting-opponent-desc').textContent = 'Watching live...';
+            document.getElementById('waiting-opponent-title').textContent =
+                s.i_am_dealer ? "Player's Turn" : "Opponent's Turn";
+
+            document.getElementById('waiting-opponent-desc').textContent =
+                'Watching live...';
+
         } else {
             phaseEl.textContent = "Opponent's Turn";
             document.getElementById('waiting-opponent').style.display = 'block';
-            document.getElementById('waiting-opponent-title').textContent = "Opponent's Turn";
-            document.getElementById('waiting-opponent-desc').textContent = 'Waiting for the other player...';
+            document.getElementById('waiting-opponent-title').textContent =
+                "Opponent's Turn";
+            document.getElementById('waiting-opponent-desc').textContent =
+                'Waiting for the other player...';
         }
+
         document.getElementById('timer-display').style.display = 'none';
         startPolling();
         return;
     }
 
+    // --------------------------------------------------
+    // MY TURN
+    // --------------------------------------------------
     stopPolling();
 
     if (s.timer_remaining !== null && s.timer_remaining !== undefined) {
@@ -416,23 +488,29 @@ function renderState(s) {
     if (s.phase === 'WAITING_BETS') {
         phaseEl.textContent = 'Place Bets';
         showBetting(s);
+
     } else if (s.phase === 'INSURANCE') {
         phaseEl.textContent = 'Insurance';
         showTable(s);
         showInsurance(s);
+
     } else if (s.phase === 'JOKER_CHOICE') {
         phaseEl.textContent = 'Choose Joker Value';
         showTable(s);
         showJokerChoice(s);
+
     } else if (s.phase === 'DEALER_JOKER_CHOICE') {
         phaseEl.textContent = 'Dealer: Choose Joker Value';
         showTable(s);
         showDealerJokerChoice(s);
+
     } else if (s.phase === 'PLAYER_TURN') {
         phaseEl.textContent = 'Your Turn';
         showTable(s);
         showActions(s);
+
     } else if (s.phase === 'DEALER_TURN') {
+
         if (GAME_MODE === 'classic' || GAME_MODE === 'classic_joker') {
             phaseEl.textContent = 'Dealer Playing...';
             showTable(s);
@@ -441,6 +519,7 @@ function renderState(s) {
             showTable(s);
             showDealerActions(s);
         }
+
     } else if (s.phase === 'ROUND_RESULT') {
         phaseEl.textContent = 'Round Result';
         showTable(s);
@@ -576,7 +655,6 @@ function showChoice(s) {
 
 function showBetting(s) {
     document.getElementById('betting-area').style.display = 'block';
-    document.getElementById('chips-display').textContent = s.chips;
     document.getElementById('bet1').max = s.chips;
 }
 

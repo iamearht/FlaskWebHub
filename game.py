@@ -471,4 +471,50 @@ def timeout(match_id):
 @game_bp.route('/<int:match_id>/state')
 @login_required
 def state(match_id):
-    return jsonify({"status": "ok"})
+    match = Match.query.get_or_404(match_id)
+
+    if current_user.id not in [match.player1_id, match.player2_id]:
+        return jsonify({"error": "Not part of this match"}), 403
+
+    player_num = 1 if match.player1_id == current_user.id else 2
+
+    # Determine turn ownership
+    is_my_turn = False
+    if match.phase == "CHOICE":
+        is_my_turn = (match.chooser == player_num)
+    elif match.phase == "WAITING_BETS":
+        is_my_turn = True
+    elif match.phase == "PLAYER_TURN":
+        is_my_turn = match.current_player_role == player_num
+    elif match.phase == "DEALER_TURN":
+        is_my_turn = match.current_dealer_role == player_num
+
+    state = {
+        "phase": match.phase,
+        "chooser": match.chooser,
+        "choice_made": match.choice_made,
+        "current_turn": match.current_turn,
+        "total_turns": match.total_turns,
+        "game_mode": match.game_mode,
+        "is_heads_up": match.is_heads_up,
+        "match_over": match.match_over,
+        "match_result": match.match_result,
+        "timer_remaining": match.timer_remaining,
+        "is_my_turn": is_my_turn,
+        "i_am_dealer": match.current_dealer_role == player_num,
+        "chips": match.player1_chips if player_num == 1 else match.player2_chips,
+    }
+
+    # Draw phase info
+    if match.phase in ["CARD_DRAW", "CHOICE"]:
+        state.update({
+            "draw_cards": match.draw_cards,
+            "draw_winner": match.draw_winner,
+            "draw_timestamp": match.draw_timestamp,
+        })
+
+    # Round data (if exists)
+    if match.round_data:
+        state["round"] = match.round_data
+
+    return jsonify(state)

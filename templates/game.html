@@ -4,9 +4,7 @@
 
 {% block content %}
 <div class="dealer-section">
-    <div class="boxes-label">
-        Match #{{ match.id }}
-    </div>
+    <div class="boxes-label">Match #{{ match.id }}</div>
 
     <div class="hand-container">
         <div class="hand-header">Dealer</div>
@@ -25,159 +23,148 @@
     </div>
 </div>
 
-<div style="margin-top: 18px; text-align: center;">
+<div style="margin-top:18px;text-align:center;">
     <div id="actionButtons"></div>
 </div>
 
-<div style="margin-top: 18px;">
+<div style="margin-top:18px;">
     <div class="boxes-label">Log</div>
     <div id="logBox"
-         style="height:160px; overflow:auto; border:1px solid #1e5030; background:#0a2010; padding:10px; border-radius:10px;">
-    </div>
+         style="height:160px;overflow:auto;border:1px solid #1e5030;
+         background:#0a2010;padding:10px;border-radius:10px;"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    const MATCH_ID = {{ match.id | tojson }};
-    const USER_ID  = {{ current_user.id | tojson }};
+const MATCH_ID = {{ match.id | tojson }};
+const USER_ID  = {{ current_user.id | tojson }};
 
-    let state = null;
-    let pollTimer = null;
+let state = null;
+let pollTimer = null;
 
-    function el(id) { return document.getElementById(id); }
+function el(id){ return document.getElementById(id); }
 
-    function log(msg) {
-        const box = el('logBox');
-        if (!box) return;
-        const line = document.createElement('div');
-        line.textContent = msg;
-        box.appendChild(line);
-        box.scrollTop = box.scrollHeight;
+function renderCards(container, cards){
+    if(!container) return;
+    container.innerHTML = "";
+    if(!cards) return;
+
+    for(const c of cards){
+        const d = document.createElement("div");
+        d.className = "card";
+        d.textContent = c.rank + c.suit;
+        container.appendChild(d);
     }
+}
 
-    function renderCards(container, cards) {
-        if (!container) return;
-        container.innerHTML = '';
-        if (!cards) return;
+function clearActions(){
+    const area = el("actionButtons");
+    if(area) area.innerHTML = "";
+}
 
-        for (const c of cards) {
-            const div = document.createElement('div');
-            div.className = 'card';
-            div.textContent = c.rank + c.suit;
-            container.appendChild(div);
-        }
-    }
+function addBtn(label, endpoint, payload=null){
+    const area = el("actionButtons");
+    if(!area) return;
 
-    function clearActions() {
-        const area = el('actionButtons');
-        if (area) area.innerHTML = '';
-    }
+    const b = document.createElement("button");
+    b.className = "btn primary";
+    b.textContent = label;
 
-    function addBtn(label, endpoint, payload=null) {
-        const area = el('actionButtons');
-        if (!area) return;
-
-        const b = document.createElement('button');
-        b.className = 'btn primary';
-        b.textContent = label;
-
-        b.onclick = async () => {
-            const r = await fetch(`/game/${MATCH_ID}/${endpoint}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: payload ? JSON.stringify(payload) : null
-            });
-
-            state = await r.json();
-            renderState();
-        };
-
-        area.appendChild(b);
-    }
-
-    function renderState() {
-        if (!state) return;
-
-        clearActions();
-
-        // =========================
-        // PHASE: CHOICE
-        // =========================
-        if (state.phase === "CHOICE") {
-
-            const p1 = state.draw_cards?.player1 || [];
-            const p2 = state.draw_cards?.player2 || [];
-
-            renderCards(el("playerCards"), p1);
-            renderCards(el("dealerCards"), p2);
-
-            if (!state.choice_made) {
-
-                if (state.chooser === USER_ID) {
-                    addBtn("Go First", "choice", { goes_first: true });
-                    addBtn("Go Second", "choice", { goes_first: false });
-                } else {
-                    log("Waiting for opponent to choose...");
-                }
-            }
-
-            return;
-        }
-
-        // =========================
-        // PHASE: BET
-        // =========================
-        if (state.phase === "BET") {
-
-            if (state.bet_options) {
-                for (const b of state.bet_options) {
-                    addBtn("Bet " + b, "bet", { bets: [b] });
-                }
-            }
-
-            return;
-        }
-
-        // =========================
-        // PHASE: PLAY
-        // =========================
-        if (state.phase === "PLAY") {
-
-            renderCards(el("dealerCards"), state.dealer_cards);
-            renderCards(el("playerCards"), state.player_cards);
-
-            if (state.current_turn === USER_ID) {
-                addBtn("Hit", "action", { action: "hit" });
-                addBtn("Stand", "action", { action: "stand" });
-            }
-
-            return;
-        }
-
-        // =========================
-        // MATCH OVER
-        // =========================
-        if (state.match_over) {
-            log("Match Over");
-            if (state.match_result) {
-                log("Result: " + state.match_result);
-            }
-        }
-    }
-
-    async function fetchState() {
-        const r = await fetch(`/game/${MATCH_ID}/state`);
+    b.onclick = async ()=>{
+        const r = await fetch(`/game/${MATCH_ID}/${endpoint}`,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: payload ? JSON.stringify(payload):null
+        });
         state = await r.json();
         renderState();
+    };
+
+    area.appendChild(b);
+}
+
+function renderState(){
+    if(!state) return;
+    clearActions();
+
+    // ===============================
+    // CHOICE PHASE
+    // ===============================
+    if(state.phase === "CHOICE"){
+        const p1 = state.draw_cards?.player1 || [];
+        const p2 = state.draw_cards?.player2 || [];
+
+        renderCards(el("playerCards"), p1);
+        renderCards(el("dealerCards"), p2);
+
+        if(!state.choice_made){
+            if(state.chooser === USER_ID){
+                addBtn("Go First","choice",{goes_first:true});
+                addBtn("Go Second","choice",{goes_first:false});
+            }
+        }
+        return;
     }
 
-    function startPolling() {
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = setInterval(fetchState, 1200);
-        fetchState();
+    // ===============================
+    // BET PHASE
+    // ===============================
+    if(state.phase === "BET"){
+        if(state.bet_options){
+            for(const b of state.bet_options){
+                addBtn("Bet "+b,"bet",{bets:[b]});
+            }
+        }
+        return;
     }
 
-    startPolling();
+    // ===============================
+    // PLAY PHASE
+    // ===============================
+    if(state.phase === "PLAYER_TURN"){
+        renderCards(el("dealerCards"), state.round?.dealer_cards);
+        renderCards(el("playerCards"), state.round?.boxes?.[0]?.hands?.[0]?.cards);
+
+        if(state.is_my_turn){
+            addBtn("Hit","action",{action:"hit"});
+            addBtn("Stand","action",{action:"stand"});
+        }
+        return;
+    }
+
+    // ===============================
+    // DEALER TURN
+    // ===============================
+    if(state.phase === "DEALER_TURN"){
+        renderCards(el("dealerCards"), state.round?.dealer_cards);
+        renderCards(el("playerCards"), state.round?.boxes?.[0]?.hands?.[0]?.cards);
+        return;
+    }
+
+    // ===============================
+    // MATCH OVER
+    // ===============================
+    if(state.match_over){
+        const box = el("logBox");
+        if(box){
+            box.innerHTML += "<div>Match Over</div>";
+        }
+    }
+}
+
+async function fetchState(){
+    const r = await fetch(`/game/${MATCH_ID}/state`);
+    state = await r.json();
+    renderState();
+}
+
+function startPolling(){
+    if(pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(fetchState,1200);
+    fetchState();
+}
+
+startPolling();
 </script>
 {% endblock %}

@@ -1,147 +1,137 @@
-{% extends "base.html" %}
-{% block title %}Spectating Match #{{ match.id }} - Blackjack Platform{% endblock %}
-{% block content %}
-<div class="game-container spectate-mode" id="game" data-match-id="{{ match.id }}">
-    <div class="game-header">
-        <div class="player-info p1">
-            <span class="player-name">{{ p1.username }}</span>
-            <span class="player-score" id="p1-score"></span>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectate</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body { background:#111; color:#fff; font-family:Arial, sans-serif; margin:0; }
+        .table {
+            background:#1f8f3a;
+            border-radius:20px;
+            margin:20px auto;
+            max-width:1100px;
+            min-height:650px;
+            position:relative;
+            padding:20px;
+            box-shadow:0 0 35px rgba(0,0,0,0.6);
+        }
+        .panel {
+            background:rgba(0,0,0,0.25);
+            border-radius:14px;
+            padding:14px;
+            min-height:220px;
+        }
+        .game-area {
+            margin-top:20px;
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            grid-gap:20px;
+        }
+        .cards { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+        .card {
+            width:55px; height:78px; border-radius:10px;
+            background:#eee; color:#111; display:flex;
+            align-items:center; justify-content:center;
+            font-weight:bold;
+            box-shadow:0 4px 10px rgba(0,0,0,0.45);
+        }
+        .card.back { background:linear-gradient(135deg,#444,#111); color:#eee; }
+        .status { margin-top:12px; font-size:14px; opacity:0.9; }
+        .top-bar { display:flex; justify-content:space-between; align-items:center; }
+        .btn {
+            background:#222; border:1px solid #444; color:#fff;
+            padding:8px 14px; border-radius:8px; cursor:pointer;
+            transition:0.15s; text-decoration:none; display:inline-block;
+        }
+        .btn:hover { background:#333; }
+        .muted { opacity:0.75; }
+        .badge {
+            display:inline-block; padding:3px 8px; border-radius:999px;
+            background:rgba(0,0,0,0.25);
+            border:1px solid rgba(255,255,255,0.15);
+            margin-left:6px; font-size:12px;
+        }
+    </style>
+</head>
+<body>
+
+{% include 'base.html' %}
+
+<div class="table">
+    <div class="top-bar">
+        <div>
+            <span class="muted">Match</span>
+            <span class="badge">#{{ match.id }}</span>
+            <span class="badge">Spectating</span>
         </div>
-        <div class="game-meta">
-            <span class="spectate-badge">SPECTATING</span>
-            <span class="stake-info">Stake: {{ match.stake }} coins</span>
-            <span class="turn-info" id="turn-info"></span>
-        </div>
-        <div class="player-info p2">
-            <span class="player-name">{{ p2.username }}</span>
-            <span class="player-score" id="p2-score"></span>
+        <div>
+            <a class="btn" href="{{ url_for('main.lobby') }}">Back</a>
         </div>
     </div>
 
-    <div class="game-board" id="game-board">
-        <div id="phase-display" class="phase-display"></div>
-        <div id="table-area" class="game-area" style="display:none">
-            <div id="table-top-section"></div>
-            <div id="table-bottom-section"></div>
+    <div class="game-area">
+        <div class="panel">
+            <h3>Dealer</h3>
+            <div class="cards" id="dealerCards"></div>
+            <div class="status" id="dealerStatus"></div>
         </div>
-        <div id="waiting-opponent" class="game-area" style="display:none">
-            <div class="spinner"></div>
-            <p id="waiting-opponent-desc">Waiting for action...</p>
-        </div>
-        <div id="match-over-area" class="game-area" style="display:none">
-            <h2 id="match-over-title"></h2>
-            <div id="match-over-details"></div>
-            <a href="/lobby" class="btn btn-primary">Back to Lobby</a>
+
+        <div class="panel">
+            <h3>Player</h3>
+            <div class="cards" id="playerCards"></div>
+            <div class="status" id="playerStatus"></div>
         </div>
     </div>
 </div>
-{% endblock %}
-{% block scripts %}
+
 <script>
-var MATCH_ID = {{ match.id }};
-var currentState = null;
+    const MATCH_ID = {{ match.id }};
+    let state = null;
+    let pollTimer = null;
 
-function cardHtml(card) {
-    if (card.rank === '?') return '<div class="card card-back">?</div>';
-    if (card.rank === 'JOKER' || card.suit === 'joker') {
-        if (card.chosen_value !== undefined && card.chosen_value !== null) {
-            return '<div class="card card-joker joker-assigned">JKR<span class="joker-value">' + card.chosen_value + '</span><span class="suit">&#9733;</span></div>';
-        }
-        return '<div class="card card-joker joker-unassigned">JKR<span class="suit">&#9733;</span></div>';
-    }
-    var suitSymbols = {hearts: '\u2665', diamonds: '\u2666', clubs: '\u2663', spades: '\u2660'};
-    var color = (card.suit === 'hearts' || card.suit === 'diamonds') ? 'red' : 'black';
-    return '<div class="card card-' + color + '">' + card.rank + '<span class="suit">' + suitSymbols[card.suit] + '</span></div>';
-}
+    function el(id) { return document.getElementById(id); }
 
-function getPlayerScoreText(s, playerKey) {
-    var last = null;
-    var lastIdx = 0;
-    for (var i = 4; i >= 1; i--) {
-        var val = s.results[playerKey + '_turn' + i];
-        if (val !== null && val !== undefined) {
-            last = val;
-            lastIdx = i;
-            break;
+    function renderCards(container, cards) {
+        container.innerHTML = '';
+        if (!cards) return;
+        for (const c of cards) {
+            const div = document.createElement('div');
+            div.className = 'card' + (c.hidden ? ' back' : '');
+            div.textContent = c.hidden ? '🂠' : (c.rank + c.suit);
+            container.appendChild(div);
         }
     }
-    if (last === null) return '-';
-    var maxTurns = s.is_heads_up ? 4 : 2;
-    if (lastIdx >= maxTurns) return 'Final: ' + last;
-    return 'R' + lastIdx + ': ' + last;
-}
 
-async function fetchState() {
-    try {
-        var r = await fetch('/api/match/' + MATCH_ID + '/state');
-        var data = await r.json();
-        if (data && !data.error) renderState(data);
-    } catch(e) {}
-}
+    function renderState() {
+        if (!state) return;
+        renderCards(el('dealerCards'), state.dealer_cards);
+        renderCards(el('playerCards'), state.player_cards);
 
-function renderState(s) {
-    currentState = s;
-    document.getElementById('p1-score').textContent = getPlayerScoreText(s, 'player1');
-    document.getElementById('p2-score').textContent = getPlayerScoreText(s, 'player2');
-
-    var phaseEl = document.getElementById('phase-display');
-    document.getElementById('table-area').style.display = 'none';
-    document.getElementById('waiting-opponent').style.display = 'none';
-    document.getElementById('match-over-area').style.display = 'none';
-
-    if (s.match_over || s.phase === 'MATCH_OVER') {
-        phaseEl.textContent = 'Match Over';
-        document.getElementById('match-over-area').style.display = 'block';
-        var r = s.match_result;
-        var title = document.getElementById('match-over-title');
-        var details = document.getElementById('match-over-details');
-        if (r.forfeit) {
-            title.textContent = 'Match ended by forfeit';
-        } else if (r.winner === 0) {
-            title.textContent = "It's a Tie!";
-        } else {
-            title.textContent = 'Player ' + r.winner + ' Wins!';
-        }
-        details.innerHTML = '<p>P1: ' + r.player1_total + ' | P2: ' + r.player2_total + '</p>';
-        return;
+        el('dealerStatus').textContent = state.dealer_status_text || '';
+        el('playerStatus').textContent = state.player_status_text || '';
     }
 
-    var turnText = (s.phase === 'CARD_DRAW' || s.phase === 'CHOICE') ?
-        'Setup' : 'Turn ' + Math.min(s.current_turn + 1, s.total_turns || 4) + '/' + (s.total_turns || 4);
-    document.getElementById('turn-info').textContent = turnText;
-
-    if (s.round) {
-        phaseEl.textContent = s.phase.replace('_', ' ');
-        document.getElementById('table-area').style.display = 'block';
-        var dealerHtml = '<div class="dealer-section"><h3>Dealer</h3><div class="card-row">' +
-            s.round.dealer_cards.map(cardHtml).join('') + '</div>' +
-            '<span class="hand-value">Value: ' + s.round.dealer_value + '</span></div>';
-
-        var boxesHtml = '<div class="boxes-section"><h3>Player Hands</h3>';
-        for (var bi = 0; bi < s.round.boxes.length; bi++) {
-            var box = s.round.boxes[bi];
-            boxesHtml += '<div class="box-container">';
-            for (var hi = 0; hi < box.hands.length; hi++) {
-                var hand = box.hands[hi];
-                boxesHtml += '<div class="hand-container' + (hand.result ? ' result-' + hand.result : '') + '">' +
-                    '<div class="hand-header">Box ' + (bi+1) + ' (Bet: ' + hand.bet + ')</div>' +
-                    '<div class="card-row">' + hand.cards.map(cardHtml).join('') + '</div>' +
-                    '<div class="hand-value">Value: ' + hand.value + '</div></div>';
-            }
-            boxesHtml += '</div>';
+    async function fetchState() {
+        try {
+            var r = await fetch('/game/' + MATCH_ID + '/state');
+            if (!r.ok) return;
+            state = await r.json();
+            renderState();
+        } catch (e) {
+            console.error(e);
         }
-        boxesHtml += '</div>';
-
-        document.getElementById('table-top-section').innerHTML = dealerHtml;
-        document.getElementById('table-bottom-section').innerHTML = boxesHtml;
-    } else {
-        phaseEl.textContent = s.phase.replace('_', ' ');
-        document.getElementById('waiting-opponent').style.display = 'block';
-        document.getElementById('waiting-opponent-desc').textContent = 'Game in progress...';
     }
-}
 
-fetchState();
-setInterval(fetchState, 2000);
+    function startPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(fetchState, 1200);
+        fetchState();
+    }
+
+    startPolling();
 </script>
-{% endblock %}
+
+</body>
+</html>

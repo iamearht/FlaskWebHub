@@ -1,10 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Register - Blackjack Platform{% endblock %}
+
 {% block content %}
 <div class="auth-container">
     <h1>Register</h1>
 
     <form method="POST" action="{{ url_for('auth.register') }}">
+
+        <!-- Username -->
         <div class="form-group">
             <label for="username">Username</label>
             <input type="text"
@@ -15,6 +18,7 @@
                    autocomplete="username">
         </div>
 
+        <!-- Email -->
         <div class="form-group">
             <label for="email">Email (optional)</label>
             <input type="email"
@@ -23,6 +27,7 @@
                    autocomplete="email">
         </div>
 
+        <!-- Password -->
         <div class="form-group">
             <label for="password">Password</label>
             <input type="password"
@@ -33,6 +38,18 @@
                    autocomplete="new-password">
         </div>
 
+        <!-- Confirm Password -->
+        <div class="form-group">
+            <label for="confirm_password">Confirm Password</label>
+            <input type="password"
+                   id="confirm_password"
+                   name="confirm_password"
+                   required
+                   minlength="4"
+                   autocomplete="new-password">
+        </div>
+
+        <!-- Referral Code -->
         <div class="form-group">
             <label for="referral_code">Referral Code (optional)</label>
             <input type="text"
@@ -42,7 +59,9 @@
                    placeholder="Enter referral code">
         </div>
 
-        <button type="submit" class="btn btn-primary">Register</button>
+        <button type="submit" class="btn btn-primary">
+            Register
+        </button>
     </form>
 
     <p class="auth-switch">

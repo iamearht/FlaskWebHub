@@ -2020,6 +2020,9 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
         # chips
         cs['chips'] = int(t.chips)
         cs['starting_chips'] = int(t.starting_chips)
+        cs['cards_dealt'] = int(t.cards_dealt)
+        cs['cut_card_position'] = CUT_CARD_POSITION
+        cs['cut_card_reached'] = bool(t.cut_card_reached)
 
         # round
         if t.active_round_index is not None:

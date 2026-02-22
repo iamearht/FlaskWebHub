@@ -1957,11 +1957,15 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
         'total_turns': MatchTurn.query.filter_by(match_id=match.id).count() or 4,
     }
 
-    # timer info from match row (if your routes include it)
+    # --------------------------------------------------
+    # Timer
+    # --------------------------------------------------
     cs['timer_remaining'] = get_timer_remaining(match)
     cs['decision_type'] = match.decision_type
 
-    # draw cards
+    # --------------------------------------------------
+    # Draw cards
+    # --------------------------------------------------
     draw_rows = (
         MatchDrawCard.query.filter_by(match_id=match.id)
         .order_by(MatchDrawCard.player_num.asc(), MatchDrawCard.seq.asc())
@@ -1973,7 +1977,9 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
         draw_cards[key].append(_codes_to_card(r.rank_code, r.suit_code))
     cs['draw_cards'] = draw_cards
 
-    # results map
+    # --------------------------------------------------
+    # Results map
+    # --------------------------------------------------
     res_rows = (
         MatchTurnResult.query.filter_by(match_id=match.id)
         .order_by(MatchTurnResult.player_num.asc(), MatchTurnResult.turn_number.asc())
@@ -1988,17 +1994,28 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
             'reason': ms.match_result_reason,
         }
 
-    # current turn roles
+    # --------------------------------------------------
+    # Current turn
+    # --------------------------------------------------
     turns = (
         MatchTurn.query.filter_by(match_id=match.id)
         .order_by(MatchTurn.turn_index.asc())
         .all()
     )
+
+    # 🔥 HEADER CHIP DEFAULTS (fallback)
+    player1_chips = 100
+    player2_chips = 100
+
     if turns and int(ms.current_turn) < len(turns):
         t = turns[int(ms.current_turn)]
+
         cs['current_player_role'] = int(t.player_role)
         cs['current_dealer_role'] = int(t.dealer_role)
 
+        # --------------------------------------------------
+        # Determine whose turn
+        # --------------------------------------------------
         if spectator:
             cs['i_am_dealer'] = False
             cs['is_my_turn'] = False
@@ -2010,38 +2027,86 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
                 cs['is_dealer_turn'] = True
             elif ms.phase in ('CARD_DRAW', 'CHOICE'):
                 cs['i_am_dealer'] = (int(t.dealer_role) == user_player_num)
-                cs['is_my_turn'] = (ms.phase != 'CHOICE') or (int(ms.chooser or 0) == user_player_num)
+                cs['is_my_turn'] = (
+                    ms.phase != 'CHOICE'
+                    or int(ms.chooser or 0) == user_player_num
+                )
                 cs['is_dealer_turn'] = False
             else:
                 cs['i_am_dealer'] = (int(t.dealer_role) == user_player_num)
                 cs['is_my_turn'] = (int(t.player_role) == user_player_num)
                 cs['is_dealer_turn'] = False
 
-        # chips
+        # --------------------------------------------------
+        # 🔥 Chips (for header)
+        # --------------------------------------------------
+        if int(t.player_role) == 1:
+            player1_chips = int(t.chips)
+        else:
+            player2_chips = int(t.chips)
+
+        if int(t.dealer_role) == 1:
+            player1_chips = int(t.starting_chips)
+        else:
+            player2_chips = int(t.starting_chips)
+
+        cs['player1_chips'] = player1_chips
+        cs['player2_chips'] = player2_chips
+
+        # --------------------------------------------------
+        # Turn-level chips
+        # --------------------------------------------------
         cs['chips'] = int(t.chips)
         cs['starting_chips'] = int(t.starting_chips)
         cs['cards_dealt'] = int(t.cards_dealt)
         cs['cut_card_position'] = CUT_CARD_POSITION
         cs['cut_card_reached'] = bool(t.cut_card_reached)
 
-        # round
+        # --------------------------------------------------
+        # Round
+        # --------------------------------------------------
         if t.active_round_index is not None:
-            rnd = MatchRound.query.filter_by(match_id=match.id, turn_index=int(t.turn_index), round_index=int(t.active_round_index)).first()
+            rnd = MatchRound.query.filter_by(
+                match_id=match.id,
+                turn_index=int(t.turn_index),
+                round_index=int(t.active_round_index)
+            ).first()
+
             if rnd:
                 round_index = int(rnd.round_index)
 
-                show_all_dealer = bool(rnd.resolved) or ms.phase in ('DEALER_TURN', 'DEALER_JOKER_CHOICE')
-                is_dealer = (int(t.dealer_role) == user_player_num) and (not spectator)
+                show_all_dealer = bool(rnd.resolved) or ms.phase in (
+                    'DEALER_TURN',
+                    'DEALER_JOKER_CHOICE'
+                )
+                is_dealer = (
+                    int(t.dealer_role) == user_player_num
+                ) and (not spectator)
 
-                dealer = _dealer_cards(match.id, int(t.turn_index), round_index)
+                dealer = _dealer_cards(
+                    match.id,
+                    int(t.turn_index),
+                    round_index
+                )
+
                 if show_all_dealer or is_dealer:
                     dealer_cards_view = dealer
                 else:
-                    dealer_cards_view = [dealer[0], {'rank': '?', 'suit': '?'}] if dealer else []
+                    dealer_cards_view = (
+                        [dealer[0], {'rank': '?', 'suit': '?'}]
+                        if dealer else []
+                    )
 
                 cs['round'] = {
                     'dealer_cards': dealer_cards_view,
-                    'dealer_value': hand_value(dealer) if (show_all_dealer or is_dealer) else (hand_value([dealer[0]]) if dealer else 0),
+                    'dealer_value': (
+                        hand_value(dealer)
+                        if (show_all_dealer or is_dealer)
+                        else (
+                            hand_value([dealer[0]])
+                            if dealer else 0
+                        )
+                    ),
                     'current_box': int(rnd.current_box),
                     'current_hand': int(rnd.current_hand),
                     'insurance_offered': bool(rnd.insurance_offered),
@@ -2050,28 +2115,55 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
                 }
 
                 boxes = (
-                    MatchBox.query.filter_by(match_id=match.id, turn_index=int(t.turn_index), round_index=round_index)
+                    MatchBox.query.filter_by(
+                        match_id=match.id,
+                        turn_index=int(t.turn_index),
+                        round_index=round_index
+                    )
                     .order_by(MatchBox.box_index.asc())
                     .all()
                 )
+
                 for b in boxes:
                     bi = int(b.box_index)
                     hands = (
-                        MatchHand.query.filter_by(match_id=match.id, turn_index=int(t.turn_index), round_index=round_index, box_index=bi)
+                        MatchHand.query.filter_by(
+                            match_id=match.id,
+                            turn_index=int(t.turn_index),
+                            round_index=round_index,
+                            box_index=bi
+                        )
                         .order_by(MatchHand.hand_index.asc())
                         .all()
                     )
+
                     box_data = {'hands': []}
+
                     for h in hands:
                         hi = int(h.hand_index)
-                        cards = _hand_cards(match.id, int(t.turn_index), round_index, bi, hi)
+                        cards = _hand_cards(
+                            match.id,
+                            int(t.turn_index),
+                            round_index,
+                            bi,
+                            hi
+                        )
                         hv = hand_value(cards)
 
                         can_split = False
                         can_double = False
+
                         if h.status == 'active':
-                            can_split = _can_split(cards, int(t.chips), int(h.bet))
-                            can_double = _can_double(cards, int(t.chips), int(h.bet))
+                            can_split = _can_split(
+                                cards,
+                                int(t.chips),
+                                int(h.bet)
+                            )
+                            can_double = _can_double(
+                                cards,
+                                int(t.chips),
+                                int(h.bet)
+                            )
 
                         box_data['hands'].append({
                             'cards': cards,
@@ -2085,9 +2177,12 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
                             'can_double': can_double,
                             'has_unassigned_jokers': _has_unassigned_jokers(cards),
                         })
+
                     cs['round']['boxes'].append(box_data)
 
-    # joker prompts
+    # --------------------------------------------------
+    # Joker prompts
+    # --------------------------------------------------
     if ms.phase == 'JOKER_CHOICE':
         turn_index = int(ms.current_turn)
         rnd = _get_active_round(match.id, turn_index)
@@ -2098,7 +2193,13 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
             cs['joker_choice'] = {
                 'box': bi,
                 'hand': hi,
-                'indices': _unassigned_joker_seqs_for_hand(match.id, turn_index, round_index, bi, hi),
+                'indices': _unassigned_joker_seqs_for_hand(
+                    match.id,
+                    turn_index,
+                    round_index,
+                    bi,
+                    hi
+                ),
             }
 
     if ms.phase == 'DEALER_JOKER_CHOICE':
@@ -2106,6 +2207,10 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
         rnd = _get_active_round(match.id, turn_index)
         if rnd:
             round_index = int(rnd.round_index)
-            cs['dealer_joker_indices'] = _unassigned_joker_seqs_for_dealer(match.id, turn_index, round_index)
+            cs['dealer_joker_indices'] = _unassigned_joker_seqs_for_dealer(
+                match.id,
+                turn_index,
+                round_index
+            )
 
     return cs

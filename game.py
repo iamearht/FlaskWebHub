@@ -523,19 +523,23 @@ def state(match_id):
         turn_index=ms.current_turn
     ).first()
 
-    if turn:
+    # ---- CHOICE PHASE (does NOT require turn) ----
+    if ms.phase == "CHOICE":
+        state["is_my_turn"] = (ms.chooser == player_num)
+
+    # ---- Other phases that require turn ----
+    elif turn:
         state["chips"] = turn.chips
         state["i_am_dealer"] = (turn.dealer_role == player_num)
 
         if ms.phase == "PLAYER_TURN":
             state["is_my_turn"] = (turn.player_role == player_num)
+
         elif ms.phase == "DEALER_TURN":
             state["is_my_turn"] = (turn.dealer_role == player_num)
+
         elif ms.phase == "WAITING_BETS":
             state["is_my_turn"] = True
-        elif ms.phase == "CHOICE":
-            state["is_my_turn"] = (ms.chooser == player_num)
-
     # ===============================
     # DRAW PHASE
     # ===============================

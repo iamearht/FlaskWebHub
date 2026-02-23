@@ -1540,16 +1540,25 @@ def dealer_action(match: Match, action: str) -> None:
 
 def assign_dealer_joker_values(match: Match, values: List[str]) -> None:
     ms = _get_match_state(match.id)
+
     if ms.phase != 'DEALER_JOKER_CHOICE':
         raise ValueError("Not in DEALER_JOKER_CHOICE phase")
 
     turn_index = int(ms.current_turn)
     rnd = _get_active_round(match.id, turn_index)
+
     if not rnd:
         raise ValueError("No active round")
-    round_index = int(rnd.round_index)
 
-    seqs = _unassigned_joker_seqs_for_dealer(match.id, turn_index, round_index)
+    round_index = int(rnd.round_index)
+    game_mode = match.game_mode
+
+    seqs = _unassigned_joker_seqs_for_dealer(
+        match.id,
+        turn_index,
+        round_index
+    )
+
     if len(values) != len(seqs):
         raise ValueError("Invalid number of joker values")
 
@@ -1558,26 +1567,33 @@ def assign_dealer_joker_values(match: Match, values: List[str]) -> None:
     for seq, choice in zip(seqs, values):
         if choice not in VALID:
             raise ValueError("Invalid joker value")
-        if choice in ("J","Q","K"):
-            numeric = 10
-        elif choice == "A":
-            numeric = 11
-        else:
-            numeric = int(choice)
+
+        numeric = 11 if choice == "A" else int(choice)
 
         row = MatchDealerCard.query.filter_by(
-            match_id=match.id, turn_index=turn_index, round_index=round_index, seq=seq
+            match_id=match.id,
+            turn_index=turn_index,
+            round_index=round_index,
+            seq=seq
         ).first()
+
         if not row:
             raise RuntimeError("Dealer card missing while assigning joker")
+
         row.joker_chosen_value = numeric
 
     db.session.commit()
 
+    # 🔥 CRITICAL FIX
+    if _is_classic_mode(game_mode):
+        # Immediately resume automatic dealer play
+        _play_dealer(match)
+        return
+
+    # Interactive mode → wait for dealer action
     ms.phase = 'DEALER_TURN'
     set_decision_timer(match, "ACTION")
     db.session.commit()
-
 
 def _resolve_hands(match: Match) -> None:
     """

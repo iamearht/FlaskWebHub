@@ -223,31 +223,49 @@ def _unassigned_joker_seqs_for_dealer(match_id: int, turn_index: int, round_inde
 def hand_value(cards: List[Dict[str, Any]]) -> int:
     total = 0
     aces = 0
-    jokers_auto = 0
+    unchosen_jokers = 0
 
     for c in cards:
+        # --- JOKER HANDLING ---
         if c['rank'] == 'JOKER':
             if 'chosen_value' in c:
-                total += int(c['chosen_value'])
+                val = int(c['chosen_value'])
+                total += val
+                if val == 11:
+                    aces += 1
             else:
-                jokers_auto += 1
+                unchosen_jokers += 1
             continue
-        total += CARD_VALUES[c['rank']]
+
+        # --- NORMAL CARDS ---
+        value = CARD_VALUES[c['rank']]
+        total += value
+
         if c['rank'] == 'A':
             aces += 1
 
+    # --- SOFT ACE ADJUSTMENT ---
     while total > 21 and aces > 0:
         total -= 10
         aces -= 1
 
-    # auto-value any remaining jokers (when allowed)
-    for _ in range(jokers_auto):
+    # --- AUTO ASSIGN UNCHOSEN JOKERS (fallback safety) ---
+    for _ in range(unchosen_jokers):
         best = 21 - total
-        best = min(11, max(1, best))
-        total += best
+
+        if best >= 11:
+            total += 11
+            aces += 1
+        elif best >= 1:
+            total += best
+        else:
+            total += 1
+
+        while total > 21 and aces > 0:
+            total -= 10
+            aces -= 1
 
     return total
-
 
 def is_ten_value(rank: str) -> bool:
     return rank in ('10', 'J', 'Q', 'K')
@@ -1267,7 +1285,7 @@ def assign_joker_values(match: Match, values: List[str]) -> None:
     if len(values) != len(seqs):
         raise ValueError("Invalid number of joker values")
 
-    VALID = {"A","2","3","4","5","6","7","8","9","10","J","Q","K"}
+    VALID = {"A","2","3","4","5","6","7","8","9","10"}
 
     for seq, choice in zip(seqs, values):
         if choice not in VALID:
@@ -1360,40 +1378,21 @@ def _play_dealer(match: Match) -> None:
     dealer = _dealer_cards(match.id, turn_index, round_index)
 
     # --------------------------------------------------
-    # 2) Dealer Joker Handling
+    # 2) Dealer Joker Handling (INITIAL CHECK)
     # --------------------------------------------------
+    # If dealer has any unassigned jokers, force manual choice
     if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
-
-        if _is_classic_mode(game_mode):
-            # Classic: auto-assign immediately
-            _auto_assign_jokers_in_place(dealer)
-
-            for seq, c in enumerate(dealer):
-                if c.get('rank') == 'JOKER' and 'chosen_value' in c:
-                    row = MatchDealerCard.query.filter_by(
-                        match_id=match.id,
-                        turn_index=turn_index,
-                        round_index=round_index,
-                        seq=seq
-                    ).first()
-                    if row and row.joker_chosen_value is None:
-                        row.joker_chosen_value = int(c['chosen_value'])
-
-            db.session.commit()
-            dealer = _dealer_cards(match.id, turn_index, round_index)
-
-        else:
-            # Interactive joker choice
-            ms.phase = 'DEALER_JOKER_CHOICE'
-            set_decision_timer(match, "DEALER_JOKER")
-            db.session.commit()
-            return
+        ms.phase = 'DEALER_JOKER_CHOICE'
+        set_decision_timer(match, "DEALER_JOKER")
+        db.session.commit()
+        return
 
     # --------------------------------------------------
-    # 3) Classic Mode — Auto Dealer Play (<17 rule)
+    # 3) Classic Modes — Auto Dealer Play (<17 rule)
     # --------------------------------------------------
     if _is_classic_mode(game_mode):
 
+        # Dealer hits until 17 or more
         while hand_value(dealer) < 17:
 
             deck_card = MatchTurnDeckCard.query.filter_by(
@@ -1426,44 +1425,34 @@ def _play_dealer(match: Match) -> None:
                 t.cut_card_reached = True
 
             db.session.commit()
+
             dealer = _dealer_cards(match.id, turn_index, round_index)
 
-            # Auto-assign joker mid-loop if needed
+            # If dealer drew a Joker, pause immediately
             if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
-                _auto_assign_jokers_in_place(dealer)
-
-                for seq_i, c in enumerate(dealer):
-                    if c.get('rank') == 'JOKER' and 'chosen_value' in c:
-                        row = MatchDealerCard.query.filter_by(
-                            match_id=match.id,
-                            turn_index=turn_index,
-                            round_index=round_index,
-                            seq=seq_i
-                        ).first()
-                        if row and row.joker_chosen_value is None:
-                            row.joker_chosen_value = int(c['chosen_value'])
-
+                ms.phase = 'DEALER_JOKER_CHOICE'
+                set_decision_timer(match, "DEALER_JOKER")
                 db.session.commit()
-                dealer = _dealer_cards(match.id, turn_index, round_index)
+                return
 
+        # Dealer finished drawing
         _resolve_hands(match)
         return
 
     # --------------------------------------------------
-    # 4) Interactive Mode — Dealer Fully Controlled
+    # 4) Interactive Modes — Dealer Fully Controlled
     # --------------------------------------------------
     dealer_val = hand_value(dealer)
 
-    # Dealer must stand only on 21 or blackjack
+    # Dealer auto-resolves if 21 or bust
     if dealer_val >= 21:
         _resolve_hands(match)
         return
 
-    # Otherwise dealer may choose freely (1–20)
+    # Otherwise dealer chooses action
     ms.phase = 'DEALER_TURN'
     set_decision_timer(match, "ACTION")
     db.session.commit()
-    return
 
 
 def dealer_action(match: Match, action: str) -> None:
@@ -1564,7 +1553,7 @@ def assign_dealer_joker_values(match: Match, values: List[str]) -> None:
     if len(values) != len(seqs):
         raise ValueError("Invalid number of joker values")
 
-    VALID = {"A","2","3","4","5","6","7","8","9","10","J","Q","K"}
+    VALID = {"A","2","3","4","5","6","7","8","9","10"}
 
     for seq, choice in zip(seqs, values):
         if choice not in VALID:
@@ -1806,40 +1795,51 @@ def apply_timeout(match: Match) -> bool:
     ms = _get_match_state(match.id)
     phase = ms.phase
 
-    # 🔐 CRITICAL:
-    # Clear the expired timer FIRST to prevent re-trigger loops
+    # --------------------------------------------------
+    # 🔐 Clear expired timer FIRST to avoid re-trigger loops
+    # --------------------------------------------------
     clear_decision_timer(match)
     db.session.commit()
 
-    # ---- CARD_DRAW (no decision required) ----
+    # --------------------------------------------------
+    # CARD DRAW (no timeout action)
+    # --------------------------------------------------
     if phase == 'CARD_DRAW':
         return False
 
-    # ---- CHOICE ----
+    # --------------------------------------------------
+    # CHOICE
+    # --------------------------------------------------
     if phase == 'CHOICE':
         make_choice(match, random.choice([True, False]))
         return True
 
-    # ---- WAITING_BETS ----
+    # --------------------------------------------------
+    # WAITING BETS
+    # --------------------------------------------------
     if phase == 'WAITING_BETS':
         turn_index = int(ms.current_turn)
         t = _get_turn(match.id, turn_index)
 
         if int(t.chips) > 0:
-            place_bets(match, [1])
+            place_bets(match, [1])  # minimum auto-bet
         else:
             end_turn(match)
 
         return True
 
-    # ---- INSURANCE ----
+    # --------------------------------------------------
+    # INSURANCE
+    # --------------------------------------------------
     if phase == 'INSURANCE':
         turn_index = int(ms.current_turn)
         rnd = _get_active_round(match.id, turn_index)
+
         if not rnd:
             return False
 
         round_index = int(rnd.round_index)
+
         hands = (
             MatchHand.query.filter_by(
                 match_id=match.id,
@@ -1850,15 +1850,21 @@ def apply_timeout(match: Match) -> bool:
             .all()
         )
 
+        # Default: decline insurance
         handle_insurance(match, [False] * len(hands))
         return True
 
-    # ---- PLAYER TURN ----
+    # --------------------------------------------------
+    # PLAYER TURN
+    # --------------------------------------------------
     if phase == 'PLAYER_TURN':
+        # Default: stand
         player_action(match, 'stand')
         return True
 
-    # ---- JOKER CHOICE ----
+    # --------------------------------------------------
+    # PLAYER JOKER CHOICE
+    # --------------------------------------------------
     if phase == 'JOKER_CHOICE':
         turn_index = int(ms.current_turn)
         rnd = _get_active_round(match.id, turn_index)
@@ -1871,29 +1877,23 @@ def apply_timeout(match: Match) -> bool:
         hi = int(rnd.current_hand)
 
         seqs = _unassigned_joker_seqs_for_hand(
-            match.id, turn_index, round_index, bi, hi
+            match.id,
+            turn_index,
+            round_index,
+            bi,
+            hi
         )
 
-        # Auto-assign Ace (11)
-        for seq in seqs:
-            row = MatchHandCard.query.filter_by(
-                match_id=match.id,
-                turn_index=turn_index,
-                round_index=round_index,
-                box_index=bi,
-                hand_index=hi,
-                seq=seq
-            ).first()
-            if row:
-                row.joker_chosen_value = 11
+        if seqs:
+            # Default: assign all jokers as Ace
+            assign_joker_values(match, ["A"] * len(seqs))
+            return True
 
-        db.session.commit()
+        return False
 
-        # Reuse normal evaluation flow
-        assign_joker_values(match, ["A"] * len(seqs))
-        return True
-
-    # ---- DEALER JOKER CHOICE ----
+    # --------------------------------------------------
+    # DEALER JOKER CHOICE
+    # --------------------------------------------------
     if phase == 'DEALER_JOKER_CHOICE':
         turn_index = int(ms.current_turn)
         rnd = _get_active_round(match.id, turn_index)
@@ -1904,31 +1904,28 @@ def apply_timeout(match: Match) -> bool:
         round_index = int(rnd.round_index)
 
         seqs = _unassigned_joker_seqs_for_dealer(
-            match.id, turn_index, round_index
+            match.id,
+            turn_index,
+            round_index
         )
 
-        # Auto-assign Ace (11)
-        for seq in seqs:
-            row = MatchDealerCard.query.filter_by(
-                match_id=match.id,
-                turn_index=turn_index,
-                round_index=round_index,
-                seq=seq
-            ).first()
-            if row:
-                row.joker_chosen_value = 11
+        if seqs:
+            assign_dealer_joker_values(match, ["A"] * len(seqs))
+            return True
 
-        db.session.commit()
+        return False
 
-        assign_dealer_joker_values(match, ["A"] * len(seqs))
-        return True
-
-    # ---- DEALER TURN ----
+    # --------------------------------------------------
+    # DEALER TURN
+    # --------------------------------------------------
     if phase == 'DEALER_TURN':
+        # Default: stand
         dealer_action(match, 'stand')
         return True
 
-    # ---- ROUND RESULT (5 second visibility rule) ----
+    # --------------------------------------------------
+    # ROUND RESULT (5-second display rule)
+    # --------------------------------------------------
     if phase == 'ROUND_RESULT':
         next_round_or_end_turn(match)
         return True

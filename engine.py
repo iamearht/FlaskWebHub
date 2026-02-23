@@ -281,9 +281,35 @@ def is_ten_value(rank: str) -> bool:
 
 
 def is_blackjack(cards: List[Dict[str, Any]]) -> bool:
-    if _has_unassigned_jokers(cards):
+    """
+    A "blackjack" is strictly a 2-card hand that qualifies as:
+      - Ace + 10-value (10/J/Q/K)
+      - Joker + 10-value
+      - Joker + Ace
+
+    Important: Joker-based blackjacks must still count even if the Joker
+    hasn't been assigned a chosen_value yet.
+    """
+    if len(cards) != 2:
         return False
-    return len(cards) == 2 and hand_value(cards) == 21
+
+    r1 = cards[0].get('rank')
+    r2 = cards[1].get('rank')
+
+    ranks = (r1, r2)
+
+    # Standard blackjack: A + 10-value
+    if ('A' in ranks) and (is_ten_value(r1) or is_ten_value(r2)):
+        return True
+
+    # Joker blackjack: Joker + (Ten-value OR Ace)
+    if 'JOKER' in ranks:
+        other = r2 if r1 == 'JOKER' else r1
+        if other == 'A' or is_ten_value(other):
+            return True
+
+    # Otherwise, NOT a blackjack (even if total == 21 via joker assignment tricks)
+    return False
 
 
 def _no_blackjack_after_split(hand: MatchHand) -> bool:
@@ -1419,6 +1445,7 @@ def _play_dealer(match: Match) -> None:
     game_mode = match.game_mode
 
     # --------------------------------------------------
+       # --------------------------------------------------
     # 1) If no player hands are standing/blackjack,
     #    nothing to compare -> resolve immediately
     # --------------------------------------------------
@@ -1435,6 +1462,22 @@ def _play_dealer(match: Match) -> None:
 
     dealer = _dealer_cards(match.id, turn_index, round_index)
 
+    # --------------------------------------------------
+    # Classic shortcut:
+    # If the ONLY non-busted hands are blackjacks
+    # and dealer does NOT have opening blackjack,
+    # dealer should NOT draw.
+    # --------------------------------------------------
+    if _is_classic_mode(game_mode):
+
+        any_player_blackjack = any(h.status == 'blackjack' for h in hands)
+        any_player_stand = any(h.status == 'stand' for h in hands)
+        dealer_has_blackjack = is_blackjack(dealer)
+
+        if any_player_blackjack and not any_player_stand and not dealer_has_blackjack:
+            _resolve_hands(match)
+            return
+    
     # --------------------------------------------------
     # 2) Dealer Joker Handling (INITIAL CHECK)
     # --------------------------------------------------
@@ -1572,8 +1615,13 @@ def dealer_action(match: Match, action: str) -> None:
         db.session.commit()
 
         dealer = _dealer_cards(match.id, turn_index, round_index)
+        
 
-        # ---- Joker branch ----
+        
+        # --------------------------------------------------
+        # 2) Dealer Joker Handling (INITIAL CHECK)
+        # --------------------------------------------------
+        # If dealer has any unassigned jokers, force manual choice
         if _is_joker_mode(game_mode) and _has_unassigned_jokers(dealer):
             ms.phase = 'DEALER_JOKER_CHOICE'
             set_decision_timer(match, "DEALER_JOKER")
@@ -1714,7 +1762,13 @@ def _resolve_hands(match: Match) -> None:
         # -----------------------------
         if h.status == 'stand':
             player_val = hand_value(cards)
-
+        
+            # A dealer blackjack always beats any non-blackjack 21 (or any stand hand).
+            # Blackjack vs blackjack is handled in the blackjack branch above.
+            if dealer_blackjack:
+                h.result = 'lose'
+                continue
+        
             if dealer_bust or player_val > dealer_val:
                 t.chips = int(t.chips) + int(h.bet) * 2
                 h.result = 'win'

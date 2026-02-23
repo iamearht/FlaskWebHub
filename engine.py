@@ -40,10 +40,19 @@ DRAW_RANK_VALUES = {
     '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14, 'JOKER': 15
 }
 
+CHIP_SCALE = 2  # 1 chip = 2 internal units (supports 0.5 chips)
 CUT_CARD_POSITION = 65
-TURN_STARTING_CHIPS = 100
+TURN_STARTING_CHIPS = 100 * CHIP_SCALE
 DECISION_TIMEOUT = 30
 ROUND_RESULT_TIMEOUT = 5
+
+
+def chips_to_units(chips: int) -> int:
+    return int(chips) * CHIP_SCALE
+
+def units_to_chips(units: int):
+    # Safe because only .0 or .5 will ever exist
+    return units / CHIP_SCALE
 
 RANK_TO_CODE = {r: i for i, r in enumerate(CARD_RANKS)}
 CODE_TO_RANK = {i: r for i, r in enumerate(CARD_RANKS)}
@@ -578,6 +587,7 @@ def enter_turn(match: Match) -> None:
 
 def place_bets(match: Match, bets: List[int]) -> None:
     ms = _get_match_state(match.id)
+
     if ms.phase != 'WAITING_BETS':
         raise ValueError("Not in WAITING_BETS phase")
 
@@ -588,27 +598,35 @@ def place_bets(match: Match, bets: List[int]) -> None:
         raise ValueError("Must place 1-3 bets")
 
     valid_bets: List[int] = []
-    total_bet = 0
-    for b in bets:
-        amt = int(b)
-        if amt < 1:
-            raise ValueError("Minimum bet per box is 1")
-        total_bet += amt
-        valid_bets.append(amt)
+    total_bet_units = 0
 
-    if total_bet > int(t.chips):
+    # Convert chip bets → internal units
+    for b in bets:
+        amt_chips = int(b)
+
+        if amt_chips < 1:
+            raise ValueError("Minimum bet per box is 1")
+
+        amt_units = chips_to_units(amt_chips)
+
+        total_bet_units += amt_units
+        valid_bets.append(amt_units)
+
+    if total_bet_units > int(t.chips):
         raise ValueError("Total bet exceeds available chips")
 
-    # determine next round index
+    # Determine next round index
     last_round = (
-        MatchRound.query.filter_by(match_id=match.id, turn_index=turn_index)
+        MatchRound.query
+        .filter_by(match_id=match.id, turn_index=turn_index)
         .order_by(MatchRound.round_index.desc())
         .first()
     )
+
     round_index = (int(last_round.round_index) + 1) if last_round else 0
 
-    # subtract chips
-    t.chips = int(t.chips) - total_bet
+    # Subtract chips (units)
+    t.chips = int(t.chips) - total_bet_units
 
     rnd = MatchRound(
         match_id=match.id,
@@ -617,28 +635,53 @@ def place_bets(match: Match, bets: List[int]) -> None:
         current_box=0,
         current_hand=0,
         insurance_offered=False,
-        total_initial_bet=total_bet,
+        total_initial_bet=total_bet_units,
         resolved=False,
     )
-    db.session.add(rnd)
 
+    db.session.add(rnd)
     t.active_round_index = round_index
 
-    # clean any old rows at this round index (safety)
-    db.session.query(MatchDealerCard).filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index).delete(synchronize_session=False)
-    db.session.query(MatchBox).filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index).delete(synchronize_session=False)
-    db.session.query(MatchHand).filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index).delete(synchronize_session=False)
-    db.session.query(MatchHandCard).filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index).delete(synchronize_session=False)
-    db.session.query(MatchHandInsurance).filter_by(match_id=match.id, turn_index=turn_index, round_index=round_index).delete(synchronize_session=False)
+    # Clean any old rows at this round index (safety)
+    db.session.query(MatchDealerCard).filter_by(
+        match_id=match.id,
+        turn_index=turn_index,
+        round_index=round_index
+    ).delete(synchronize_session=False)
 
-    # deal hands
-    for box_i, bet_amt in enumerate(valid_bets):
+    db.session.query(MatchBox).filter_by(
+        match_id=match.id,
+        turn_index=turn_index,
+        round_index=round_index
+    ).delete(synchronize_session=False)
+
+    db.session.query(MatchHand).filter_by(
+        match_id=match.id,
+        turn_index=turn_index,
+        round_index=round_index
+    ).delete(synchronize_session=False)
+
+    db.session.query(MatchHandCard).filter_by(
+        match_id=match.id,
+        turn_index=turn_index,
+        round_index=round_index
+    ).delete(synchronize_session=False)
+
+    db.session.query(MatchHandInsurance).filter_by(
+        match_id=match.id,
+        turn_index=turn_index,
+        round_index=round_index
+    ).delete(synchronize_session=False)
+
+    # Deal hands
+    for box_i, bet_units in enumerate(valid_bets):
+
         db.session.add(MatchBox(
             match_id=match.id,
             turn_index=turn_index,
             round_index=round_index,
             box_index=box_i,
-            bet=bet_amt,
+            bet=bet_units,
         ))
 
         hand = MatchHand(
@@ -647,7 +690,7 @@ def place_bets(match: Match, bets: List[int]) -> None:
             round_index=round_index,
             box_index=box_i,
             hand_index=0,
-            bet=bet_amt,
+            bet=bet_units,
             status='active',
             result=None,
             is_split=False,
@@ -657,7 +700,7 @@ def place_bets(match: Match, bets: List[int]) -> None:
         )
         db.session.add(hand)
 
-        # insurance row exists for every hand
+        # Insurance row exists for every hand
         db.session.add(MatchHandInsurance(
             match_id=match.id,
             turn_index=turn_index,
@@ -670,10 +713,17 @@ def place_bets(match: Match, bets: List[int]) -> None:
             decided=False,
         ))
 
+        # Deal 2 cards to player hand
         for seq in (0, 1):
-            deck_card = MatchTurnDeckCard.query.filter_by(match_id=match.id, turn_index=turn_index, pos=int(t.cards_dealt)).first()
+            deck_card = MatchTurnDeckCard.query.filter_by(
+                match_id=match.id,
+                turn_index=turn_index,
+                pos=int(t.cards_dealt)
+            ).first()
+
             if not deck_card:
                 raise RuntimeError("Turn deck depleted")
+
             db.session.add(MatchHandCard(
                 match_id=match.id,
                 turn_index=turn_index,
@@ -685,13 +735,20 @@ def place_bets(match: Match, bets: List[int]) -> None:
                 suit_code=deck_card.suit_code,
                 joker_chosen_value=None,
             ))
+
             t.cards_dealt = int(t.cards_dealt) + 1
 
-    # deal dealer 2 cards
+    # Deal dealer 2 cards
     for seq in (0, 1):
-        deck_card = MatchTurnDeckCard.query.filter_by(match_id=match.id, turn_index=turn_index, pos=int(t.cards_dealt)).first()
+        deck_card = MatchTurnDeckCard.query.filter_by(
+            match_id=match.id,
+            turn_index=turn_index,
+            pos=int(t.cards_dealt)
+        ).first()
+
         if not deck_card:
             raise RuntimeError("Turn deck depleted")
+
         db.session.add(MatchDealerCard(
             match_id=match.id,
             turn_index=turn_index,
@@ -701,29 +758,30 @@ def place_bets(match: Match, bets: List[int]) -> None:
             suit_code=deck_card.suit_code,
             joker_chosen_value=None,
         ))
+
         t.cards_dealt = int(t.cards_dealt) + 1
 
     if int(t.cards_dealt) >= CUT_CARD_POSITION:
         t.cut_card_reached = True
 
-    # insurance logic
+    # Insurance logic
     dealer = _dealer_cards(match.id, turn_index, round_index)
     dealer_up = dealer[0]['rank']
 
     if dealer_up in ('A', 'JOKER'):
         rnd.insurance_offered = True
-        # mark insurance offered for all hands
+
         db.session.query(MatchHandInsurance).filter_by(
             match_id=match.id,
             turn_index=turn_index,
             round_index=round_index,
         ).update({'offered': True}, synchronize_session=False)
+
         ms.phase = 'INSURANCE'
         db.session.commit()
         return
 
-
-    # mark player blackjacks that are already deterministically blackjack
+    # Mark immediate player blackjacks
     _mark_player_blackjacks(match, turn_index, round_index)
 
     ms.phase = 'PLAYER_TURN'
@@ -844,7 +902,7 @@ def handle_insurance(match: Match, decisions: List[bool]) -> None:
         take = bool(decisions[i])
 
         if take and ins.offered and not ins.decided:
-            ins_amount = max(1, math.floor(int(h.bet) / 2))
+            ins_amount = int(h.bet) // 2
             ins_amount = min(ins_amount, int(t.chips))
 
             t.chips = int(t.chips) - ins_amount
@@ -1646,7 +1704,7 @@ def _resolve_hands(match: Match) -> None:
                 t.chips = int(t.chips) + int(h.bet)
                 h.result = 'push'
             else:
-                payout = int(h.bet) + math.floor(3 * int(h.bet) / 2)
+                payout = int(h.bet) + (3 * int(h.bet)) // 2
                 t.chips = int(t.chips) + payout
                 h.result = 'blackjack_win'
             continue
@@ -1999,7 +2057,7 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
         .all()
     )
     for rr in res_rows:
-        cs['results'][f"player{int(rr.player_num)}_turn{int(rr.turn_number)}"] = int(rr.chips_end)
+        cs['results'][f"player{int(rr.player_num)}_turn{int(rr.turn_number)}"] = units_to_chips(rr.chips_end)
 
     if ms.match_result_winner is not None or ms.match_result_reason is not None:
         cs['match_result'] = {
@@ -2063,14 +2121,14 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
         else:
             player2_chips = int(t.starting_chips)
 
-        cs['player1_chips'] = player1_chips
-        cs['player2_chips'] = player2_chips
+        cs['player1_chips'] = units_to_chips(player1_chips)
+        cs['player2_chips'] = units_to_chips(player2_chips)
 
         # --------------------------------------------------
         # Turn-level chips
         # --------------------------------------------------
-        cs['chips'] = int(t.chips)
-        cs['starting_chips'] = int(t.starting_chips)
+        cs['chips'] = units_to_chips(t.chips)
+        cs['starting_chips'] = units_to_chips(t.starting_chips)
         cs['cards_dealt'] = int(t.cards_dealt)
         cs['cut_card_position'] = CUT_CARD_POSITION
         cs['cut_card_reached'] = bool(t.cut_card_reached)
@@ -2180,7 +2238,7 @@ def get_client_state(match: Match, user_player_num: int, spectator: bool = False
 
                         box_data['hands'].append({
                             'cards': cards,
-                            'bet': int(h.bet),
+                            'bet': units_to_chips(h.bet),
                             'status': h.status,
                             'result': h.result,
                             'is_split': bool(h.is_split),

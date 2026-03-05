@@ -250,9 +250,9 @@ def player_ready(table_id):
         for s in seated_seats
     )
 
-    hand_started = False
+    button_assigned = False
     if all_ready and len(seated_seats) >= 2 and table_id in TABLES:
-        # All players ready and at least 2 players - start the hand
+        # All players ready and at least 2 players - initialize game and assign button with RNG
         try:
             engine = TABLES[table_id]
             if engine.game_state is None or engine.game_state.phase == GamePhase.SETUP:
@@ -262,19 +262,24 @@ def player_ready(table_id):
                     for s in seated_seats
                 ]
                 engine.create_table(player_list, initial_stack=1000)
-                engine.start_hand()
-                hand_started = True
-                # Reset ready status for next hand
-                PLAYER_READY_STATUS[table_id] = {}
+
+                # Randomly select button using RNG
+                import random
+                button_seat = random.randint(0, len(player_list) - 1)
+                engine.game_state.button_seat = button_seat
+
+                button_assigned = True
+                current_app.logger.info(f"Button assigned to seat {button_seat} at table {table_id}")
+                # Do NOT call start_hand yet - wait for advance_phase
         except Exception as e:
-            current_app.logger.error(f"Error starting hand: {e}")
+            current_app.logger.error(f"Error assigning button: {e}")
             return jsonify({"error": str(e)}), 400
 
     return jsonify({
         "status": "ready",
         "table_id": table_id,
         "user_id": current_user.id,
-        "hand_started": hand_started,
+        "button_assigned": button_assigned,
         "all_ready": all_ready,
         "ready_count": len([u for u, r in PLAYER_READY_STATUS[table_id].items() if r]),
         "seated_count": len(seated_seats)
@@ -380,6 +385,16 @@ def advance_phase(table_id):
     engine = TABLES[table_id]
 
     try:
+        # If in SETUP phase with button assigned, start the hand
+        if engine.game_state and engine.game_state.phase == GamePhase.SETUP:
+            if engine.game_state.button_seat is not None:
+                engine.start_hand()
+                # Reset ready status for next hand after it completes
+                if table_id in PLAYER_READY_STATUS:
+                    PLAYER_READY_STATUS[table_id] = {}
+                return jsonify({"state": engine.get_state()})
+
+        # Otherwise, check phase completion and advance
         engine.phase_complete_check()
         return jsonify({"state": engine.get_state()})
     except Exception as e:

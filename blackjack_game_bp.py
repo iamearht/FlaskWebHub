@@ -111,12 +111,40 @@ def view_table(table_id):
 @blackjack_bp.route("/api/table/<int:table_id>/state", methods=["GET"])
 @login_required
 def get_table_state(table_id):
-    """Get current table state"""
+    """Get current table state with seated players from database"""
     if table_id not in TABLES:
         return jsonify({"error": "Table not found"}), 404
 
+    # Load seated players from database
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+    if not table:
+        return jsonify({"error": "Table not found in database"}), 404
+
+    seated_seats = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
+    seated_players = [
+        {
+            "seat": seat.seat_number,
+            "username": seat.user.username if seat.user else None,
+            "user_id": seat.user_id,
+            "joined_at": seat.joined_at.isoformat() if seat.joined_at else None,
+        }
+        for seat in seated_seats
+        if seat.user_id is not None
+    ]
+
     engine = TABLES[table_id]
-    return jsonify(engine.get_state())
+    game_state = engine.get_state()
+
+    # Merge database seating with game engine state
+    return jsonify({
+        "phase": game_state.get("phase", "setup"),
+        "current_player_seat": game_state.get("current_player_seat"),
+        "button_seat": game_state.get("button_seat"),
+        "seated_players": seated_players,
+        "game_state": game_state,
+        "normal_pot": game_state.get("normal_pot", 0),
+        "escrow_pot": game_state.get("escrow_pot", 0),
+    })
 
 
 @blackjack_bp.route("/api/join_seat/<int:table_id>/<int:seat_number>", methods=["POST"])

@@ -479,6 +479,10 @@
                     seatEl.classList.add('current');
                 }
 
+                if (seatNum === gameState.button_seat) {
+                    seatEl.classList.add('button');
+                }
+
                 if (gamePlayer && gamePlayer.is_folded) {
                     seatEl.classList.add('folded');
                 }
@@ -549,21 +553,34 @@
             const readyBtn = document.getElementById('readyBtn');
             const advanceBtn = document.getElementById('advanceBtn');
             const seatedCount = gameState.seated_players ? gameState.seated_players.length : 0;
+            const hasButtonAssigned = gameState.button_seat !== null && gameState.button_seat !== undefined;
 
             // Show/hide ready button based on game phase
-            if (gameState.phase === 'setup' && seatedCount >= 2) {
+            if (gameState.phase === 'setup' && seatedCount >= 2 && !hasButtonAssigned) {
                 readyBtn.style.display = 'block';
                 readyBtn.disabled = false;
             } else {
                 readyBtn.style.display = 'none';
             }
 
-            advanceBtn.disabled = gameState.phase === 'hand_over';
+            // Show advance button if button is assigned and still in SETUP phase
+            if (gameState.phase === 'setup' && hasButtonAssigned) {
+                advanceBtn.style.display = 'block';
+                advanceBtn.disabled = false;
+            } else {
+                advanceBtn.disabled = gameState.phase === 'hand_over';
+            }
 
             // Update ready status display
             const readyStatus = document.getElementById('readyStatus');
-            if (gameState.phase === 'setup' && seatedCount >= 2) {
-                readyStatus.textContent = `Click "Ready" to start the hand (${seatedCount} players seated)`;
+            if (hasButtonAssigned) {
+                // Button has been assigned - show button info and advance prompt
+                const buttonPlayer = gameState.seated_players.find(p => p.seat === gameState.button_seat);
+                const buttonName = buttonPlayer ? buttonPlayer.username : `Seat ${gameState.button_seat + 1}`;
+                readyStatus.innerHTML = `<strong>🎯 Button:</strong> ${buttonName}<br><small>Click "Advance Phase" to start betting</small>`;
+                readyStatus.style.display = 'block';
+            } else if (gameState.phase === 'setup' && seatedCount >= 2) {
+                readyStatus.textContent = `Click "Ready" to assign button with RNG (${seatedCount} players seated)`;
                 readyStatus.style.display = 'block';
             } else if (gameState.phase === 'setup' && seatedCount < 2) {
                 readyStatus.textContent = `Waiting for ${2 - seatedCount} more player(s)...`;
@@ -586,6 +603,9 @@
             } else if (seatedCount < 2) {
                 // Waiting for more players
                 document.getElementById('status').innerHTML = `Waiting for players... (${seatedCount}/2)`;
+            } else if (hasButtonAssigned) {
+                // Button assigned, ready to advance
+                document.getElementById('status').innerHTML = `🎯 Button assigned - Ready to start betting`;
             } else {
                 // Ready or waiting
                 document.getElementById('status').innerHTML = `${seatedCount} players seated - Click Ready to start`;

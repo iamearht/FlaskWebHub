@@ -9,7 +9,7 @@ Provides routes for:
 """
 
 from datetime import datetime
-from flask import Blueprint, render_template, jsonify, request, abort
+from flask import Blueprint, render_template, jsonify, request, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
 from models import User, BlackjackTable, BlackjackTableSeat
@@ -89,11 +89,21 @@ def view_table(table_id):
     if table_id not in TABLES:
         abort(404, "Table not found")
 
+    # Load table info from database
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+    if not table:
+        abort(404, "Table not found in database")
+
     engine = TABLES[table_id]
+
+    # Get seated players from database
+    seated_players = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
 
     return render_template(
         "blackjack_table.html",
         table_id=table_id,
+        table=table,
+        seated_players=seated_players,
         user=current_user,
     )
 
@@ -149,6 +159,21 @@ def join_seat(table_id, seat_number):
     seat.joined_at = datetime.utcnow()
     db.session.commit()
 
+    # Auto-start hand if 2+ players are now seated
+    seated_count = BlackjackTableSeat.query.filter_by(table_id=table_id).filter(
+        BlackjackTableSeat.user_id.isnot(None)
+    ).count()
+
+    auto_started = False
+    if seated_count >= 2 and table_id in TABLES:
+        engine = TABLES[table_id]
+        if engine.game_state is None or engine.game_state.phase == GamePhase.SETUP:
+            try:
+                engine.start_hand()
+                auto_started = True
+            except Exception as e:
+                current_app.logger.warning(f"Failed to auto-start hand: {e}")
+
     # Return seat info
     return jsonify({
         "status": "seated",
@@ -156,7 +181,8 @@ def join_seat(table_id, seat_number):
         "seat_number": seat_number,
         "user_id": current_user.id,
         "username": current_user.username,
-        "seat_count": table.seat_count
+        "seat_count": table.seat_count,
+        "auto_started": auto_started
     })
 
 

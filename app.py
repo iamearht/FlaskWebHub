@@ -108,6 +108,9 @@ def create_app() -> Flask:
         # Initialize main Free Blackjack table (separate try block)
         try:
             from models import BlackjackTable, BlackjackTableSeat
+            from blackjack_game_engine import BlackjackGameEngine
+            from blackjack_game_bp import TABLES
+
             main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
             if not main_table:
                 main_table = BlackjackTable(
@@ -128,6 +131,12 @@ def create_app() -> Flask:
 
                 db.session.commit()
                 app.logger.info("Main Free Blackjack table created with 7 seats.")
+
+            # Initialize game engine for main table if not already done
+            if main_table.id not in TABLES:
+                engine = BlackjackGameEngine(seed=main_table.id)
+                TABLES[main_table.id] = engine
+                app.logger.info(f"Game engine initialized for main table (ID: {main_table.id})")
         except Exception as e:
             app.logger.warning("Could not initialize Free Blackjack table: %s", e)
 

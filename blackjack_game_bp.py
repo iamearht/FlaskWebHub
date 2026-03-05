@@ -89,11 +89,21 @@ def view_table(table_id):
     if table_id not in TABLES:
         abort(404, "Table not found")
 
+    # Load table info from database
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+    if not table:
+        abort(404, "Table not found in database")
+
     engine = TABLES[table_id]
+
+    # Get seated players from database
+    seated_players = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
 
     return render_template(
         "blackjack_table.html",
         table_id=table_id,
+        table=table,
+        seated_players=seated_players,
         user=current_user,
     )
 

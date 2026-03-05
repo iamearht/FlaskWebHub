@@ -11,7 +11,7 @@ Provides routes for:
 from flask import Blueprint, render_template, jsonify, request, abort
 from flask_login import login_required, current_user
 from extensions import db
-from models import User
+from models import User, BlackjackTable, BlackjackTableSeat
 from blackjack_game_engine import (
     BlackjackGameEngine,
     GamePhase,
@@ -106,6 +106,83 @@ def get_table_state(table_id):
 
     engine = TABLES[table_id]
     return jsonify(engine.get_state())
+
+
+@blackjack_bp.route("/api/join_seat/<int:table_id>/<int:seat_number>", methods=["POST"])
+@login_required
+def join_seat(table_id, seat_number):
+    """Join a specific seat at a table"""
+    # Find the table in database
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+    if not table:
+        return jsonify({"error": "Table not found"}), 404
+
+    # Check if seat number is valid
+    if seat_number < 0 or seat_number >= table.max_seats:
+        return jsonify({"error": "Invalid seat number"}), 400
+
+    # Find the seat
+    seat = BlackjackTableSeat.query.filter_by(
+        table_id=table_id,
+        seat_number=seat_number
+    ).first()
+
+    if not seat:
+        return jsonify({"error": "Seat not found"}), 404
+
+    # Check if seat is already occupied
+    if seat.user_id is not None:
+        return jsonify({"error": "Seat already occupied"}), 409
+
+    # Check if user is already seated at this table
+    existing_seat = BlackjackTableSeat.query.filter_by(
+        table_id=table_id,
+        user_id=current_user.id
+    ).first()
+
+    if existing_seat:
+        return jsonify({"error": "You are already seated at this table"}), 409
+
+    # Seat the player
+    seat.user_id = current_user.id
+    seat.joined_at = db.func.now()
+    db.session.commit()
+
+    # Return seat info
+    return jsonify({
+        "status": "seated",
+        "table_id": table_id,
+        "seat_number": seat_number,
+        "user_id": current_user.id,
+        "username": current_user.username,
+        "seat_count": table.seat_count
+    })
+
+
+@blackjack_bp.route("/api/leave_seat/<int:table_id>", methods=["POST"])
+@login_required
+def leave_seat(table_id):
+    """Leave a table"""
+    # Find the table
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+    if not table:
+        return jsonify({"error": "Table not found"}), 404
+
+    # Find user's seat at this table
+    seat = BlackjackTableSeat.query.filter_by(
+        table_id=table_id,
+        user_id=current_user.id
+    ).first()
+
+    if not seat:
+        return jsonify({"error": "You are not seated at this table"}), 404
+
+    # Remove player from seat
+    seat.user_id = None
+    seat.joined_at = None
+    db.session.commit()
+
+    return jsonify({"status": "left", "table_id": table_id})
 
 
 @blackjack_bp.route("/api/table/<int:table_id>/start_hand", methods=["POST"])

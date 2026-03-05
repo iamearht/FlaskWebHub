@@ -108,8 +108,33 @@ def lobby():
 
     jackpot_pools = _get_jackpot_pools_for_lobby()
 
-    # Get main Free Blackjack table
+    # Get main Free Blackjack table (create if doesn't exist)
     main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
+    if not main_table:
+        try:
+            main_table = BlackjackTable(
+                table_name="Main Table",
+                max_seats=7,
+                big_blind=10
+            )
+            db.session.add(main_table)
+            db.session.flush()
+
+            # Create 7 empty seats
+            for seat_num in range(7):
+                seat = BlackjackTableSeat(
+                    table_id=main_table.id,
+                    seat_number=seat_num
+                )
+                db.session.add(seat)
+
+            db.session.commit()
+            import logging
+            logging.getLogger().info("Main Free Blackjack table created with 7 seats.")
+        except Exception as e:
+            import logging
+            logging.getLogger().warning(f"Could not create Free Blackjack table: {e}")
+            main_table = None
 
     return render_template(
         "lobby.html",

@@ -86,16 +86,21 @@ def create_table():
 @blackjack_bp.route("/table/<int:table_id>", methods=["GET"])
 @login_required
 def view_table(table_id):
-    """View a specific table"""
-    if table_id not in TABLES:
-        abort(404, "Table not found")
-
-    # Load table info from database
+    """View a specific table (with lazy initialization)"""
+    # Ensure table exists in database
     table = BlackjackTable.query.filter_by(id=table_id).first()
     if not table:
-        abort(404, "Table not found in database")
+        abort(404, "Table not found")
 
-    engine = TABLES[table_id]
+    # Lazy initialize engine if not already done
+    if table_id not in TABLES:
+        try:
+            engine = BlackjackGameEngine(seed=table_id)
+            TABLES[table_id] = engine
+            current_app.logger.info(f"Game engine initialized for table {table_id}")
+        except Exception as e:
+            current_app.logger.error(f"Error initializing engine for table {table_id}: {e}")
+            abort(500, "Could not initialize game engine")
 
     # Get seated players from database
     seated_players = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
@@ -113,39 +118,43 @@ def view_table(table_id):
 @login_required
 def get_table_state(table_id):
     """Get current table state with seated players from database"""
-    if table_id not in TABLES:
-        return jsonify({"error": "Table not found"}), 404
+    try:
+        if table_id not in TABLES:
+            return jsonify({"error": "Table not found in engine"}), 404
 
-    # Load seated players from database
-    table = BlackjackTable.query.filter_by(id=table_id).first()
-    if not table:
-        return jsonify({"error": "Table not found in database"}), 404
+        # Load seated players from database
+        table = BlackjackTable.query.filter_by(id=table_id).first()
+        if not table:
+            return jsonify({"error": "Table not found in database"}), 404
 
-    seated_seats = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
-    seated_players = [
-        {
-            "seat": seat.seat_number,
-            "username": seat.user.username if seat.user else None,
-            "user_id": seat.user_id,
-            "joined_at": seat.joined_at.isoformat() if seat.joined_at else None,
-        }
-        for seat in seated_seats
-        if seat.user_id is not None
-    ]
+        seated_seats = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
+        seated_players = [
+            {
+                "seat": seat.seat_number,
+                "username": seat.user.username if seat.user else None,
+                "user_id": seat.user_id,
+                "joined_at": seat.joined_at.isoformat() if seat.joined_at else None,
+            }
+            for seat in seated_seats
+            if seat.user_id is not None
+        ]
 
-    engine = TABLES[table_id]
-    game_state = engine.get_state()
+        engine = TABLES[table_id]
+        game_state = engine.get_state()
 
-    # Merge database seating with game engine state
-    return jsonify({
-        "phase": game_state.get("phase", "setup"),
-        "current_player_seat": game_state.get("current_player_seat"),
-        "button_seat": game_state.get("button_seat"),
-        "seated_players": seated_players,
-        "game_state": game_state,
-        "normal_pot": game_state.get("normal_pot", 0),
-        "escrow_pot": game_state.get("escrow_pot", 0),
-    })
+        # Merge database seating with game engine state
+        return jsonify({
+            "phase": game_state.get("phase", "setup"),
+            "current_player_seat": game_state.get("current_player_seat"),
+            "button_seat": game_state.get("button_seat"),
+            "seated_players": seated_players,
+            "game_state": game_state,
+            "normal_pot": game_state.get("normal_pot", 0),
+            "escrow_pot": game_state.get("escrow_pot", 0),
+        })
+    except Exception as e:
+        current_app.logger.error(f"Error in get_table_state: {e}", exc_info=True)
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 
 @blackjack_bp.route("/api/join_seat/<int:table_id>/<int:seat_number>", methods=["POST"])

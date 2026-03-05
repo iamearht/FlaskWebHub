@@ -1079,7 +1079,7 @@ class BlackjackTableSeat(db.Model):
     table_id = db.Column(db.Integer, db.ForeignKey('blackjack_tables.id'), nullable=False)
     seat_number = db.Column(db.Integer, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+    joined_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
 
     user = db.relationship('User', backref='blackjack_seats')
 

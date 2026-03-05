@@ -105,40 +105,8 @@ def create_app() -> Flask:
             # Don't crash boot if you prefer resilience; if you want strict boot, re-raise.
             app.logger.exception("Startup error during db init: %s", e)
 
-        # Initialize main Free Blackjack table (separate try block)
-        try:
-            from models import BlackjackTable, BlackjackTableSeat
-            from blackjack_game_engine import BlackjackGameEngine
-            from blackjack_game_bp import TABLES
-
-            main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
-            if not main_table:
-                main_table = BlackjackTable(
-                    table_name="Main Table",
-                    max_seats=7,
-                    big_blind=10
-                )
-                db.session.add(main_table)
-                db.session.flush()
-
-                # Create 7 empty seats
-                for seat_num in range(7):
-                    seat = BlackjackTableSeat(
-                        table_id=main_table.id,
-                        seat_number=seat_num
-                    )
-                    db.session.add(seat)
-
-                db.session.commit()
-                app.logger.info("Main Free Blackjack table created with 7 seats.")
-
-            # Initialize game engine for main table if not already done
-            if main_table.id not in TABLES:
-                engine = BlackjackGameEngine(seed=main_table.id)
-                TABLES[main_table.id] = engine
-                app.logger.info(f"Game engine initialized for main table (ID: {main_table.id})")
-        except Exception as e:
-            app.logger.warning("Could not initialize Free Blackjack table: %s", e)
+        # Initialize main Free Blackjack table (lazy - done on first access to avoid blocking startup)
+        app.logger.info("Free Blackjack table initialization: will be done on first access")
 
     # ---------------------------------------------------
     # ROOT ENTRY

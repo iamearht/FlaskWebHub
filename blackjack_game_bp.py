@@ -86,16 +86,21 @@ def create_table():
 @blackjack_bp.route("/table/<int:table_id>", methods=["GET"])
 @login_required
 def view_table(table_id):
-    """View a specific table"""
-    if table_id not in TABLES:
-        abort(404, "Table not found")
-
-    # Load table info from database
+    """View a specific table (with lazy initialization)"""
+    # Ensure table exists in database
     table = BlackjackTable.query.filter_by(id=table_id).first()
     if not table:
-        abort(404, "Table not found in database")
+        abort(404, "Table not found")
 
-    engine = TABLES[table_id]
+    # Lazy initialize engine if not already done
+    if table_id not in TABLES:
+        try:
+            engine = BlackjackGameEngine(seed=table_id)
+            TABLES[table_id] = engine
+            current_app.logger.info(f"Game engine initialized for table {table_id}")
+        except Exception as e:
+            current_app.logger.error(f"Error initializing engine for table {table_id}: {e}")
+            abort(500, "Could not initialize game engine")
 
     # Get seated players from database
     seated_players = BlackjackTableSeat.query.filter_by(table_id=table_id).all()

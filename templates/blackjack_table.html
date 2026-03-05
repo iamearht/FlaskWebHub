@@ -310,6 +310,23 @@
             border-radius: 4px;
             margin-bottom: 15px;
         }
+
+        .join-btn {
+            padding: 6px 12px;
+            background: #22c55e;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: bold;
+            transition: background 0.3s;
+            margin-top: 5px;
+        }
+
+        .join-btn:hover {
+            background: #16a34a;
+        }
     </style>
 </head>
 <body>
@@ -404,36 +421,86 @@
         }
 
         function renderTable() {
-            if (!gameState || !gameState.players) return;
+            if (!gameState) return;
 
             const container = document.getElementById('seatsContainer');
             container.innerHTML = '';
 
-            gameState.players.forEach(player => {
+            // Get seated players map for quick lookup
+            const seatedMap = {};
+            if (gameState.seated_players) {
+                gameState.seated_players.forEach(p => {
+                    seatedMap[p.seat] = p;
+                });
+            }
+
+            // Get game state players map (if hand is in progress)
+            const gamePlayersMap = {};
+            if (gameState.game_state && gameState.game_state.players) {
+                gameState.game_state.players.forEach(p => {
+                    gamePlayersMap[p.seat] = p;
+                });
+            }
+
+            // Render all 7 seats
+            for (let seatNum = 0; seatNum < 7; seatNum++) {
                 const seatEl = document.createElement('div');
                 seatEl.className = 'seat';
 
-                if (player.seat === gameState.current_player_seat) {
+                const seatedPlayer = seatedMap[seatNum];
+                const gamePlayer = gamePlayersMap[seatNum];
+
+                if (seatNum === gameState.current_player_seat) {
                     seatEl.classList.add('current');
                 }
 
-                const stackColor = player.stack > 500 ? '#22c55e' : player.stack > 100 ? '#fbbf24' : '#ef4444';
+                if (gamePlayer && gamePlayer.is_folded) {
+                    seatEl.classList.add('folded');
+                }
 
-                seatEl.innerHTML = `
-                    <div class="seat-number">Seat ${player.seat + 1}</div>
-                    <div class="player-name">${player.username || 'Empty'}</div>
-                    ${player.revealed_card ? `<div class="card">${player.revealed_card}</div>` : ''}
-                    <div class="player-circles">
-                        <div class="circle circle-normal">N: ${player.normal_circle}</div>
-                        <div class="circle circle-escrow">E: ${player.escrow_circle}</div>
-                    </div>
-                    <div class="player-stack" style="color: ${stackColor}">
-                        ${player.stack} 💰
-                    </div>
-                `;
+                if (seatedPlayer) {
+                    // Seat is occupied
+                    const stack = gamePlayer ? gamePlayer.stack : 1000; // Default starting stack
+                    const stackColor = stack > 500 ? '#22c55e' : stack > 100 ? '#fbbf24' : '#ef4444';
+
+                    let seatHTML = `
+                        <div class="seat-number">Seat ${seatNum + 1}</div>
+                        <div class="player-name">${seatedPlayer.username}</div>
+                    `;
+
+                    if (gamePlayer) {
+                        // Game in progress - show game info
+                        if (gamePlayer.revealed_card) {
+                            seatHTML += `<div class="card">${gamePlayer.revealed_card}</div>`;
+                        }
+                        seatHTML += `
+                            <div class="player-circles">
+                                <div class="circle circle-normal">N: ${gamePlayer.normal_circle}</div>
+                                <div class="circle circle-escrow">E: ${gamePlayer.escrow_circle}</div>
+                            </div>
+                            <div class="player-stack" style="color: ${stackColor}">
+                                ${gamePlayer.stack} 💰
+                            </div>
+                        `;
+                    } else {
+                        // Waiting for game to start
+                        seatHTML += `<div class="player-stack" style="color: #bbb;">1000 💰</div>`;
+                    }
+
+                    seatEl.innerHTML = seatHTML;
+                    seatEl.style.opacity = gamePlayer && gamePlayer.is_folded ? '0.6' : '1';
+                } else {
+                    // Empty seat
+                    seatEl.classList.add('empty');
+                    seatEl.innerHTML = `
+                        <div class="seat-number">Seat ${seatNum + 1}</div>
+                        <div class="seat-status">Empty</div>
+                        <button class="join-btn" onclick="joinSeat(${seatNum})">Join</button>
+                    `;
+                }
 
                 container.appendChild(seatEl);
-            });
+            }
         }
 
         function updateUI() {
@@ -458,13 +525,24 @@
             document.getElementById('advanceBtn').disabled = gameState.phase === 'hand_over';
 
             // Update status
-            if (gameState.current_player_seat !== null) {
-                const player = gameState.players[gameState.current_player_seat];
-                document.getElementById('status').innerHTML = `
-                    <strong>${player.username}'s Turn</strong>
-                `;
+            const seatedCount = gameState.seated_players ? gameState.seated_players.length : 0;
+
+            if (gameState.phase !== 'setup' && gameState.current_player_seat !== null) {
+                // Game in progress - show current player
+                const gameState_data = gameState.game_state || {};
+                const players = gameState_data.players || [];
+                const player = players[gameState.current_player_seat];
+                if (player) {
+                    document.getElementById('status').innerHTML = `
+                        <strong>${player.username}'s Turn</strong>
+                    `;
+                }
+            } else if (seatedCount < 2) {
+                // Waiting for more players
+                document.getElementById('status').innerHTML = `Waiting for players... (${seatedCount}/2)`;
             } else {
-                document.getElementById('status').innerHTML = 'Waiting for players...';
+                // Ready or waiting
+                document.getElementById('status').innerHTML = `${seatedCount} players seated - Ready to play`;
             }
         }
 
@@ -489,6 +567,26 @@
                 });
 
                 if (!response.ok) throw new Error('Failed to advance phase');
+
+                updateGameState();
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function joinSeat(seatNumber) {
+            try {
+                const response = await fetch(`/blackjack/api/join_seat/${TABLE_ID}/${seatNumber}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to join seat');
+                }
 
                 updateGameState();
             } catch (error) {

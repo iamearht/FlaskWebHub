@@ -380,13 +380,15 @@
                 </div>
 
                 <div class="actions">
-                    <button class="action-btn" onclick="startHand()" id="startHandBtn">
-                        Start Hand
+                    <button class="action-btn" onclick="toggleReady()" id="readyBtn">
+                        ✓ Ready
                     </button>
                     <button class="action-btn" onclick="advancePhase()" id="advanceBtn">
                         Advance Phase
                     </button>
                 </div>
+
+                <div id="readyStatus" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; text-align: center; font-size: 0.9rem; color: #bbb;"></div>
 
                 <div class="status" id="status">
                     Connecting...
@@ -399,6 +401,7 @@
         const TABLE_ID = {{ table_id }};
         let gameState = null;
         let updateInterval = null;
+        let isPlayerReady = false;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -521,12 +524,33 @@
             document.getElementById('totalPot').textContent = total;
 
             // Update buttons
-            document.getElementById('startHandBtn').disabled = gameState.phase !== 'setup';
-            document.getElementById('advanceBtn').disabled = gameState.phase === 'hand_over';
-
-            // Update status
+            const readyBtn = document.getElementById('readyBtn');
+            const advanceBtn = document.getElementById('advanceBtn');
             const seatedCount = gameState.seated_players ? gameState.seated_players.length : 0;
 
+            // Show/hide ready button based on game phase
+            if (gameState.phase === 'setup' && seatedCount >= 2) {
+                readyBtn.style.display = 'block';
+                readyBtn.disabled = false;
+            } else {
+                readyBtn.style.display = 'none';
+            }
+
+            advanceBtn.disabled = gameState.phase === 'hand_over';
+
+            // Update ready status display
+            const readyStatus = document.getElementById('readyStatus');
+            if (gameState.phase === 'setup' && seatedCount >= 2) {
+                readyStatus.textContent = `Click "Ready" to start the hand (${seatedCount} players seated)`;
+                readyStatus.style.display = 'block';
+            } else if (gameState.phase === 'setup' && seatedCount < 2) {
+                readyStatus.textContent = `Waiting for ${2 - seatedCount} more player(s)...`;
+                readyStatus.style.display = 'block';
+            } else {
+                readyStatus.style.display = 'none';
+            }
+
+            // Update status
             if (gameState.phase !== 'setup' && gameState.current_player_seat !== null) {
                 // Game in progress - show current player
                 const gameState_data = gameState.game_state || {};
@@ -542,17 +566,31 @@
                 document.getElementById('status').innerHTML = `Waiting for players... (${seatedCount}/2)`;
             } else {
                 // Ready or waiting
-                document.getElementById('status').innerHTML = `${seatedCount} players seated - Ready to play`;
+                document.getElementById('status').innerHTML = `${seatedCount} players seated - Click Ready to start`;
             }
         }
 
-        async function startHand() {
+        async function toggleReady() {
             try {
-                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/start_hand`, {
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/player_ready`, {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
                 });
 
-                if (!response.ok) throw new Error('Failed to start hand');
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to mark as ready');
+                }
+
+                const data = await response.json();
+                isPlayerReady = !isPlayerReady;
+
+                // Update button appearance
+                const btn = document.getElementById('readyBtn');
+                btn.textContent = isPlayerReady ? '✓ Ready' : '○ Not Ready';
+                btn.style.background = isPlayerReady ? '#22c55e' : '#6b7280';
 
                 updateGameState();
             } catch (error) {

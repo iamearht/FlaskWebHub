@@ -22,6 +22,7 @@ from blackjack_game_engine import (
 # Simple in-memory table store (for demo; in production use DB)
 TABLES = {}  # table_id -> BlackjackGameEngine instance
 TABLE_COUNTER = 0
+PLAYER_READY_STATUS = {}  # table_id -> {user_id: bool}
 
 blackjack_bp = Blueprint("blackjack", __name__, url_prefix="/blackjack")
 
@@ -187,20 +188,12 @@ def join_seat(table_id, seat_number):
     seat.joined_at = datetime.utcnow()
     db.session.commit()
 
-    # Auto-start hand if 2+ players are now seated
-    seated_count = BlackjackTableSeat.query.filter_by(table_id=table_id).filter(
-        BlackjackTableSeat.user_id.isnot(None)
-    ).count()
+    # Initialize ready status for this table if needed
+    if table_id not in PLAYER_READY_STATUS:
+        PLAYER_READY_STATUS[table_id] = {}
 
-    auto_started = False
-    if seated_count >= 2 and table_id in TABLES:
-        engine = TABLES[table_id]
-        if engine.game_state is None or engine.game_state.phase == GamePhase.SETUP:
-            try:
-                engine.start_hand()
-                auto_started = True
-            except Exception as e:
-                current_app.logger.warning(f"Failed to auto-start hand: {e}")
+    # Reset all ready statuses when new player joins (mid-game scenario)
+    PLAYER_READY_STATUS[table_id] = {}
 
     # Return seat info
     return jsonify({
@@ -209,8 +202,73 @@ def join_seat(table_id, seat_number):
         "seat_number": seat_number,
         "user_id": current_user.id,
         "username": current_user.username,
-        "seat_count": table.seat_count,
-        "auto_started": auto_started
+        "seat_count": table.seat_count
+    })
+
+
+@blackjack_bp.route("/api/table/<int:table_id>/player_ready", methods=["POST"])
+@login_required
+def player_ready(table_id):
+    """Mark a player as ready to start the hand"""
+    # Check table exists
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+    if not table:
+        return jsonify({"error": "Table not found"}), 404
+
+    # Check user is seated
+    seat = BlackjackTableSeat.query.filter_by(
+        table_id=table_id,
+        user_id=current_user.id
+    ).first()
+
+    if not seat:
+        return jsonify({"error": "You are not seated at this table"}), 403
+
+    # Mark player as ready
+    if table_id not in PLAYER_READY_STATUS:
+        PLAYER_READY_STATUS[table_id] = {}
+
+    PLAYER_READY_STATUS[table_id][current_user.id] = True
+
+    # Get all seated players
+    seated_seats = BlackjackTableSeat.query.filter_by(table_id=table_id).filter(
+        BlackjackTableSeat.user_id.isnot(None)
+    ).all()
+
+    # Check if all seated players are ready
+    all_ready = all(
+        PLAYER_READY_STATUS[table_id].get(s.user_id, False)
+        for s in seated_seats
+    )
+
+    hand_started = False
+    if all_ready and len(seated_seats) >= 2 and table_id in TABLES:
+        # All players ready and at least 2 players - start the hand
+        try:
+            engine = TABLES[table_id]
+            if engine.game_state is None or engine.game_state.phase == GamePhase.SETUP:
+                # Create player list from database seating
+                player_list = [
+                    (s.user_id, s.user.username)
+                    for s in seated_seats
+                ]
+                engine.create_table(player_list, initial_stack=1000)
+                engine.start_hand()
+                hand_started = True
+                # Reset ready status for next hand
+                PLAYER_READY_STATUS[table_id] = {}
+        except Exception as e:
+            current_app.logger.error(f"Error starting hand: {e}")
+            return jsonify({"error": str(e)}), 400
+
+    return jsonify({
+        "status": "ready",
+        "table_id": table_id,
+        "user_id": current_user.id,
+        "hand_started": hand_started,
+        "all_ready": all_ready,
+        "ready_count": len([u for u, r in PLAYER_READY_STATUS[table_id].items() if r]),
+        "seated_count": len(seated_seats)
     })
 
 
@@ -243,16 +301,34 @@ def leave_seat(table_id):
 @blackjack_bp.route("/api/table/<int:table_id>/start_hand", methods=["POST"])
 @login_required
 def start_hand(table_id):
-    """Start a new hand at the table"""
+    """Start a new hand at the table (with seated players from database)"""
     if table_id not in TABLES:
         return jsonify({"error": "Table not found"}), 404
+
+    # Load seated players from database
+    seated_seats = BlackjackTableSeat.query.filter_by(table_id=table_id).filter(
+        BlackjackTableSeat.user_id.isnot(None)
+    ).all()
+
+    if len(seated_seats) < 2:
+        return jsonify({"error": "Need at least 2 players to start"}), 400
+
+    # Create player list from database seating
+    player_list = [
+        (seat.user_id, seat.user.username)
+        for seat in seated_seats
+    ]
 
     engine = TABLES[table_id]
 
     try:
+        # Initialize game with seated players
+        engine.create_table(player_list, initial_stack=1000)
+        # Start the hand
         engine.start_hand()
         return jsonify({"message": "Hand started", "state": engine.get_state()})
     except Exception as e:
+        current_app.logger.error(f"Error starting hand: {e}")
         return jsonify({"error": str(e)}), 400
 
 

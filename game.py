@@ -197,6 +197,10 @@ def create_match():
     except ValueError:
         abort(400, "Invalid stake")
 
+    # Free Blackjack is a special multiplayer mode - redirect to its own lobby
+    if game_mode == "free_blackjack":
+        return redirect(url_for("blackjack.blackjack_lobby"))
+
     if stake < 10:
         abort(400, "Minimum stake is 10")
 

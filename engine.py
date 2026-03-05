@@ -80,6 +80,10 @@ GAME_MODES = {
         "name": "Interactive Joker",
         "description": "Interactive mode with jokers."
     },
+    "free_blackjack": {
+        "name": "Free Blackjack",
+        "description": "Two-Circle Royal 21: Multiplayer poker-blackjack hybrid (2-7 players)."
+    },
 }
 # -----------------------------------------------------------------------------
 # Utility helpers

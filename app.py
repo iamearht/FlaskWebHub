@@ -12,6 +12,7 @@ from tournament import tournament_bp
 from affiliate import affiliate_bp
 from admin import admin_bp
 from jackpot import jackpot_bp
+from blackjack_game_bp import blackjack_bp
 
 
 def _normalize_database_url(url: str) -> str:
@@ -81,6 +82,7 @@ def create_app() -> Flask:
     app.register_blueprint(affiliate_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(jackpot_bp)
+    app.register_blueprint(blackjack_bp)
 
     # ---------------------------------------------------
     # DB INIT + AUTO PROMOTE ADMIN

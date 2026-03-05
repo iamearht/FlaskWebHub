@@ -181,6 +181,35 @@ def run_migrations():
             match_result_reason VARCHAR(40)
         );
         """,
+
+        # ------------------------------------------------------------------
+        # CREATE blackjack_tables TABLE
+        # ------------------------------------------------------------------
+
+        """
+        CREATE TABLE IF NOT EXISTS blackjack_tables (
+            id SERIAL PRIMARY KEY,
+            table_name VARCHAR(100) NOT NULL DEFAULT 'Main Table',
+            max_seats INTEGER NOT NULL DEFAULT 7,
+            big_blind INTEGER NOT NULL DEFAULT 10,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+
+        # ------------------------------------------------------------------
+        # CREATE blackjack_table_seats TABLE
+        # ------------------------------------------------------------------
+
+        """
+        CREATE TABLE IF NOT EXISTS blackjack_table_seats (
+            id SERIAL PRIMARY KEY,
+            table_id INTEGER NOT NULL REFERENCES blackjack_tables(id),
+            seat_number INTEGER NOT NULL,
+            user_id INTEGER REFERENCES users(id),
+            joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(table_id, seat_number)
+        );
+        """,
     ]
 
     for migration in migrations:

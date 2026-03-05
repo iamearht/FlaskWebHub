@@ -18,6 +18,8 @@ from models import (
     MatchTurnResult,
     JackpotPool,      # 🔥 ADD THIS
     User,             # 🔥 ADD THIS
+    BlackjackTable,
+    BlackjackTableSeat,
     CARD_RANKS,
     CARD_SUITS,
 )
@@ -106,6 +108,9 @@ def lobby():
 
     jackpot_pools = _get_jackpot_pools_for_lobby()
 
+    # Get main Free Blackjack table
+    main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
+
     return render_template(
         "lobby.html",
         user=user,
@@ -113,6 +118,7 @@ def lobby():
         my_active=my_active,
         waiting=waiting,
         jackpot_pools=jackpot_pools,
+        main_table=main_table,
     )
 
 

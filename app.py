@@ -91,6 +91,30 @@ def create_app() -> Flask:
         try:
             db.create_all()
 
+            # Initialize main Free Blackjack table
+            from models import BlackjackTable
+            main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
+            if not main_table:
+                main_table = BlackjackTable(
+                    table_name="Main Table",
+                    max_seats=7,
+                    big_blind=10
+                )
+                db.session.add(main_table)
+                db.session.flush()
+
+                # Create 7 empty seats
+                from models import BlackjackTableSeat
+                for seat_num in range(7):
+                    seat = BlackjackTableSeat(
+                        table_id=main_table.id,
+                        seat_number=seat_num
+                    )
+                    db.session.add(seat)
+
+                db.session.commit()
+                app.logger.info("Main Free Blackjack table created with 7 seats.")
+
             user = User.query.filter(
                 db.func.lower(User.username) == "iamearth"
             ).first()

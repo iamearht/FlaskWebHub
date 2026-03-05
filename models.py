@@ -1046,3 +1046,43 @@ class MatchTurnResult(db.Model):
     turn_number = db.Column(db.SmallInteger, primary_key=True)
 
     chips_end = db.Column(db.Integer, nullable=False)
+
+
+class BlackjackTable(db.Model):
+    __tablename__ = 'blackjack_tables'
+
+    id = db.Column(db.Integer, primary_key=True)
+    table_name = db.Column(db.String(100), nullable=False, default='Main Table')
+    max_seats = db.Column(db.Integer, nullable=False, default=7)
+    big_blind = db.Column(db.Integer, nullable=False, default=10)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    seats = db.relationship('BlackjackTableSeat', backref='table', cascade='all, delete-orphan')
+
+    @property
+    def empty_seats(self):
+        return [seat for seat in self.seats if seat.user_id is None]
+
+    @property
+    def occupied_seats(self):
+        return [seat for seat in self.seats if seat.user_id is not None]
+
+    @property
+    def seat_count(self):
+        return len(self.occupied_seats)
+
+
+class BlackjackTableSeat(db.Model):
+    __tablename__ = 'blackjack_table_seats'
+
+    id = db.Column(db.Integer, primary_key=True)
+    table_id = db.Column(db.Integer, db.ForeignKey('blackjack_tables.id'), nullable=False)
+    seat_number = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='blackjack_seats')
+
+    __table_args__ = (
+        db.UniqueConstraint('table_id', 'seat_number', name='uq_table_seat'),
+    )

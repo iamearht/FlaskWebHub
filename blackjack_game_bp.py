@@ -8,6 +8,7 @@ Provides routes for:
 - Game updates
 """
 
+from datetime import datetime
 from flask import Blueprint, render_template, jsonify, request, abort
 from flask_login import login_required, current_user
 from extensions import db
@@ -145,7 +146,7 @@ def join_seat(table_id, seat_number):
 
     # Seat the player
     seat.user_id = current_user.id
-    seat.joined_at = db.func.now()
+    seat.joined_at = datetime.utcnow()
     db.session.commit()
 
     # Return seat info

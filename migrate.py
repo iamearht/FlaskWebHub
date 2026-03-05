@@ -206,7 +206,7 @@ def run_migrations():
             table_id INTEGER NOT NULL REFERENCES blackjack_tables(id),
             seat_number INTEGER NOT NULL,
             user_id INTEGER REFERENCES users(id),
-            joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(table_id, seat_number)
         );
         """,

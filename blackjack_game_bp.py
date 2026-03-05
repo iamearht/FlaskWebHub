@@ -9,7 +9,7 @@ Provides routes for:
 """
 
 from datetime import datetime
-from flask import Blueprint, render_template, jsonify, request, abort
+from flask import Blueprint, render_template, jsonify, request, abort, current_app
 from flask_login import login_required, current_user
 from extensions import db
 from models import User, BlackjackTable, BlackjackTableSeat
@@ -159,6 +159,21 @@ def join_seat(table_id, seat_number):
     seat.joined_at = datetime.utcnow()
     db.session.commit()
 
+    # Auto-start hand if 2+ players are now seated
+    seated_count = BlackjackTableSeat.query.filter_by(table_id=table_id).filter(
+        BlackjackTableSeat.user_id.isnot(None)
+    ).count()
+
+    auto_started = False
+    if seated_count >= 2 and table_id in TABLES:
+        engine = TABLES[table_id]
+        if engine.game_state is None or engine.game_state.phase == GamePhase.SETUP:
+            try:
+                engine.start_hand()
+                auto_started = True
+            except Exception as e:
+                current_app.logger.warning(f"Failed to auto-start hand: {e}")
+
     # Return seat info
     return jsonify({
         "status": "seated",
@@ -166,7 +181,8 @@ def join_seat(table_id, seat_number):
         "seat_number": seat_number,
         "user_id": current_user.id,
         "username": current_user.username,
-        "seat_count": table.seat_count
+        "seat_count": table.seat_count,
+        "auto_started": auto_started
     })
 
 

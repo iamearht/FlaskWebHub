@@ -412,11 +412,29 @@
         async function updateGameState() {
             try {
                 const response = await fetch(`/blackjack/api/table/${TABLE_ID}/state`);
-                if (!response.ok) throw new Error('Failed to fetch state');
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Failed to fetch state');
+                }
 
-                gameState = await response.json();
-                renderTable();
-                updateUI();
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                gameState = data;
+
+                try {
+                    renderTable();
+                } catch (renderError) {
+                    console.error('Error in renderTable:', renderError);
+                }
+
+                try {
+                    updateUI();
+                } catch (uiError) {
+                    console.error('Error in updateUI:', uiError);
+                }
             } catch (error) {
                 console.error('Error updating state:', error);
                 document.getElementById('status').innerHTML = `❌ Error: ${error.message}`;
@@ -427,6 +445,10 @@
             if (!gameState) return;
 
             const container = document.getElementById('seatsContainer');
+            if (!container) {
+                console.error('seatsContainer not found');
+                return;
+            }
             container.innerHTML = '';
 
             // Get seated players map for quick lookup

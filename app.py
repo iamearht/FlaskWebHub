@@ -91,8 +91,23 @@ def create_app() -> Flask:
         try:
             db.create_all()
 
-            # Initialize main Free Blackjack table
-            from models import BlackjackTable
+            # Promote admin user
+            user = User.query.filter(
+                db.func.lower(User.username) == "iamearth"
+            ).first()
+
+            if user and not user.is_admin:
+                user.is_admin = True
+                db.session.commit()
+                app.logger.warning("IAMEARTH promoted to admin.")
+
+        except Exception as e:
+            # Don't crash boot if you prefer resilience; if you want strict boot, re-raise.
+            app.logger.exception("Startup error during db init: %s", e)
+
+        # Initialize main Free Blackjack table (separate try block)
+        try:
+            from models import BlackjackTable, BlackjackTableSeat
             main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
             if not main_table:
                 main_table = BlackjackTable(
@@ -104,7 +119,6 @@ def create_app() -> Flask:
                 db.session.flush()
 
                 # Create 7 empty seats
-                from models import BlackjackTableSeat
                 for seat_num in range(7):
                     seat = BlackjackTableSeat(
                         table_id=main_table.id,
@@ -114,18 +128,8 @@ def create_app() -> Flask:
 
                 db.session.commit()
                 app.logger.info("Main Free Blackjack table created with 7 seats.")
-
-            user = User.query.filter(
-                db.func.lower(User.username) == "iamearth"
-            ).first()
-
-            if user and not user.is_admin:
-                user.is_admin = True
-                db.session.commit()
-                app.logger.warning("IAMEARTH promoted to admin.")
         except Exception as e:
-            # Don't crash boot if you prefer resilience; if you want strict boot, re-raise.
-            app.logger.exception("Startup error during db init: %s", e)
+            app.logger.warning("Could not initialize Free Blackjack table: %s", e)
 
     # ---------------------------------------------------
     # ROOT ENTRY

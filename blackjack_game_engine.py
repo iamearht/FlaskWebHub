@@ -955,30 +955,30 @@ class GameEngine:
 
     def expose_card(self, seat: int, card_index: int) -> None:
         """
-    Player exposes one of their two hole cards during PREFLOP_BETTING.
+        Player exposes one of their two hole cards during PREFLOP_BETTING.
 
-    If the client does not provide a card_index, the caller can pass 0
-    as a deterministic fallback.
-    """
-    gs = self.game_state
-    assert gs is not None
+        If the client does not provide a card_index, the caller can pass 0
+        as a deterministic fallback.
+        """
+        gs = self.game_state
+        assert gs is not None
 
-    player = next((p for p in gs.players if p.seat == seat), None)
-    if not player or not player.hand:
-        raise ValueError(f"Invalid seat {seat} for expose_card")
+        player = next((p for p in gs.players if p.seat == seat), None)
+        if not player or not player.hand:
+            raise ValueError(f"Invalid seat {seat} for expose_card")
 
-    if card_index not in (0, 1):
-        raise ValueError("card_index must be 0 or 1")
+        if card_index not in (0, 1):
+            raise ValueError("card_index must be 0 or 1")
 
-    if len(player.hand.original_cards) < 2:
-        raise ValueError("Player does not have 2 cards")
+        if len(player.hand.original_cards) < 2:
+            raise ValueError("Player does not have 2 cards")
 
-    player.hand.exposed_card = player.hand.original_cards[card_index]
-    logger.info(
-        "EXPOSE_CARD: seat %s exposed card %s",
-        seat,
-        player.hand.exposed_card,
-    )
+        player.hand.exposed_card = player.hand.original_cards[card_index]
+        logger.info(
+            "EXPOSE_CARD: seat %s exposed card %s",
+            seat,
+            player.hand.exposed_card,
+        )
 
 
 

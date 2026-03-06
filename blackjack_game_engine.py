@@ -469,8 +469,11 @@ class GameEngine:
         )
 
         if button_index is not None:
-            gs.button_seat = button_index
+            # CRITICAL FIX: button_seat must be SEAT NUMBER (3,4), not INDEX (0,1)!
+            # button_seat came from _find_highest_card_holder() which returns gs.players[...].seat
+            gs.button_seat = button_seat
             button_player = gs.players[button_index]
+            logger.info(f"[BUTTON] DETERMINED: seat {button_seat} (index {button_index}), SET gs.button_seat={gs.button_seat}")
 
             # Button antes 1 chip to normal pot (scaled by ante_value)
             button_chips = BUTTON_ANTE * self.ante_value
@@ -1084,7 +1087,10 @@ class GameEngine:
                 tied_players_new = []
                 highest_value_new = 0
                 for seat in tied_players:
-                    player = gs.players[seat]
+                    # Find player by seat number, not by using seat as index
+                    player = next((p for p in gs.players if p.seat == seat), None)
+                    if not player:
+                        continue
                     # Get latest card
                     latest_card = player.hand.draw_cards[-1]
                     value = RANK_VALUES.get(latest_card.rank, 0)

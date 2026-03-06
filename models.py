@@ -1085,6 +1085,7 @@ class BlackjackTableSeat(db.Model):
     seat_number = db.Column(db.Integer, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     joined_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow)
+    buy_in_antes = db.Column(db.Integer, nullable=True, default=200)  # Buy-in amount in antes
 
     user = db.relationship('User', backref='blackjack_seats')
 

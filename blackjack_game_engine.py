@@ -621,60 +621,61 @@ class GameEngine:
         return 0
 
         def _handle_initial_skips(self) -> None:
-        """Auto-skip players who don't need to act in current step"""
-        gs = self.game_state
-        assert gs is not None
-
-        logger.info(
-            "[SKIP_CHECK] Entry: phase=%s, step=%s, current_player_seat=%s, acted=%s",
-            gs.phase.value if gs else "None",
-            gs.current_action_step if gs else "None",
-            gs.current_player_seat,
-            gs.players_acted_this_step,
-        )
-
-        # In escrow step, check if current player should skip
-        if gs.current_action_step == 0 and gs.phase in (
-            GamePhase.PREFLOP_BETTING,
-            GamePhase.RIVER_BETTING,
-        ):
-            if gs.current_player_seat is None:
-                logger.info("[SKIP_CHECK] WARNING: current_player_seat is None!")
-                return
-
-            current_player = next(
-                (p for p in gs.players if p.seat == gs.current_player_seat), None
-            )
-            if not current_player:
-                logger.info(
-                    "[SKIP_CHECK] WARNING: No player found for seat %s!",
-                    gs.current_player_seat,
-                )
-                return
-
+            """Auto-skip players who don't need to act in current step"""
+            gs = self.game_state
+            assert gs is not None
+    
             logger.info(
-                "[SKIP_CHECK] Escrow step - Checking seat=%s, normal=%s, escrow=%s",
-                current_player.seat,
-                current_player.normal_circle,
-                current_player.escrow_circle,
+                "[SKIP_CHECK] Entry: phase=%s, step=%s, current_player_seat=%s, acted=%s",
+                gs.phase.value if gs else "None",
+                gs.current_action_step if gs else "None",
+                gs.current_player_seat,
+                gs.players_acted_this_step,
             )
-
-            if self._should_skip_escrow_step(current_player):
-                logger.info(
-                    "[SKIP_CHECK] -> SKIP seat %s, advancing turn",
-                    gs.current_player_seat,
+    
+            # In escrow step, check if current player should skip
+            if gs.current_action_step == 0 and gs.phase in (
+                GamePhase.PREFLOP_BETTING,
+                GamePhase.RIVER_BETTING,
+            ):
+                if gs.current_player_seat is None:
+                    logger.info("[SKIP_CHECK] WARNING: current_player_seat is None!")
+                    return
+    
+                current_player = next(
+                    (p for p in gs.players if p.seat == gs.current_player_seat), None
                 )
-                gs.players_acted_this_step.add(gs.current_player_seat)
-                self._advance_turn()
+                if not current_player:
+                    logger.info(
+                        "[SKIP_CHECK] WARNING: No player found for seat %s!",
+                        gs.current_player_seat,
+                    )
+                    return
+    
+                logger.info(
+                    "[SKIP_CHECK] Escrow step - Checking seat=%s, normal=%s, escrow=%s",
+                    current_player.seat,
+                    current_player.normal_circle,
+                    current_player.escrow_circle,
+                )
+    
+                if self._should_skip_escrow_step(current_player):
+                    logger.info(
+                        "[SKIP_CHECK] -> SKIP seat %s, advancing turn",
+                        gs.current_player_seat,
+                    )
+                    gs.players_acted_this_step.add(gs.current_player_seat)
+                    self._advance_turn()
+                else:
+                    logger.info(
+                        "[SKIP_CHECK] -> CONTINUE seat %s should ACT",
+                        gs.current_player_seat,
+                    )
             else:
                 logger.info(
-                    "[SKIP_CHECK] -> CONTINUE seat %s should ACT",
-                    gs.current_player_seat,
+                    "[SKIP_CHECK] Not escrow step - skipping auto-skip logic",
                 )
-        else:
-            logger.info(
-                "[SKIP_CHECK] Not escrow step - skipping auto-skip logic",
-            )
+
 
 
     def should_skip_escrow_step(self, player: PlayerState) -> bool:

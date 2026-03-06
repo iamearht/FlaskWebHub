@@ -799,10 +799,11 @@ class GameEngine:
         if not active_players:
             return
 
-        # Convert seat numbers to array indices
+        # Map seat numbers to player indices for folded check
         seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+        # Keep non_folded as seat numbers for downstream code compatibility
         non_folded = [
-            seat_to_index[seat] for seat in active_players
+            seat for seat in active_players
             if seat in seat_to_index and not gs.players[seat_to_index[seat]].hand.folded
         ]
         logger.info(f"  active_players={active_players}, non_folded={non_folded}")
@@ -819,7 +820,7 @@ class GameEngine:
 
             # Check if all non-folded players have matched the highest
             all_matched = all(
-                gs.players[seat].normal_circle == gs.current_highest_normal
+                gs.players[seat_to_index[seat]].normal_circle == gs.current_highest_normal
                 for seat in non_folded
             )
 

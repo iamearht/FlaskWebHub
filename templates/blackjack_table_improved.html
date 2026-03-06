@@ -743,10 +743,12 @@
             fetch('/account')
                 .then(r => r.text())
                 .then(html => {
-                    const match = html.match(/Balance:\s*<strong>(\d+)</);
+                    const match = html.match(/Balance:<\/span>\s*<span[^>]*>(\d+)/);
                     if (match) {
                         userBalance = parseInt(match[1]);
                         validateBuyIn();
+                    } else {
+                        console.log('Could not extract balance from HTML');
                     }
                 })
                 .catch(e => console.log('Could not fetch balance'));

@@ -541,6 +541,7 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            console.log('[INIT] Script loaded and DOMContentLoaded fired');
             updateGameState();
             updateInterval = setInterval(updateGameState, 2000);
         });

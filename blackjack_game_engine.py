@@ -419,6 +419,9 @@ class GameEngine:
         gs.current_highest_normal = gs.players[gs.button_seat].normal_circle
         gs.last_raiser_seat = gs.button_seat  # Button is the "raiser" that started action
 
+        # Initialize betting action: auto-skip players who don't need to act
+        self._handle_initial_skips()
+
     def _determine_button(self) -> None:
         """Determine button by highest card draw. Handles tiebreakers. Posts button ante."""
         gs = self.game_state
@@ -821,6 +824,8 @@ class GameEngine:
                     gs.players_acted_this_step.clear()
                     gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
                     gs.last_raiser_seat = gs.button_seat  # Reset raiser tracking for normal betting step
+                    # Initialize normal betting action: auto-skip any players who don't need to act
+                    self._handle_initial_skips()
                 else:
                     # Both steps done, move to next phase
                     self._advance_phase()

@@ -17,23 +17,15 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class GamePhase(Enum):
-    """
-    High-level hand phases for free blackjack mode.
-
-    SETUP           – Prepare a new hand (rotate button, reset state, post antes, deal 2 cards).
-    PREFLOP_BETTING – Dual-pool betting round using normal/escrow circles before draw.
-    DRAW_PHASE      – Blackjack draw logic (hit/stand/double/split).
-    RIVER_BETTING   – Second dual-pool betting round after draw.
-    SHOWDOWN        – Reveal cards, evaluate hands, resolve pots.
-    HAND_END        – Cleanup and transition to next hand.
-    """
-
     SETUP = "setup"
-    PREFLOP_BETTING = "preflop_betting"
-    DRAW_PHASE = "draw_phase"
-    RIVER_BETTING = "river_betting"
+    PREFLOP_BETTING = "preflop_betting"   # was PREFLOP
+    DRAW_PHASE = "draw_phase"             # was DRAW
+    RIVER_BETTING = "river_betting"       # was RIVER
     SHOWDOWN = "showdown"
-    HAND_END = "hand_end"
+    HAND_END = "hand_end"                 # was HANDEND
+
+
+
 
 
 class ActionType(Enum):
@@ -654,28 +646,55 @@ def setup_hand(self) -> None:
             logger.info(f"[SKIP_CHECK] Not escrow step - skipping auto-skip logic")
 
     def should_skip_escrow_step(self, player: PlayerState) -> bool:
-        """Check if player should skip escrow step"""
-        if not player.hand:
-            return False
+    """
+    Decide if the player should skip the ESCROW_STEP.
 
-        # Skip if circles already equal
-        if player.normal_circle == player.escrow_circle:
-            logger.info(f"  should_skip_escrow_step: circles equal ({player.normal_circle} == {player.escrow_circle}) -> SKIP")
-            return True
+    Skip if:
+      - player has no hand yet, or
+      - normal_circle == escrow_circle, or
+      - normal_circle < escrow_circle, or
+      - phase is RIVER_BETTING and escrow_locked is True
 
-        # Skip if normal < escrow
-        if player.normal_circle < player.escrow_circle:
-            logger.info(f"  should_skip_escrow_step: normal < escrow ({player.normal_circle} < {player.escrow_circle}) -> SKIP")
-            return True
+    Note: escrow_locked only affects the river betting escrow step, not preflop.
+    """
+    gs = self.game_state
+    assert gs is not None
 
-        # Skip if river and escrow locked
-        if (self.game_state.phase == GamePhase.RIVER and
-            player.hand.escrow_locked):
-            logger.info(f"  should_skip_escrow_step: river and escrow_locked -> SKIP")
-            return True
+    if not player.hand:
+        # No hand yet; treat as no escrow action available
+        return True
 
-        logger.info(f"  should_skip_escrow_step: no skip conditions met (normal={player.normal_circle}, escrow={player.escrow_circle}) -> ACT")
-        return False
+    if player.normal_circle == player.escrow_circle:
+        logger.info(
+            "should_skip_escrow_step: circles equal normal=%s escrow=%s -> SKIP",
+            player.normal_circle,
+            player.escrow_circle,
+        )
+        return True
+
+    if player.normal_circle < player.escrow_circle:
+        logger.info(
+            "should_skip_escrow_step: normal < escrow normal=%s escrow=%s -> SKIP",
+            player.normal_circle,
+            player.escrow_circle,
+        )
+        return True
+
+    if (
+        gs.phase == GamePhase.RIVER_BETTING
+        and player.hand.escrow_locked
+    ):
+        logger.info("should_skip_escrow_step: river and escrow_locked -> SKIP")
+        return True
+
+    logger.info(
+        "should_skip_escrow_step: no skip conditions met normal=%s escrow=%s -> ACT",
+        player.normal_circle,
+        player.escrow_circle,
+    )
+    return False
+
+
 
     def get_legal_actions(self, seat: int) -> List[ActionType]:
         """Get legal actions for player"""
@@ -745,16 +764,25 @@ def setup_hand(self) -> None:
             raise ValueError(f"Invalid action for seat {seat}")
 
         # Check if player must expose a card on first action in PREFLOP normal betting step
-        if (gs.phase == GamePhase.PREFLOP and
-            gs.current_action_step == 1 and
-            not player.hand.first_action_taken):
-            if card_index is None:
-                raise ValueError("Card exposure required on first action: provide card_index (0 or 1)")
-            if card_index not in [0, 1]:
-                raise ValueError("card_index must be 0 or 1")
-            # Expose the chosen card
-            self.expose_card(seat, card_index)
-            player.hand.first_action_taken = True
+        if (
+    gs.phase == GamePhase.PREFLOP_BETTING
+    and gs.current_action_step == 1
+    and not player.hand.first_action_taken
+):
+    # First non-fold preflop action: require card exposure.
+    # If client did not send card_index, deterministically expose index 0.
+    if card_index is None:
+        logger.info(
+            "PREFLOP_BETTING: no card_index provided for first action; defaulting to 0"
+        )
+        card_index = 0
+
+    if card_index not in (0, 1):
+        raise ValueError("card_index must be 0 or 1 for preflop exposure")
+
+    self.expose_card(seat, card_index)
+    player.hand.first_action_taken = True
+
 
         # ADD_ESCROW
         if action == ActionType.ADD_ESCROW:
@@ -892,21 +920,33 @@ def setup_hand(self) -> None:
         self._advance_turn()
 
     def expose_card(self, seat: int, card_index: int) -> None:
-        """Player exposes one of their two hole cards"""
-        gs = self.game_state
-        assert gs is not None
+    """
+    Player exposes one of their two hole cards during PREFLOP_BETTING.
 
-        player = next((p for p in gs.players if p.seat == seat), None)
-        if not player or not player.hand:
-            raise ValueError(f"Invalid seat {seat}")
+    If the client does not provide a card_index, the caller can pass 0
+    as a deterministic fallback.
+    """
+    gs = self.game_state
+    assert gs is not None
 
-        if card_index not in [0, 1]:
-            raise ValueError("Card index must be 0 or 1")
+    player = next((p for p in gs.players if p.seat == seat), None)
+    if not player or not player.hand:
+        raise ValueError(f"Invalid seat {seat} for expose_card")
 
-        if len(player.hand.original_cards) < 2:
-            raise ValueError("Player does not have 2 cards")
+    if card_index not in (0, 1):
+        raise ValueError("card_index must be 0 or 1")
 
-        player.hand.exposed_card = player.hand.original_cards[card_index]
+    if len(player.hand.original_cards) < 2:
+        raise ValueError("Player does not have 2 cards")
+
+    player.hand.exposed_card = player.hand.original_cards[card_index]
+    logger.info(
+        "EXPOSE_CARD: seat %s exposed card %s",
+        seat,
+        player.hand.exposed_card,
+    )
+
+
 
     def _advance_turn(self) -> None:
         """Advance to next player/step"""
@@ -1056,49 +1096,87 @@ def setup_hand(self) -> None:
             gs.current_player_seat = None
 
     def _advance_phase(self) -> None:
-        """Move to next phase"""
-        gs = self.game_state
-        assert gs is not None
+    """
+    Move to next phase based on current phase and hand state.
 
-        if gs.phase == GamePhase.PREFLOP:
-            # First hand: show DRAW phase for button determination animation
-            # Subsequent hands: skip DRAW and go straight to RIVER
-            if not gs.table_initialized or gs.hand_number == 1:
-                gs.phase = GamePhase.DRAW
-                # Initialize DRAW phase button determination progression
-                gs.draw_phase_step = 0
-                gs.draw_phase_timestamp = None
-                # Initialize draw_cards for each player
-                for player in gs.players:
-                    player.hand.draw_cards = []
-                # Deal 1 face-up card to each player for button determination
-                for player in gs.players:
-                    card = gs.deck.draw()
-                    player.hand.draw_cards.append(card)
-            else:
-                gs.phase = GamePhase.RIVER
-                gs.current_highest_normal = 0
+    PREFLOP_BETTING:
+      - If only one active, non-folded player remains -> HAND_END
+      - Else -> DRAW_PHASE
+
+    DRAW_PHASE:
+      - When draw logic determines completion -> RIVER_BETTING
+
+    RIVER_BETTING:
+      - When betting round completes:
+        - If only one active, non-folded player -> HAND_END
+        - Else -> SHOWDOWN
+
+    SHOWDOWN:
+      - Resolve pots, then -> HAND_END
+    """
+    gs = self.game_state
+    assert gs is not None
+
+    logger.info(f"[ADVANCE_PHASE] entry phase={gs.phase.value}")
+
+    # Helper: remaining active, non-folded players
+    non_folded = [
+        p for p in gs.players
+        if p.is_active and p.hand and not p.hand.folded
+    ]
+
+    if gs.phase == GamePhase.PREFLOP_BETTING:
+        if len(non_folded) <= 1:
+            logger.info("[ADVANCE_PHASE] PREFLOP_BETTING -> HAND_END (single remaining)")
+            gs.phase = GamePhase.HAND_END
+            gs.current_player_seat = None
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
-            # Calculate first player after button (store as SEAT NUMBER)
-            seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
-            button_idx = seat_to_index[gs.button_seat]
-            first_idx = (button_idx + 1) % len(gs.players)
-            gs.current_player_seat = gs.players[first_idx].seat
+            return
 
-        elif gs.phase == GamePhase.DRAW:
-            gs.phase = GamePhase.RIVER
+        logger.info("[ADVANCE_PHASE] PREFLOP_BETTING -> DRAW_PHASE")
+        gs.phase = GamePhase.DRAW_PHASE
+        gs.current_action_step = 0
+        gs.players_acted_this_step.clear()
+        gs.current_player_seat = None
+        # Your draw-phase logic will set current_player_seat as needed
+        return
+
+    if gs.phase == GamePhase.DRAW_PHASE:
+        logger.info("[ADVANCE_PHASE] DRAW_PHASE -> RIVER_BETTING")
+        gs.phase = GamePhase.RIVER_BETTING
+        gs.current_action_step = 0
+        gs.players_acted_this_step.clear()
+        gs.current_player_seat = None
+        # River betting will reset current_highest_normal and lastraiser, etc.
+        return
+
+    if gs.phase == GamePhase.RIVER_BETTING:
+        if len(non_folded) <= 1:
+            logger.info("[ADVANCE_PHASE] RIVER_BETTING -> HAND_END (single remaining)")
+            gs.phase = GamePhase.HAND_END
+            gs.current_player_seat = None
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
-            gs.current_highest_normal = 0
-            # Calculate first player after button (store as SEAT NUMBER)
-            seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
-            button_idx = seat_to_index[gs.button_seat]
-            first_idx = (button_idx + 1) % len(gs.players)
-            gs.current_player_seat = gs.players[first_idx].seat
+            return
 
-        elif gs.phase == GamePhase.RIVER:
-            gs.phase = GamePhase.SHOWDOWN
+        logger.info("[ADVANCE_PHASE] RIVER_BETTING -> SHOWDOWN")
+        gs.phase = GamePhase.SHOWDOWN
+        gs.current_player_seat = None
+        gs.current_action_step = 0
+        gs.players_acted_this_step.clear()
+        return
+
+    if gs.phase == GamePhase.SHOWDOWN:
+        logger.info("[ADVANCE_PHASE] SHOWDOWN -> HAND_END")
+        gs.phase = GamePhase.HAND_END
+        gs.current_player_seat = None
+        gs.current_action_step = 0
+        gs.players_acted_this_step.clear()
+        return
+
+    logger.info(f"[ADVANCE_PHASE] no transition defined for phase={gs.phase.value}")
+
 
     def _check_draw_complete(self) -> None:
         """Check if draw phase is complete"""

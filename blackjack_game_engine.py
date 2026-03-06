@@ -826,23 +826,32 @@ class GameEngine:
 
             # Single winner - they become the button
             if tied_players:
-                gs.button_seat = tied_players[0]
-                button_player = gs.players[gs.button_seat]
+                # tied_players contains seat numbers, find the index
+                button_seat_number = tied_players[0]
+                button_index = None
+                for idx, p in enumerate(gs.players):
+                    if p.seat == button_seat_number:
+                        button_index = idx
+                        break
 
-                # Button antes 1 chip to normal pot
-                if button_player.stack >= BUTTON_ANTE:
-                    button_player.normal_circle = BUTTON_ANTE
-                    button_player.stack -= BUTTON_ANTE
-                    gs.normal_pot += BUTTON_ANTE
+                if button_index is not None:
+                    gs.button_seat = button_index
+                    button_player = gs.players[button_index]
 
-                # Update is_button flag for all players
-                button_player.is_button = True
-                for i, p in enumerate(gs.players):
-                    if i != gs.button_seat:
-                        p.is_button = False
+                    # Button antes 1 chip to normal pot
+                    if button_player.stack >= BUTTON_ANTE:
+                        button_player.normal_circle = BUTTON_ANTE
+                        button_player.stack -= BUTTON_ANTE
+                        gs.normal_pot += BUTTON_ANTE
 
-                gs.draw_phase_step = 2
-                gs.draw_phase_timestamp = None
+                    # Update is_button flag for all players
+                    button_player.is_button = True
+                    for p in gs.players:
+                        if p != button_player:
+                            p.is_button = False
+
+                    gs.draw_phase_step = 2
+                    gs.draw_phase_timestamp = None
 
         # Step 2: Wait 3 seconds then deal 2 face-down cards
         elif gs.draw_phase_step == 2:

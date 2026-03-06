@@ -106,7 +106,7 @@ def view_table(table_id):
     seated_players = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
 
     return render_template(
-        "blackjack_table.html",
+        "blackjack_table_improved.html",
         table_id=table_id,
         table=table,
         seated_players=seated_players,
@@ -128,19 +128,33 @@ def get_table_state(table_id):
             return jsonify({"error": "Table not found in database"}), 404
 
         seated_seats = BlackjackTableSeat.query.filter_by(table_id=table_id).all()
-        seated_players = [
-            {
-                "seat": seat.seat_number,
-                "username": seat.user.username if seat.user else None,
-                "user_id": seat.user_id,
-                "joined_at": seat.joined_at.isoformat() if seat.joined_at else None,
-            }
-            for seat in seated_seats
-            if seat.user_id is not None
-        ]
-
         engine = TABLES[table_id]
         game_state = engine.get_state()
+
+        # Build seated_players with card information
+        seated_players = []
+        for seat in seated_seats:
+            if seat.user_id is not None:
+                player_info = {
+                    "seat": seat.seat_number,
+                    "username": seat.user.username if seat.user else None,
+                    "user_id": seat.user_id,
+                    "joined_at": seat.joined_at.isoformat() if seat.joined_at else None,
+                    "stack": 1000,  # Default stack
+                    "card1": None,
+                    "card2": None,
+                }
+
+                # Try to get card information from game state
+                if game_state and game_state.get("players"):
+                    for player in game_state.get("players", []):
+                        if player.get("seat") == seat.seat_number:
+                            player_info["stack"] = player.get("stack", 1000)
+                            player_info["card1"] = player.get("card1", "")
+                            player_info["card2"] = player.get("card2", "")
+                            break
+
+                seated_players.append(player_info)
 
         # Merge database seating with game engine state
         return jsonify({

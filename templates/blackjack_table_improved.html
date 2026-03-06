@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Royal 21 Table</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #1f2937 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+        }
+
+        .table-info {
+            display: flex;
+            gap: 30px;
+            font-size: 0.95rem;
+        }
+
+        .table-info div {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .table-info label {
+            font-weight: bold;
+            color: #bbb;
+            font-size: 0.85rem;
+        }
+
+        .table-info value {
+            font-size: 1.2rem;
+            color: #22c55e;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #22c55e;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 6px;
+            cursor: pointer;
+            border: none;
+            font-size: 1rem;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #16a34a;
+        }
+
+        .btn-secondary {
+            background: #3b82f6;
+        }
+
+        .btn-secondary:hover {
+            background: #2563eb;
+        }
+
+        /* Table Layout */
+        .table-view {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 20px;
+        }
+
+        .poker-table {
+            background: linear-gradient(135deg, #065f46 0%, #047857 100%);
+            border-radius: 50%;
+            padding: 60px;
+            position: relative;
+            min-height: 600px;
+            width: 600px;
+            height: 600px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin: 0 auto;
+        }
+
+        .seats-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Center pot display */
+        .center-pot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 10;
+        }
+
+        .center-pot-label {
+            font-size: 0.9rem;
+            color: #bbb;
+            margin-bottom: 5px;
+        }
+
+        .center-pot-value {
+            font-size: 1.5rem;
+            color: #fbbf24;
+            font-weight: bold;
+        }
+
+        .seat {
+            position: absolute;
+            width: 140px;
+            height: 160px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .seat:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.7);
+            transform: scale(1.05);
+        }
+
+        .seat.current {
+            background: rgba(34, 197, 94, 0.4);
+            border-color: #22c55e;
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.6);
+            transform: scale(1.08);
+        }
+
+        .seat.button {
+            background: rgba(255, 193, 7, 0.3);
+            border-color: #fbbf24;
+        }
+
+        .dealer-button {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            width: 36px;
+            height: 36px;
+            background: #fbbf24;
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border: 3px solid #f59e0b;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.9);
+        }
+
+        .seat.folded {
+            opacity: 0.5;
+        }
+
+        .seat-number {
+            font-size: 0.75rem;
+            color: #999;
+            margin-bottom: 3px;
+        }
+
+        .player-name {
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-bottom: 6px;
+            min-height: 18px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .cards-display {
+            margin: 8px 0;
+            min-height: 50px;
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        /* Card styling */
+        .card {
+            width: 40px;
+            height: 56px;
+            background: #fff;
+            border: 1px solid #333;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: bold;
+            color: #000;
+            position: relative;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .card.red {
+            color: #ef4444;
+        }
+
+        .card.black {
+            color: #000;
+        }
+
+        .card-rank {
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .card-suit {
+            font-size: 0.8rem;
+            line-height: 1;
+        }
+
+        .player-stack {
+            font-size: 0.8rem;
+            color: #bbb;
+        }
+
+        .join-btn {
+            padding: 6px 12px;
+            background: #22c55e;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            transition: background 0.3s;
+            margin-top: 4px;
+        }
+
+        .join-btn:hover {
+            background: #16a34a;
+        }
+
+        /* Right Sidebar */
+        .sidebar {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            height: fit-content;
+        }
+
+        .sidebar h3 {
+            margin-bottom: 15px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 10px;
+        }
+
+        .pot-display {
+            margin-bottom: 20px;
+        }
+
+        .pot-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .pot-label {
+            font-weight: bold;
+        }
+
+        .pot-value {
+            color: #22c55e;
+            font-weight: bold;
+        }
+
+        .phase-display {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .phase-value {
+            font-size: 1.1rem;
+            color: #fbbf24;
+            font-weight: bold;
+        }
+
+        .actions {
+            margin-top: 20px;
+        }
+
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 10px 12px;
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.3s;
+            font-weight: bold;
+        }
+
+        .action-btn:hover {
+            background: #2563eb;
+        }
+
+        .action-btn:disabled {
+            background: #6b7280;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.1rem;
+            color: #bbb;
+        }
+
+        .empty-seat {
+            color: #999;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>🎰 Royal 21 Table #{{ table_id }}</h1>
+            </div>
+            <div class="table-info">
+                <div>
+                    <label>Phase</label>
+                    <value id="currentPhase">Loading...</value>
+                </div>
+                <div>
+                    <a href="{{ url_for('game.lobby') }}" class="btn btn-secondary">
+                        ← Back to Lobby
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <div class="table-view">
+            <div class="poker-table">
+                <div class="center-pot">
+                    <div class="center-pot-label">Total Pot</div>
+                    <div class="center-pot-value" id="centerPot">0</div>
+                </div>
+                <div class="seats-container" id="seatsContainer"></div>
+            </div>
+
+            <div class="sidebar">
+                <h3>Game Info</h3>
+
+                <div class="phase-display">
+                    <div style="font-size: 0.8rem; color: #bbb;">Current Phase</div>
+                    <div class="phase-value" id="phaseValue">Setup</div>
+                </div>
+
+                <h3 style="margin-top: 20px;">Pots</h3>
+                <div class="pot-display">
+                    <div class="pot-item">
+                        <span class="pot-label">Normal Pot</span>
+                        <span class="pot-value" id="normalPot">0</span>
+                    </div>
+                    <div class="pot-item">
+                        <span class="pot-label">Escrow Pot</span>
+                        <span class="pot-value" id="escrowPot">0</span>
+                    </div>
+                    <div class="pot-item" style="background: rgba(34, 197, 94, 0.1);">
+                        <span class="pot-label"><strong>Total</strong></span>
+                        <span class="pot-value" id="totalPot"><strong>0</strong></span>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button class="action-btn" onclick="toggleReady()" id="readyBtn">
+                        ✓ Ready
+                    </button>
+                    <button class="action-btn" onclick="advancePhase()" id="advanceBtn">
+                        Advance Phase
+                    </button>
+                </div>
+
+                <div id="readyStatus" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; text-align: center; font-size: 0.9rem; color: #bbb;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TABLE_ID = {{ table_id }};
+        let currentUserId = null;
+        let currentPlayerSeat = null;
+        let tableState = null;
+
+        // Card suit symbols
+        const SUITS = {
+            'H': '♥',
+            'D': '♦',
+            'C': '♣',
+            'S': '♠'
+        };
+
+        const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        function parseCard(cardStr) {
+            if (!cardStr || cardStr === '') return null;
+            const suit = cardStr[cardStr.length - 1];
+            const rank = cardStr.slice(0, -1);
+            return { rank, suit };
+        }
+
+        function renderCard(card) {
+            if (!card) return '';
+            const isRed = card.suit === 'H' || card.suit === 'D';
+            const color = isRed ? 'red' : 'black';
+            return `<div class="card ${color}">
+                <div>
+                    <div class="card-rank">${card.rank}</div>
+                    <div class="card-suit">${SUITS[card.suit] || card.suit}</div>
+                </div>
+            </div>`;
+        }
+
+        function calculateSeatPositions(totalSeats, currentSeat) {
+            const positions = [];
+            const centerX = 50; // percentage
+            const centerY = 50; // percentage
+            const radius = 35; // percentage of container
+
+            for (let i = 0; i < totalSeats; i++) {
+                // Calculate angle: start from bottom (270°) and distribute evenly
+                // Current player's seat is always at the bottom
+                let angleOffset = (currentSeat - i) * (360 / totalSeats);
+                let angle = (270 + angleOffset) * (Math.PI / 180);
+
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+
+                positions.push({
+                    x: x,
+                    y: y,
+                    seat: i
+                });
+            }
+
+            return positions;
+        }
+
+        async function updateTableState() {
+            try {
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/state`);
+                const data = await response.json();
+
+                tableState = data;
+                currentUserId = data.current_user_id;
+
+                // Find current player's seat
+                currentPlayerSeat = data.seated_players.find(p => p.user_id === currentUserId)?.seat || 0;
+
+                renderSeats(data.seated_players);
+                updatePots(data);
+                updatePhase(data.phase);
+            } catch (error) {
+                console.error('Error updating table state:', error);
+            }
+        }
+
+        function renderSeats(seatedPlayers) {
+            const container = document.getElementById('seatsContainer');
+            const totalSeats = {{ table.max_seats }};
+            const positions = calculateSeatPositions(totalSeats, currentPlayerSeat);
+
+            container.innerHTML = '';
+
+            for (let i = 0; i < totalSeats; i++) {
+                const pos = positions[i];
+                const player = seatedPlayers.find(p => p.seat === i);
+
+                const seat = document.createElement('div');
+                seat.className = 'seat';
+                if (player && player.user_id === currentUserId) {
+                    seat.classList.add('current');
+                }
+
+                seat.style.left = pos.x + '%';
+                seat.style.top = pos.y + '%';
+                seat.style.transform = 'translate(-50%, -50%)';
+
+                if (player && player.user_id) {
+                    // Player is seated
+                    const cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
+                    const cardsHtml = cards.map(c => renderCard(c)).join('');
+
+                    seat.innerHTML = `
+                        <div class="seat-number">Seat ${i}</div>
+                        <div class="player-name">${player.username}</div>
+                        <div class="cards-display">${cardsHtml || '<span style="color: #999; font-size: 0.8rem;">No cards</span>'}</div>
+                        <div class="player-stack">Stack: ${player.stack || 0}</div>
+                    `;
+                } else {
+                    // Empty seat
+                    seat.innerHTML = `
+                        <div class="seat-number">Seat ${i}</div>
+                        <div class="empty-seat">Empty</div>
+                        <button class="join-btn" onclick="joinSeat(${i})">Join</button>
+                    `;
+                }
+
+                container.appendChild(seat);
+            }
+        }
+
+        function updatePots(data) {
+            document.getElementById('normalPot').textContent = data.normal_pot || 0;
+            document.getElementById('escrowPot').textContent = data.escrow_pot || 0;
+            const total = (data.normal_pot || 0) + (data.escrow_pot || 0);
+            document.getElementById('totalPot').textContent = total;
+            document.getElementById('centerPot').textContent = total;
+        }
+
+        function updatePhase(phase) {
+            document.getElementById('phaseValue').textContent = phase || 'Setup';
+            document.getElementById('currentPhase').textContent = phase || 'Setup';
+        }
+
+        async function joinSeat(seatNumber) {
+            try {
+                const response = await fetch(`/blackjack/api/join_seat/${TABLE_ID}/${seatNumber}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    updateTableState();
+                } else {
+                    alert('Error: ' + (data.error || 'Unable to join seat'));
+                }
+            } catch (error) {
+                console.error('Error joining seat:', error);
+                alert('Failed to join seat');
+            }
+        }
+
+        async function toggleReady() {
+            try {
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/player_ready`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('readyStatus').textContent = `Ready! (${data.ready_count}/${data.seated_count} players)`;
+                    updateTableState();
+                }
+            } catch (error) {
+                console.error('Error marking ready:', error);
+            }
+        }
+
+        async function advancePhase() {
+            try {
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/advance_phase`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    updateTableState();
+                }
+            } catch (error) {
+                console.error('Error advancing phase:', error);
+            }
+        }
+
+        // Update table state every 2 seconds
+        setInterval(updateTableState, 2000);
+
+        // Initial load
+        updateTableState();
+    </script>
+</body>
+</html>

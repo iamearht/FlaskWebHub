@@ -556,9 +556,6 @@
                     <button class="action-btn" onclick="toggleReady()" id="readyBtn">
                         ✓ Ready
                     </button>
-                    <button class="action-btn" onclick="advancePhase()" id="advanceBtn">
-                        Advance Phase
-                    </button>
                 </div>
 
                 <div id="readyStatus" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; text-align: center; font-size: 0.9rem; color: #bbb;"></div>
@@ -669,6 +666,15 @@
                 renderSeats(data.seated_players);
                 updatePots(data);
                 updatePhase(data.phase);
+
+                // Update ready status display
+                if (data.phase === 'setup' && data.seated_count > 0) {
+                    if (data.ready_count > 0) {
+                        document.getElementById('readyStatus').textContent = `${data.ready_count}/${data.seated_count} players ready`;
+                    } else {
+                        document.getElementById('readyStatus').textContent = 'No players ready yet';
+                    }
+                }
             } catch (error) {
                 console.error('Error updating table state:', error);
             }
@@ -839,29 +845,17 @@
                 const response = await fetch(`/blackjack/api/table/${TABLE_ID}/player_ready`, {
                     method: 'POST'
                 });
-                const data = await response.json();
                 if (response.ok) {
-                    document.getElementById('readyStatus').textContent = `Ready! (${data.ready_count}/${data.seated_count} players)`;
+                    // Update table state to sync with server
                     updateTableState();
+                } else {
+                    console.error('Error marking ready:', response.statusText);
                 }
             } catch (error) {
                 console.error('Error marking ready:', error);
             }
         }
 
-        async function advancePhase() {
-            try {
-                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/advance_phase`, {
-                    method: 'POST'
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    updateTableState();
-                }
-            } catch (error) {
-                console.error('Error advancing phase:', error);
-            }
-        }
 
         // Update table state every 2 seconds
         setInterval(updateTableState, 2000);

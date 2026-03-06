@@ -1191,13 +1191,14 @@ class GameEngine:
         if all(p.hand.action_this_phase for p in active if not p.hand.folded):
             self._advance_phase()
 
-    def progress_button_determination_draw(self) -> None:
+        def progress_button_determination_draw(self) -> None:
         """Automatically progress through DRAW phase for button determination"""
         import time
+
         gs = self.game_state
         assert gs is not None
 
-        if gs.phase != GamePhase.DRAW or not hasattr(gs, 'draw_phase_step'):
+        if gs.phase != GamePhase.DRAW_PHASE or not hasattr(gs, "draw_phase_step"):
             return
 
         current_time = time.time()
@@ -1214,30 +1215,37 @@ class GameEngine:
 
         # Step 1: Determine button from highest card
         elif gs.draw_phase_step == 1:
-            gs.draw_phase_step = 1  # Already set
             if gs.draw_phase_timestamp is None:
                 gs.draw_phase_timestamp = current_time
 
             # Ensure ALL players have draw_cards (handle initialization failures)
-            print(f"DEBUG: Step 1 - {len(gs.players)} players")
+            logger.debug("DRAW STEP 1: %s players", len(gs.players))
             for player in gs.players:
-                has_cards = hasattr(player.hand, 'draw_cards') and player.hand.draw_cards
-                print(f"DEBUG: Seat {player.seat} has draw_cards: {has_cards}, cards: {player.hand.draw_cards if hasattr(player.hand, 'draw_cards') else 'NO ATTR'}")
-                if not hasattr(player.hand, 'draw_cards') or not player.hand.draw_cards:
-                    # If player somehow doesn't have a draw card, give them one now
+                has_cards = hasattr(player.hand, "draw_cards") and player.hand.draw_cards
+                logger.debug(
+                    "Seat %s has draw_cards: %s, cards: %s",
+                    player.seat,
+                    has_cards,
+                    getattr(player.hand, "draw_cards", None),
+                )
+                if not hasattr(player.hand, "draw_cards") or not player.hand.draw_cards:
                     player.hand.draw_cards = gs.deck.draw_n(1)
-                    print(f"DEBUG: Had to redraw for seat {player.seat}: {player.hand.draw_cards}")
+                    logger.debug(
+                        "Had to redraw for seat %s: %s",
+                        player.seat,
+                        player.hand.draw_cards,
+                    )
 
             # Find highest card value(s) - check ALL players
             highest_value = 0
-            tied_players = []
+            tied_players: List[int] = []
 
             for player in gs.players:
                 if player.hand.draw_cards and len(player.hand.draw_cards) > 0:
-                    # Get the LATEST card (for tiebreaker rounds, it's the newest)
+                    # Get the latest card (for tiebreaker rounds, it's the newest)
                     card = player.hand.draw_cards[-1]
                     value = RANK_VALUES.get(card.rank, 0)
-                    print(f"DEBUG: Seat {player.seat} card {card} value {value}")
+                    logger.debug("Seat %s card %s value %s", player.seat, card, value)
                     if value > highest_value:
                         highest_value = value
                         tied_players = [player.seat]
@@ -1246,25 +1254,20 @@ class GameEngine:
 
             # Handle ties - draw more cards
             if len(tied_players) > 1:
-                # Deal another card to tied players
                 for seat in tied_players:
-                    # Find player by seat number, not by using seat as index
                     player = next((p for p in gs.players if p.seat == seat), None)
                     if player:
-                        new_card = gs.deck.draw()  # Fixed: draw() takes no arguments
-                        if not hasattr(player.hand, 'draw_cards'):
+                        new_card = gs.deck.draw()
+                        if not hasattr(player.hand, "draw_cards"):
                             player.hand.draw_cards = []
                         player.hand.draw_cards.append(new_card)
 
-                # Recurse to check again
-                tied_players_new = []
+                tied_players_new: List[int] = []
                 highest_value_new = 0
                 for seat in tied_players:
-                    # Find player by seat number, not by using seat as index
                     player = next((p for p in gs.players if p.seat == seat), None)
                     if not player:
                         continue
-                    # Get latest card
                     latest_card = player.hand.draw_cards[-1]
                     value = RANK_VALUES.get(latest_card.rank, 0)
                     if value > highest_value_new:
@@ -1277,52 +1280,80 @@ class GameEngine:
 
             # If still tied, keep drawing (continue this step)
             if len(tied_players) > 1:
-                # Will recurse on next call
                 return
 
             # Single winner - they become the button
             if tied_players:
-                # tied_players contains seat numbers, find the player by seat number
                 button_seat_number = tied_players[0]
-                button_player = None
+                button_player = next(
+                    (p for p in gs.players if p.seat == button_seat_number), None
+                )
 
-                # Search through all players to find the one with the button seat number
-                for p in gs.players:
-                    if p.seat == button_seat_number:
-                        button_player = p
-                        break
-
-                # Set button and apply ante
                 if button_player:
-                    # Find the player's index for button_seat
-                    button_index = next((idx for idx, p in enumerate(gs.players) if p.seat == button_seat_number), None)
-                    logger.warning(f"Button determination: button_seat_number={button_seat_number}, button_index={button_index}, total_players={len(gs.players)}")
+                    button_index = next(
+                        (
+                            idx
+                            for idx, p in enumerate(gs.players)
+                            if p.seat == button_seat_number
+                        ),
+                        None,
+                    )
+                    logger.warning(
+                        "Button determination: button_seat_number=%s, "
+                        "button_index=%s, total_players=%s",
+                        button_seat_number,
+                        button_index,
+                        len(gs.players),
+                    )
 
                     if button_index is not None:
-                        # CRITICAL: button_seat should be SEAT NUMBER, not INDEX!
+                        # Button seat is a SEAT NUMBER
                         gs.button_seat = button_seat_number
-                        logger.warning(f"Button determination: SET gs.button_seat = {gs.button_seat} (seat number, not index)")
-                        button_player = gs.players[button_index]  # Get player by index for reliability
+                        logger.warning(
+                            "Button determination: SET gs.button_seat = %s",
+                            gs.button_seat,
+                        )
+                        button_player = gs.players[button_index]
 
                         # Button antes 1 chip to normal pot (scaled by ante_value)
                         button_chips = BUTTON_ANTE * gs.ante_value
-                        logger.warning(f"ANTE CHECK: player_id={id(button_player)}, seat={button_player.seat}, stack={button_player.stack}, ante={BUTTON_ANTE}, ante_value={gs.ante_value}, button_chips={button_chips}")
+                        logger.warning(
+                            "ANTE CHECK: player_id=%s, seat=%s, stack=%s, "
+                            "ante=%s, ante_value=%s, button_chips=%s",
+                            id(button_player),
+                            button_player.seat,
+                            button_player.stack,
+                            BUTTON_ANTE,
+                            gs.ante_value,
+                            button_chips,
+                        )
 
                         if button_player.stack >= button_chips:
                             button_player.normal_circle = BUTTON_ANTE
                             button_player.stack -= button_chips
                             gs.normal_pot += button_chips
-                            logger.warning(f"ANTE APPLIED: player_id={id(button_player)}, stack_after={button_player.stack}, normal_pot={gs.normal_pot}, gs.players[button_index].stack={gs.players[button_index].stack}")
+                            logger.warning(
+                                "ANTE APPLIED: player_id=%s, stack_after=%s, "
+                                "normal_pot=%s, gs.players[button_index].stack=%s",
+                                id(button_player),
+                                button_player.stack,
+                                gs.normal_pot,
+                                gs.players[button_index].stack,
+                            )
                         else:
-                            logger.warning(f"ANTE SKIPPED: stack {button_player.stack} < button_chips {button_chips}")
+                            logger.warning(
+                                "ANTE SKIPPED: stack %s < button_chips %s",
+                                button_player.stack,
+                                button_chips,
+                            )
 
                         # Update is_button flag for all players
                         button_player.is_button = True
                         for p in gs.players:
-                            if p != button_player:
+                            if p is not button_player:
                                 p.is_button = False
 
-                # Always advance to step 2 after determining button
+                # Advance to step 2 after determining button
                 gs.draw_phase_step = 2
                 gs.draw_phase_timestamp = None
 
@@ -1330,9 +1361,8 @@ class GameEngine:
         elif gs.draw_phase_step == 2:
             if gs.draw_phase_timestamp is None:
                 gs.draw_phase_timestamp = current_time
-            # Wait 3 seconds then deal
             elif current_time - gs.draw_phase_timestamp >= 3:
-                # Deal 2 cards face-down to EACH player
+                # Deal 2 cards face-down to each player
                 for player in gs.players:
                     cards = gs.deck.draw_n(2)
                     player.hand.original_cards = cards
@@ -1340,24 +1370,25 @@ class GameEngine:
                 # Verify all players got cards (fallback check)
                 for player in gs.players:
                     if not player.hand.original_cards or len(player.hand.original_cards) < 2:
-                        # Fallback: redeal if something went wrong
                         player.hand.original_cards = gs.deck.draw_n(2)
 
-                # Transition to RIVER phase for actual gameplay
-                gs.phase = GamePhase.RIVER
+                # Transition to RIVER_BETTING phase for actual gameplay
+                gs.phase = GamePhase.RIVER_BETTING
                 gs.current_action_step = 0
+
                 # Calculate first player after button (store as SEAT NUMBER)
                 seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
                 button_idx = seat_to_index[gs.button_seat]
                 first_to_act_idx = (button_idx + 1) % len(gs.players)
                 gs.current_player_seat = gs.players[first_to_act_idx].seat
 
-                # Initialize action tracking for RIVER phase
+                # Initialize action tracking for RIVER_BETTING phase
                 gs.players_acted_this_step.clear()
                 gs.current_highest_normal = 0
 
                 gs.draw_phase_step = 0
                 gs.draw_phase_timestamp = None
+
 
     def execute_showdown(self) -> Dict[str, int]:
         """Evaluate hands and distribute pots. Returns {player_id: winnings}"""

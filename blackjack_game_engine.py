@@ -231,6 +231,7 @@ class PlayerHand:
 
     # Draw phase tracking
     cards_drawn: int = 0
+    draw_cards: List[Card] = field(default_factory=list)
 
     def evaluate_main(self) -> HandValue:
         return HandValue.evaluate(self.original_cards)
@@ -531,7 +532,7 @@ class GameEngine:
             gs.last_raiser_seat = None
 
         # Auto-skip escrow step where appropriate for the first acting player
-        self.handle_initial_skips()
+        self._handle_initial_skips()
 
 
 
@@ -620,112 +621,112 @@ class GameEngine:
             return gs.players[tied_players[0]].seat
         return 0
 
-        def _handle_initial_skips(self) -> None:
-            """Auto-skip players who don't need to act in current step"""
-            gs = self.game_state
-            assert gs is not None
-    
-            logger.info(
-                "[SKIP_CHECK] Entry: phase=%s, step=%s, current_player_seat=%s, acted=%s",
-                gs.phase.value if gs else "None",
-                gs.current_action_step if gs else "None",
-                gs.current_player_seat,
-                gs.players_acted_this_step,
+    def _handle_initial_skips(self) -> None:
+        """Auto-skip players who don't need to act in current step"""
+        gs = self.game_state
+        assert gs is not None
+
+        logger.info(
+            "[SKIP_CHECK] Entry: phase=%s, step=%s, current_player_seat=%s, acted=%s",
+            gs.phase.value if gs else "None",
+            gs.current_action_step if gs else "None",
+            gs.current_player_seat,
+            gs.players_acted_this_step,
+        )
+
+        # In escrow step, check if current player should skip
+        if gs.current_action_step == 0 and gs.phase in (
+            GamePhase.PREFLOP_BETTING,
+            GamePhase.RIVER_BETTING,
+        ):
+            if gs.current_player_seat is None:
+                logger.info("[SKIP_CHECK] WARNING: current_player_seat is None!")
+                return
+
+            current_player = next(
+                (p for p in gs.players if p.seat == gs.current_player_seat), None
             )
-    
-            # In escrow step, check if current player should skip
-            if gs.current_action_step == 0 and gs.phase in (
-                GamePhase.PREFLOP_BETTING,
-                GamePhase.RIVER_BETTING,
-            ):
-                if gs.current_player_seat is None:
-                    logger.info("[SKIP_CHECK] WARNING: current_player_seat is None!")
-                    return
-    
-                current_player = next(
-                    (p for p in gs.players if p.seat == gs.current_player_seat), None
-                )
-                if not current_player:
-                    logger.info(
-                        "[SKIP_CHECK] WARNING: No player found for seat %s!",
-                        gs.current_player_seat,
-                    )
-                    return
-    
+            if not current_player:
                 logger.info(
-                    "[SKIP_CHECK] Escrow step - Checking seat=%s, normal=%s, escrow=%s",
-                    current_player.seat,
-                    current_player.normal_circle,
-                    current_player.escrow_circle,
+                    "[SKIP_CHECK] WARNING: No player found for seat %s!",
+                    gs.current_player_seat,
                 )
-    
-                if self._should_skip_escrow_step(current_player):
-                    logger.info(
-                        "[SKIP_CHECK] -> SKIP seat %s, advancing turn",
-                        gs.current_player_seat,
-                    )
-                    gs.players_acted_this_step.add(gs.current_player_seat)
-                    self._advance_turn()
-                else:
-                    logger.info(
-                        "[SKIP_CHECK] -> CONTINUE seat %s should ACT",
-                        gs.current_player_seat,
-                    )
+                return
+
+            logger.info(
+                "[SKIP_CHECK] Escrow step - Checking seat=%s, normal=%s, escrow=%s",
+                current_player.seat,
+                current_player.normal_circle,
+                current_player.escrow_circle,
+            )
+
+            if self._should_skip_escrow_step(current_player):
+                logger.info(
+                    "[SKIP_CHECK] -> SKIP seat %s, advancing turn",
+                    gs.current_player_seat,
+                )
+                gs.players_acted_this_step.add(gs.current_player_seat)
+                self._advance_turn()
             else:
                 logger.info(
-                    "[SKIP_CHECK] Not escrow step - skipping auto-skip logic",
+                    "[SKIP_CHECK] -> CONTINUE seat %s should ACT",
+                    gs.current_player_seat,
                 )
+        else:
+            logger.info(
+                "[SKIP_CHECK] Not escrow step - skipping auto-skip logic",
+            )
 
 
 
-    def should_skip_escrow_step(self, player: PlayerState) -> bool:
-    """
-    Decide if the player should skip the ESCROW_STEP.
+    def _should_skip_escrow_step(self, player: PlayerState) -> bool:
+        """
+        Decide if the player should skip the ESCROW_STEP.
 
-    Skip if:
-      - player has no hand yet, or
-      - normal_circle == escrow_circle, or
-      - normal_circle < escrow_circle, or
-      - phase is RIVER_BETTING and escrow_locked is True
+        Skip if:
+          - player has no hand yet, or
+          - normal_circle == escrow_circle, or
+          - normal_circle < escrow_circle, or
+          - phase is RIVER_BETTING and escrow_locked is True
 
-    Note: escrow_locked only affects the river betting escrow step, not preflop.
-    """
-    gs = self.game_state
-    assert gs is not None
+        Note: escrow_locked only affects the river betting escrow step, not preflop.
+        """
+        gs = self.game_state
+        assert gs is not None
 
-    if not player.hand:
-        # No hand yet; treat as no escrow action available
-        return True
+        if not player.hand:
+            # No hand yet; treat as no escrow action available
+            return True
 
-    if player.normal_circle == player.escrow_circle:
+        if player.normal_circle == player.escrow_circle:
+            logger.info(
+                "should_skip_escrow_step: circles equal normal=%s escrow=%s -> SKIP",
+                player.normal_circle,
+                player.escrow_circle,
+            )
+            return True
+
+        if player.normal_circle < player.escrow_circle:
+            logger.info(
+                "should_skip_escrow_step: normal < escrow normal=%s escrow=%s -> SKIP",
+                player.normal_circle,
+                player.escrow_circle,
+            )
+            return True
+
+        if (
+            gs.phase == GamePhase.RIVER_BETTING
+            and player.hand.escrow_locked
+        ):
+            logger.info("should_skip_escrow_step: river and escrow_locked -> SKIP")
+            return True
+
         logger.info(
-            "should_skip_escrow_step: circles equal normal=%s escrow=%s -> SKIP",
+            "should_skip_escrow_step: no skip conditions met normal=%s escrow=%s -> ACT",
             player.normal_circle,
             player.escrow_circle,
         )
-        return True
-
-    if player.normal_circle < player.escrow_circle:
-        logger.info(
-            "should_skip_escrow_step: normal < escrow normal=%s escrow=%s -> SKIP",
-            player.normal_circle,
-            player.escrow_circle,
-        )
-        return True
-
-    if (
-        gs.phase == GamePhase.RIVER_BETTING
-        and player.hand.escrow_locked
-    ):
-        logger.info("should_skip_escrow_step: river and escrow_locked -> SKIP")
-        return True
-
-    logger.info(
-        "should_skip_escrow_step: no skip conditions met normal=%s escrow=%s -> ACT",
-        player.normal_circle,
-        player.escrow_circle,
-    )
-    return False
+        return False
 
 
 
@@ -740,14 +741,14 @@ class GameEngine:
             return []
 
         # PREFLOP or RIVER escrow step
-        if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and gs.current_action_step == 0:
-            if self.should_skip_escrow_step(player):
+        if gs.phase in [GamePhase.PREFLOP_BETTING, GamePhase.RIVER_BETTING] and gs.current_action_step == 0:
+            if self._should_skip_escrow_step(player):
                 # Will auto-skip, no action needed
                 return []
             return [ActionType.ADD_ESCROW]
 
         # PREFLOP or RIVER normal betting step
-        if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and gs.current_action_step == 1:
+        if gs.phase in [GamePhase.PREFLOP_BETTING, GamePhase.RIVER_BETTING] and gs.current_action_step == 1:
             actions = [ActionType.FOLD]
 
             # Compute to_call for this player
@@ -773,7 +774,7 @@ class GameEngine:
             return actions
 
         # DRAW phase
-        if gs.phase == GamePhase.DRAW:
+        if gs.phase == GamePhase.DRAW_PHASE:
             actions = [ActionType.HIT, ActionType.STAND]
 
             if player.hand.cards_drawn == 0:
@@ -798,23 +799,23 @@ class GameEngine:
 
         # Check if player must expose a card on first action in PREFLOP normal betting step
         if (
-    gs.phase == GamePhase.PREFLOP_BETTING
-    and gs.current_action_step == 1
-    and not player.hand.first_action_taken
-):
-    # First non-fold preflop action: require card exposure.
-    # If client did not send card_index, deterministically expose index 0.
-    if card_index is None:
-        logger.info(
-            "PREFLOP_BETTING: no card_index provided for first action; defaulting to 0"
-        )
-        card_index = 0
+            gs.phase == GamePhase.PREFLOP_BETTING
+            and gs.current_action_step == 1
+            and not player.hand.first_action_taken
+            ):
+            # First non-fold preflop action: require card exposure.
+            # If client did not send card_index, deterministically expose index 0.
+            if card_index is None:
+                logger.info(
+                    "PREFLOP_BETTING: no card_index provided for first action; defaulting to 0"
+                )
+                card_index = 0
 
-    if card_index not in (0, 1):
-        raise ValueError("card_index must be 0 or 1 for preflop exposure")
+            if card_index not in (0, 1):
+                raise ValueError("card_index must be 0 or 1 for preflop exposure")
 
-    self.expose_card(seat, card_index)
-    player.hand.first_action_taken = True
+            self.expose_card(seat, card_index)
+            player.hand.first_action_taken = True
 
 
         # ADD_ESCROW
@@ -897,7 +898,7 @@ class GameEngine:
 
         # HIT
         elif action == ActionType.HIT:
-            if gs.phase != GamePhase.DRAW:
+            if gs.phase != GamePhase.DRAW_PHASE:
                 raise ValueError("Can only hit during draw phase")
 
             new_card = gs.deck.draw()
@@ -909,7 +910,7 @@ class GameEngine:
 
         # STAND
         elif action == ActionType.STAND:
-            if gs.phase != GamePhase.DRAW:
+            if gs.phase != GamePhase.DRAW_PHASE:
                 raise ValueError("Can only stand during draw phase")
 
             player.hand.action_this_phase = "stand"
@@ -917,7 +918,7 @@ class GameEngine:
 
         # DOUBLE
         elif action == ActionType.DOUBLE:
-            if gs.phase != GamePhase.DRAW:
+            if gs.phase != GamePhase.DRAW_PHASE:
                 raise ValueError("Can only double during draw phase")
             if player.hand.cards_drawn > 0:
                 raise ValueError("Cannot double after hitting")
@@ -936,7 +937,7 @@ class GameEngine:
 
         # SPLIT
         elif action == ActionType.SPLIT:
-            if gs.phase != GamePhase.DRAW:
+            if gs.phase != GamePhase.DRAW_PHASE:
                 raise ValueError("Can only split during draw phase")
             if len(player.hand.original_cards) != 2:
                 raise ValueError("Can only split original 2 cards")
@@ -953,7 +954,7 @@ class GameEngine:
         self._advance_turn()
 
     def expose_card(self, seat: int, card_index: int) -> None:
-    """
+        """
     Player exposes one of their two hole cards during PREFLOP_BETTING.
 
     If the client does not provide a card_index, the caller can pass 0
@@ -1007,7 +1008,7 @@ class GameEngine:
         logger.info(f"  active_players={active_players}, non_folded={non_folded}")
 
         # Check if betting round ends
-        if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and gs.current_action_step == 1:
+        if gs.phase in [GamePhase.PREFLOP_BETTING, GamePhase.RIVER_BETTING] and gs.current_action_step == 1:
             # Betting round ends when:
             # 1. Only one active player remains, or
             # 2. All active players have matched the highest normal AND action has cycled back after last raiser
@@ -1041,7 +1042,7 @@ class GameEngine:
 
         # Check if all players in step have acted (for escrow step or draw phase)
         if all(seat in gs.players_acted_this_step for seat in non_folded):
-            if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER]:
+            if gs.phase in [GamePhase.PREFLOP_BETTING, GamePhase.RIVER_BETTING]:
                 if gs.current_action_step == 0:
                     # Transition from escrow to normal
                     gs.current_action_step = 1
@@ -1057,7 +1058,7 @@ class GameEngine:
                 else:
                     # Both steps done, move to next phase
                     self._advance_phase()
-            elif gs.phase == GamePhase.DRAW:
+            elif gs.phase == GamePhase.DRAW_PHASE:
                 self._check_draw_complete()
         else:
             # Move to next player - only consider non_folded players
@@ -1089,9 +1090,9 @@ class GameEngine:
                     logger.info(f"[ADVANCE] Found non-acted player: seat {next_seat}, normal={next_player.normal_circle}, escrow={next_player.escrow_circle}")
 
                     # Check if should skip escrow step
-                    if (gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and
+                    if (gs.phase in [GamePhase.PREFLOP_BETTING, GamePhase.RIVER_BETTING] and
                         gs.current_action_step == 0 and
-                        self.should_skip_escrow_step(next_player)):
+                        self._should_skip_escrow_step(next_player)):
                         logger.info(f"[ADVANCE] AUTO-SKIPPING seat {next_seat}")
                         gs.players_acted_this_step.add(next_seat)  # seat number
                         gs.current_player_seat = next_seat  # seat number
@@ -1104,7 +1105,7 @@ class GameEngine:
 
             # All non_folded players have acted
             logger.info(f"[ADVANCE] All players have acted in this step")
-            if gs.phase == GamePhase.DRAW:
+            if gs.phase == GamePhase.DRAW_PHASE:
                 self._check_draw_complete()
 
     def _handle_sole_remaining_player(self) -> None:
@@ -1129,86 +1130,86 @@ class GameEngine:
             gs.current_player_seat = None
 
     def _advance_phase(self) -> None:
-    """
-    Move to next phase based on current phase and hand state.
+        """
+        Move to next phase based on current phase and hand state.
 
-    PREFLOP_BETTING:
-      - If only one active, non-folded player remains -> HAND_END
-      - Else -> DRAW_PHASE
+        PREFLOP_BETTING:
+          - If only one active, non-folded player remains -> HAND_END
+          - Else -> DRAW_PHASE
 
-    DRAW_PHASE:
-      - When draw logic determines completion -> RIVER_BETTING
+        DRAW_PHASE:
+          - When draw logic determines completion -> RIVER_BETTING
 
-    RIVER_BETTING:
-      - When betting round completes:
-        - If only one active, non-folded player -> HAND_END
-        - Else -> SHOWDOWN
+        RIVER_BETTING:
+          - When betting round completes:
+            - If only one active, non-folded player -> HAND_END
+            - Else -> SHOWDOWN
 
-    SHOWDOWN:
-      - Resolve pots, then -> HAND_END
-    """
-    gs = self.game_state
-    assert gs is not None
+        SHOWDOWN:
+          - Resolve pots, then -> HAND_END
+        """
+        gs = self.game_state
+        assert gs is not None
 
-    logger.info(f"[ADVANCE_PHASE] entry phase={gs.phase.value}")
+        logger.info(f"[ADVANCE_PHASE] entry phase={gs.phase.value}")
 
-    # Helper: remaining active, non-folded players
-    non_folded = [
-        p for p in gs.players
-        if p.is_active and p.hand and not p.hand.folded
-    ]
+        # Helper: remaining active, non-folded players
+        non_folded = [
+            p for p in gs.players
+            if p.is_active and p.hand and not p.hand.folded
+        ]
 
-    if gs.phase == GamePhase.PREFLOP_BETTING:
-        if len(non_folded) <= 1:
-            logger.info("[ADVANCE_PHASE] PREFLOP_BETTING -> HAND_END (single remaining)")
+        if gs.phase == GamePhase.PREFLOP_BETTING:
+            if len(non_folded) <= 1:
+                logger.info("[ADVANCE_PHASE] PREFLOP_BETTING -> HAND_END (single remaining)")
+                gs.phase = GamePhase.HAND_END
+                gs.current_player_seat = None
+                gs.current_action_step = 0
+                gs.players_acted_this_step.clear()
+                return
+
+            logger.info("[ADVANCE_PHASE] PREFLOP_BETTING -> DRAW_PHASE")
+            gs.phase = GamePhase.DRAW_PHASE
+            gs.current_action_step = 0
+            gs.players_acted_this_step.clear()
+            gs.current_player_seat = None
+            # Your draw-phase logic will set current_player_seat as needed
+            return
+
+        if gs.phase == GamePhase.DRAW_PHASE:
+            logger.info("[ADVANCE_PHASE] DRAW_PHASE -> RIVER_BETTING")
+            gs.phase = GamePhase.RIVER_BETTING
+            gs.current_action_step = 0
+            gs.players_acted_this_step.clear()
+            gs.current_player_seat = None
+            # River betting will reset current_highest_normal and lastraiser, etc.
+            return
+
+        if gs.phase == GamePhase.RIVER_BETTING:
+            if len(non_folded) <= 1:
+                logger.info("[ADVANCE_PHASE] RIVER_BETTING -> HAND_END (single remaining)")
+                gs.phase = GamePhase.HAND_END
+                gs.current_player_seat = None
+                gs.current_action_step = 0
+                gs.players_acted_this_step.clear()
+                return
+
+            logger.info("[ADVANCE_PHASE] RIVER_BETTING -> SHOWDOWN")
+            gs.phase = GamePhase.SHOWDOWN
+            gs.current_player_seat = None
+            gs.current_action_step = 0
+            gs.players_acted_this_step.clear()
+            return
+
+        if gs.phase == GamePhase.SHOWDOWN:
+            logger.info("[ADVANCE_PHASE] SHOWDOWN -> HAND_END")
             gs.phase = GamePhase.HAND_END
             gs.current_player_seat = None
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
             return
 
-        logger.info("[ADVANCE_PHASE] PREFLOP_BETTING -> DRAW_PHASE")
-        gs.phase = GamePhase.DRAW_PHASE
-        gs.current_action_step = 0
-        gs.players_acted_this_step.clear()
-        gs.current_player_seat = None
-        # Your draw-phase logic will set current_player_seat as needed
-        return
-
-    if gs.phase == GamePhase.DRAW_PHASE:
-        logger.info("[ADVANCE_PHASE] DRAW_PHASE -> RIVER_BETTING")
-        gs.phase = GamePhase.RIVER_BETTING
-        gs.current_action_step = 0
-        gs.players_acted_this_step.clear()
-        gs.current_player_seat = None
-        # River betting will reset current_highest_normal and lastraiser, etc.
-        return
-
-    if gs.phase == GamePhase.RIVER_BETTING:
-        if len(non_folded) <= 1:
-            logger.info("[ADVANCE_PHASE] RIVER_BETTING -> HAND_END (single remaining)")
-            gs.phase = GamePhase.HAND_END
-            gs.current_player_seat = None
-            gs.current_action_step = 0
-            gs.players_acted_this_step.clear()
-            return
-
-        logger.info("[ADVANCE_PHASE] RIVER_BETTING -> SHOWDOWN")
-        gs.phase = GamePhase.SHOWDOWN
-        gs.current_player_seat = None
-        gs.current_action_step = 0
-        gs.players_acted_this_step.clear()
-        return
-
-    if gs.phase == GamePhase.SHOWDOWN:
-        logger.info("[ADVANCE_PHASE] SHOWDOWN -> HAND_END")
-        gs.phase = GamePhase.HAND_END
-        gs.current_player_seat = None
-        gs.current_action_step = 0
-        gs.players_acted_this_step.clear()
-        return
-
-    logger.info(f"[ADVANCE_PHASE] no transition defined for phase={gs.phase.value}")
+        logger.info(f"[ADVANCE_PHASE] no transition defined for phase={gs.phase.value}")
 
 
     def _check_draw_complete(self) -> None:
@@ -1220,7 +1221,6 @@ class GameEngine:
         if all(p.hand.action_this_phase for p in active if not p.hand.folded):
             self._advance_phase()
 
-        def progress_button_determination_draw(self) -> None:
         """Automatically progress through DRAW phase for button determination"""
         import time
 
@@ -1468,7 +1468,7 @@ class GameEngine:
         gs = self.game_state
 
         # Progress DRAW phase if active (automatic button determination)
-        if gs.phase == GamePhase.DRAW:
+        if gs.phase == GamePhase.DRAW_PHASE:
             self.progress_button_determination_draw()
 
         return {

@@ -821,12 +821,6 @@ class GameEngine:
                     gs.players_acted_this_step.clear()
                     gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
                     gs.last_raiser_seat = gs.button_seat  # Reset raiser tracking for normal betting step
-
-                    # Auto-skip normal betting step if no bets have been placed
-                    button_ante = gs.players[gs.button_seat].normal_circle
-                    if gs.current_highest_normal <= button_ante:
-                        # Only button's ante, no further bets - skip to next phase
-                        self._advance_phase()
                 else:
                     # Both steps done, move to next phase
                     self._advance_phase()

@@ -844,10 +844,14 @@ class GameEngine:
                         gs.button_seat = button_index
 
                     # Button antes 1 chip to normal pot
+                    print(f"DEBUG Button ante: button_player.seat={button_player.seat}, stack_before={button_player.stack}, BUTTON_ANTE={BUTTON_ANTE}")
                     if button_player.stack >= BUTTON_ANTE:
                         button_player.normal_circle = BUTTON_ANTE
                         button_player.stack -= BUTTON_ANTE
                         gs.normal_pot += BUTTON_ANTE
+                        print(f"DEBUG Button ante: stack_after={button_player.stack}, normal_pot={gs.normal_pot}")
+                    else:
+                        print(f"DEBUG Button ante: SKIPPED - stack {button_player.stack} < ante {BUTTON_ANTE}")
 
                     # Update is_button flag for all players
                     button_player.is_button = True

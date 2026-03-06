@@ -369,6 +369,135 @@
             color: #999;
             font-size: 0.9rem;
         }
+
+        /* Buy-in Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1f2937;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            border: 2px solid #22c55e;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal h2 {
+            margin-bottom: 20px;
+            color: #22c55e;
+            text-align: center;
+        }
+
+        .buy-in-group {
+            margin-bottom: 20px;
+        }
+
+        .buy-in-label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #bbb;
+        }
+
+        .buy-in-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #3b82f6;
+            border-radius: 6px;
+            background: rgba(59, 130, 246, 0.1);
+            color: #fff;
+            font-size: 1rem;
+            text-align: center;
+        }
+
+        .buy-in-input:focus {
+            outline: none;
+            border-color: #22c55e;
+            background: rgba(34, 197, 94, 0.1);
+        }
+
+        .buy-in-range {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        .quick-select {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .quick-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px;
+            background: rgba(59, 130, 246, 0.3);
+            color: #3b82f6;
+            border: 1px solid #3b82f6;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: rgba(59, 130, 246, 0.6);
+            color: #fff;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        .modal-btn-primary {
+            background: #22c55e;
+            color: #fff;
+        }
+
+        .modal-btn-primary:hover {
+            background: #16a34a;
+        }
+
+        .modal-btn-secondary {
+            background: #6b7280;
+            color: #fff;
+        }
+
+        .modal-btn-secondary:hover {
+            background: #4b5563;
+        }
     </style>
 </head>
 <body>
@@ -437,8 +566,33 @@
         </div>
     </div>
 
+    <!-- Buy-in Selection Modal -->
+    <div id="buyInModal" class="modal">
+        <div class="modal-content">
+            <h2>Buy In</h2>
+            <div class="buy-in-group">
+                <label class="buy-in-label">Select amount in antes:</label>
+                <input type="number" id="buyInAmount" class="buy-in-input" min="100" max="500" value="200" placeholder="200">
+                <div class="buy-in-range">Min: 100a | Max: 500a</div>
+            </div>
+
+            <div class="quick-select">
+                <button class="quick-btn" onclick="setBuyInAmount(100)">100a</button>
+                <button class="quick-btn" onclick="setBuyInAmount(200)">200a</button>
+                <button class="quick-btn" onclick="setBuyInAmount(300)">300a</button>
+                <button class="quick-btn" onclick="setBuyInAmount(500)">500a</button>
+            </div>
+
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-primary" onclick="confirmBuyIn()">Join</button>
+                <button class="modal-btn modal-btn-secondary" onclick="closeBuyInModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const TABLE_ID = {{ table_id }};
+        const ANTE_VALUE = {{ table.ante_value }};
         let currentUserId = null;
         let currentPlayerSeat = null;
         let tableState = null;
@@ -542,18 +696,19 @@
                     const cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
                     const cardsHtml = cards.map(c => renderCard(c)).join('');
 
+                    const stackInAntes = Math.floor((player.stack || 0) / ANTE_VALUE);
                     seat.innerHTML = `
                         <div class="seat-number">Seat ${i}</div>
                         <div class="player-name">${player.username}</div>
                         <div class="cards-display">${cardsHtml || '<span style="color: #999; font-size: 0.8rem;">No cards</span>'}</div>
-                        <div class="player-stack">Stack: ${player.stack || 0}</div>
+                        <div class="player-stack">Stack: ${stackInAntes}a</div>
                     `;
                 } else {
                     // Empty seat
                     seat.innerHTML = `
                         <div class="seat-number">Seat ${i}</div>
                         <div class="empty-seat">Empty</div>
-                        <button class="join-btn" onclick="joinSeat(${i})">Join</button>
+                        <button class="join-btn" onclick="showBuyInModal(${i})">Join</button>
                     `;
                 }
 
@@ -574,13 +729,47 @@
             document.getElementById('currentPhase').textContent = phase || 'Setup';
         }
 
-        async function joinSeat(seatNumber) {
+        let pendingSeatNumber = null;
+
+        function showBuyInModal(seatNumber) {
+            pendingSeatNumber = seatNumber;
+            document.getElementById('buyInAmount').value = '200';
+            document.getElementById('buyInModal').classList.add('active');
+        }
+
+        function closeBuyInModal() {
+            document.getElementById('buyInModal').classList.remove('active');
+            pendingSeatNumber = null;
+        }
+
+        function setBuyInAmount(amount) {
+            document.getElementById('buyInAmount').value = amount;
+        }
+
+        async function confirmBuyIn() {
+            if (pendingSeatNumber === null) return;
+
+            const buyInAntes = parseInt(document.getElementById('buyInAmount').value);
+
+            if (isNaN(buyInAntes) || buyInAntes < 100 || buyInAntes > 500) {
+                alert('Please enter a value between 100 and 500 antes');
+                return;
+            }
+
             try {
-                const response = await fetch(`/blackjack/api/join_seat/${TABLE_ID}/${seatNumber}`, {
-                    method: 'POST'
+                const response = await fetch(`/blackjack/api/join_seat/${TABLE_ID}/${pendingSeatNumber}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        buy_in_antes: buyInAntes
+                    })
                 });
+
                 const data = await response.json();
                 if (response.ok) {
+                    closeBuyInModal();
                     updateTableState();
                 } else {
                     alert('Error: ' + (data.error || 'Unable to join seat'));

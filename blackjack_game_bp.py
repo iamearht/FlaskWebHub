@@ -185,6 +185,14 @@ def join_seat(table_id, seat_number):
     if seat_number < 0 or seat_number >= table.max_seats:
         return jsonify({"error": "Invalid seat number"}), 400
 
+    # Get buy-in amount in antes from request
+    data = request.get_json() or {}
+    buy_in_antes = data.get("buy_in_antes", 200)
+
+    # Validate buy-in amount
+    if buy_in_antes < 100 or buy_in_antes > 500:
+        return jsonify({"error": "Buy-in must be between 100 and 500 antes"}), 400
+
     # Find the seat
     seat = BlackjackTableSeat.query.filter_by(
         table_id=table_id,
@@ -210,6 +218,11 @@ def join_seat(table_id, seat_number):
     # Seat the player
     seat.user_id = current_user.id
     seat.joined_at = datetime.utcnow()
+
+    # Store buy-in amount in antes (convert to chips for internal storage)
+    buy_in_chips = buy_in_antes * table.ante_value
+    seat.buy_in_antes = buy_in_antes
+
     db.session.commit()
 
     # Initialize ready status for this table if needed
@@ -226,6 +239,8 @@ def join_seat(table_id, seat_number):
         "seat_number": seat_number,
         "user_id": current_user.id,
         "username": current_user.username,
+        "buy_in_antes": buy_in_antes,
+        "buy_in_chips": buy_in_chips,
         "seat_count": table.seat_count
     })
 
@@ -286,12 +301,25 @@ def player_ready(table_id):
         try:
             engine = TABLES[table_id]
             if engine.game_state is None or engine.game_state.phase == GamePhase.HAND_OVER:
-                # Create player list from database seating
+                # Get table info for ante value
+                table = BlackjackTable.query.filter_by(id=table_id).first()
+
+                # Create player list from database seating with buy-in amounts
                 player_list = [
                     (s.user_id, s.user.username)
                     for s in seated_seats
                 ]
-                engine.create_table(player_list, initial_stack=1000)
+
+                # Use first player's buy-in as initial stack (or default to 1000 if not set)
+                initial_stack = seated_seats[0].buy_in_antes * table.ante_value if seated_seats and seated_seats[0].buy_in_antes else 1000
+                engine.create_table(player_list, initial_stack=initial_stack)
+
+                # Set individual stacks based on buy-in amounts
+                if engine.game_state and engine.game_state.players:
+                    for i, player in enumerate(engine.game_state.players):
+                        if i < len(seated_seats):
+                            buy_in_chips = seated_seats[i].buy_in_antes * table.ante_value
+                            player.stack = buy_in_chips
 
                 # Randomly select button using RNG
                 import random
@@ -365,6 +393,9 @@ def start_hand(table_id):
     if len(seated_seats) < 2:
         return jsonify({"error": "Need at least 2 players to start"}), 400
 
+    # Get table info for ante value
+    table = BlackjackTable.query.filter_by(id=table_id).first()
+
     # Create player list from database seating
     player_list = [
         (seat.user_id, seat.user.username)
@@ -374,8 +405,19 @@ def start_hand(table_id):
     engine = TABLES[table_id]
 
     try:
+        # Use first player's buy-in as initial stack (or default to 1000)
+        initial_stack = seated_seats[0].buy_in_antes * table.ante_value if seated_seats[0].buy_in_antes else 1000
+
         # Initialize game with seated players
-        engine.create_table(player_list, initial_stack=1000)
+        engine.create_table(player_list, initial_stack=initial_stack)
+
+        # Set individual stacks based on buy-in amounts
+        if engine.game_state and engine.game_state.players:
+            for i, player in enumerate(engine.game_state.players):
+                if i < len(seated_seats):
+                    buy_in_chips = seated_seats[i].buy_in_antes * table.ante_value
+                    player.stack = buy_in_chips
+
         # Start the hand
         engine.setup_hand()
         return jsonify({"message": "Hand started", "state": engine.get_state()})

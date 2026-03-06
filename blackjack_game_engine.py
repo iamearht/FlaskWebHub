@@ -858,33 +858,42 @@ class GameEngine:
             elif gs.phase == GamePhase.DRAW:
                 self._check_draw_complete()
         else:
-            # Move to next player
-            try:
-                current_idx = active_players.index(gs.current_player_seat or 0)
-                for i in range(1, len(active_players)):
-                    next_idx = (current_idx + i) % len(active_players)
-                    next_seat = active_players[next_idx]
+            # Move to next player - only consider non_folded players
+            # Find starting position in non_folded list
+            if gs.current_player_seat is None:
+                # First action in step - start from beginning
+                start_idx = 0
+            else:
+                # Find current player's position in non_folded
+                try:
+                    start_idx = non_folded.index(gs.current_player_seat)
+                except ValueError:
+                    start_idx = 0
 
-                    if next_seat not in gs.players_acted_this_step:
-                        # Check if should skip escrow step
-                        next_player = gs.players[next_seat]
-                        if (gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and
-                            gs.current_action_step == 0 and
-                            self.should_skip_escrow_step(next_player)):
-                            # Auto-skip this player
-                            gs.players_acted_this_step.add(next_seat)
-                            # Recursively advance
-                            self._advance_turn()
-                            return
+            # Search for next player to act
+            for i in range(len(non_folded)):
+                idx = (start_idx + i) % len(non_folded)
+                next_seat = non_folded[idx]
 
+                if next_seat not in gs.players_acted_this_step:
+                    # Check if should skip escrow step
+                    next_player = gs.players[seat_to_index[next_seat]]
+                    if (gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and
+                        gs.current_action_step == 0 and
+                        self.should_skip_escrow_step(next_player)):
+                        # Auto-skip this player
+                        gs.players_acted_this_step.add(next_seat)
                         gs.current_player_seat = next_seat
+                        # Recursively find next non-skipped player
+                        self._advance_turn()
                         return
 
-                # All players acted
-                if gs.phase == GamePhase.DRAW:
-                    self._check_draw_complete()
-            except (ValueError, IndexError):
-                gs.current_player_seat = None
+                    gs.current_player_seat = next_seat
+                    return
+
+            # All non_folded players have acted
+            if gs.phase == GamePhase.DRAW:
+                self._check_draw_complete()
 
     def _handle_sole_remaining_player(self) -> None:
         """Handle case where only one player remains after others fold"""

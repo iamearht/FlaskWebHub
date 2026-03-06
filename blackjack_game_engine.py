@@ -396,6 +396,22 @@ class GameEngine:
         first_to_act = (gs.button_seat + 1) % len(gs.players)
         gs.current_player_seat = first_to_act
 
+        # Handle initial auto-skips (e.g., if first-to-act player should skip escrow)
+        self._handle_initial_skips()
+
+    def _handle_initial_skips(self) -> None:
+        """Auto-skip players who don't need to act in current step"""
+        gs = self.game_state
+        assert gs is not None
+
+        # In escrow step, check if current player should skip
+        if gs.current_action_step == 0 and gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER]:
+            current_player = gs.players[gs.current_player_seat]
+            if self.should_skip_escrow_step(current_player):
+                # Mark them as acted and advance
+                gs.players_acted_this_step.add(gs.current_player_seat)
+                self._advance_turn()
+
     def should_skip_escrow_step(self, player: PlayerState) -> bool:
         """Check if player should skip escrow step"""
         if not player.hand:
@@ -749,6 +765,42 @@ class GameEngine:
                 best_seat = seat
 
         return best_seat
+
+    def get_state(self) -> Dict:
+        """Export game state as JSON-serializable dict (for backward compatibility)"""
+        if not self.game_state:
+            return {}
+
+        gs = self.game_state
+
+        return {
+            "hand_number": gs.hand_number,
+            "phase": gs.phase.value,
+            "button_seat": gs.button_seat,
+            "current_player_seat": gs.current_player_seat,
+            "current_action_step": gs.current_action_step,
+            "normal_pot": gs.normal_pot,
+            "escrow_pot": gs.escrow_pot,
+            "current_highest_normal": gs.current_highest_normal,
+            "players": [
+                {
+                    "seat": p.seat,
+                    "player_id": p.player_id,
+                    "username": p.username,
+                    "stack": p.stack,
+                    "normal_circle": p.normal_circle,
+                    "escrow_circle": p.escrow_circle,
+                    "is_active": p.is_active,
+                    "is_button": p.is_button,
+                    "is_folded": p.hand.folded if p.hand else False,
+                    "escrow_locked": p.hand.escrow_locked if p.hand else False,
+                    "cards": [str(c) for c in (p.hand.original_cards if p.hand else [])],
+                    "exposed_card": str(p.hand.exposed_card) if p.hand and p.hand.exposed_card else None,
+                }
+                for p in gs.players
+            ],
+            "action_history": gs.action_history,
+        }
 
     def get_state_for_player(self, player_id: str) -> Dict:
         """Get game state with hidden information protected"""

@@ -811,6 +811,16 @@ class GameEngine:
 
         if gs.phase == GamePhase.PREFLOP:
             gs.phase = GamePhase.DRAW
+            # Initialize DRAW phase button determination progression
+            gs.draw_phase_step = 0
+            gs.draw_phase_timestamp = None
+            # Initialize draw_cards for each player
+            for player in gs.players:
+                player.hand.draw_cards = []
+            # Deal 1 face-up card to each player for button determination
+            for player in gs.players:
+                card = gs.deck.draw()
+                player.hand.draw_cards.append(card)
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
             gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
@@ -1039,6 +1049,10 @@ class GameEngine:
             return {}
 
         gs = self.game_state
+
+        # Progress DRAW phase if active (automatic button determination)
+        if gs.phase == GamePhase.DRAW:
+            self.progress_button_determination_draw()
 
         return {
             "hand_number": gs.hand_number,

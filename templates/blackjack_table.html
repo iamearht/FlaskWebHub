@@ -844,11 +844,11 @@
         }
 
         function getCurrentUserSeat() {
-            // Find current user's seat from seated_players
+            // Find current user's seat from seated_players using user_id
+            if (!gameState || !gameState.current_user_id) return null;
             const seatedPlayers = gameState.seated_players || [];
-            const myUsername = document.querySelector('header .table-info')?.textContent || '';
-            // This is a simplified approach - in real app would pass user_id from server
-            return null; // Will be improved
+            const myPlayer = seatedPlayers.find(p => p.user_id === gameState.current_user_id);
+            return myPlayer ? myPlayer.seat : null;
         }
 
         function showEscrowInput() {

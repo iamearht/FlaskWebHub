@@ -148,6 +148,7 @@ def get_table_state(table_id):
             "phase": game_state.get("phase", "setup"),
             "current_player_seat": game_state.get("current_player_seat"),
             "button_seat": game_state.get("button_seat"),
+            "current_user_id": current_user.id,  # Pass current user's ID so frontend knows whose turn it is
             "seated_players": seated_players,
             "game_state": game_state,
             "normal_pot": game_state.get("normal_pot", 0),

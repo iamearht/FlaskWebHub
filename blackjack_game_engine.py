@@ -376,15 +376,9 @@ class GameEngine:
                 player.stack -= ESCROW_ANTE
                 gs.escrow_pot += ESCROW_ANTE
 
-            # Button antes 1 normal (for initial ante)
-            if player.seat == gs.button_seat:
-                player.is_button = True
-                if player.stack >= BUTTON_ANTE:
-                    player.normal_circle = BUTTON_ANTE
-                    player.stack -= BUTTON_ANTE
-                    gs.normal_pot += BUTTON_ANTE
-            else:
-                player.is_button = False
+            # Don't ante for button here - button is determined later via card draw
+            player.is_button = False
+            player.normal_circle = 0
 
         # Set phase to DRAW for button determination via card draw
         gs.phase = GamePhase.DRAW
@@ -833,7 +827,16 @@ class GameEngine:
             # Single winner - they become the button
             if tied_players:
                 gs.button_seat = tied_players[0]
-                gs.players[gs.button_seat].is_button = True
+                button_player = gs.players[gs.button_seat]
+
+                # Button antes 1 chip to normal pot
+                if button_player.stack >= BUTTON_ANTE:
+                    button_player.normal_circle = BUTTON_ANTE
+                    button_player.stack -= BUTTON_ANTE
+                    gs.normal_pot += BUTTON_ANTE
+
+                # Update is_button flag for all players
+                button_player.is_button = True
                 for i, p in enumerate(gs.players):
                     if i != gs.button_seat:
                         p.is_button = False

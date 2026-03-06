@@ -746,6 +746,8 @@
                     const buttonIndicator = player.is_button ? '<span style="color: #fbbf24; font-weight: bold;">♠ BUTTON</span>' : '';
                     const normalCircle = player.normal_circle || 0;
                     const escrowCircle = player.escrow_circle || 0;
+                    const normalCircleAntes = Math.floor(normalCircle / ANTE_VALUE);
+                    const escrowCircleAntes = Math.floor(escrowCircle / ANTE_VALUE);
 
                     let cardsHtml = '';
 
@@ -758,15 +760,25 @@
                         // Determine if we're viewing current player or opponent
                         const isCurrentPlayer = currentPlayerSeat === i;
 
-                        if (isCurrentPlayer && player.hole_cards && player.hole_cards.length > 0) {
-                            // Current player: show actual hole cards
-                            const cards = player.hole_cards.map(cardStr => parseCard(cardStr)).filter(c => c);
-                            cardsHtml = cards.map(c => renderCard(c)).join('');
-                        } else if (!isCurrentPlayer && player.hole_cards === null) {
+                        if (isCurrentPlayer) {
+                            // Current player: try new format first, fallback to old format
+                            let cards = [];
+                            if (player.hole_cards && Array.isArray(player.hole_cards) && player.hole_cards.length > 0) {
+                                // New format: hole_cards as array of card strings
+                                cards = player.hole_cards.map(cardStr => parseCard(cardStr)).filter(c => c);
+                            } else if (player.card1 || player.card2) {
+                                // Old format: card1 and card2 fields
+                                cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
+                            }
+
+                            if (cards.length > 0) {
+                                cardsHtml = cards.map(c => renderCard(c)).join('');
+                            } else {
+                                cardsHtml = '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
+                            }
+                        } else {
                             // Opponent: show 2 blue rectangle placeholders
                             cardsHtml = renderHiddenCard() + renderHiddenCard();
-                        } else {
-                            cardsHtml = '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
                         }
 
                         // Add exposed card if it exists (visible to everyone)
@@ -783,8 +795,8 @@
                         <div class="player-name">${player.username}${buttonIndicator ? ' ' + buttonIndicator : ''}</div>
                         <div class="cards-display">${cardsHtml}</div>
                         <div class="ante-display" style="font-size: 0.75rem; margin-top: 4px;">
-                            <span style="color: #10b981;">●N:${normalCircle}</span>
-                            <span style="color: #ef4444; margin-left: 4px;">●E:${escrowCircle}</span>
+                            <span style="color: #10b981;">●N:${normalCircleAntes}a</span>
+                            <span style="color: #ef4444; margin-left: 4px;">●E:${escrowCircleAntes}a</span>
                         </div>
                         <div class="player-stack">Stack: ${stackInAntes}a</div>
                     `;

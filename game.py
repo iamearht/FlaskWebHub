@@ -655,10 +655,6 @@ def close_blackjack_table(table_id):
     if not table:
         return jsonify({"error": "Table not found"}), 404
 
-    # Check if user is the table admin
-    if table.admin_id != user.id:
-        return jsonify({"error": "You can only close tables you created"}), 403
-
     try:
         table.is_open = False
         db.session.commit()

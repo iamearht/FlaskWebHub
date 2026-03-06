@@ -558,21 +558,30 @@
                     throw new Error(data.error);
                 }
 
+                console.log('[API] Full response received:', data);
+                console.log('[API] current_user_id:', data.current_user_id);
+                console.log('[API] seated_players:', data.seated_players);
+                console.log('[API] phase:', data.phase);
+                console.log('[API] game_state.current_player_seat:', data.game_state?.current_player_seat);
+                console.log('[API] game_state.button_seat:', data.game_state?.button_seat);
+
                 gameState = data;
 
                 try {
+                    console.log('[RENDER] Calling renderTable()');
                     renderTable();
                 } catch (renderError) {
-                    console.error('Error in renderTable:', renderError);
+                    console.error('[ERROR] Error in renderTable:', renderError, renderError.stack);
                 }
 
                 try {
+                    console.log('[RENDER] Calling updateUI()');
                     updateUI();
                 } catch (uiError) {
-                    console.error('Error in updateUI:', uiError);
+                    console.error('[ERROR] Error in updateUI:', uiError, uiError.stack);
                 }
             } catch (error) {
-                console.error('Error updating state:', error);
+                console.error('[ERROR] Error updating state:', error, error.stack);
                 document.getElementById('status').innerHTML = `❌ Error: ${error.message}`;
             }
         }
@@ -681,13 +690,29 @@
         }
 
         function updateUI() {
-            if (!gameState) return;
+            if (!gameState) {
+                console.log('[UI] gameState is null, returning');
+                return;
+            }
 
-            const gameState_data = gameState.game_state || {};
-            const phase = gameState.phase || 'setup';
-            const currentPlayerSeat = gameState_data.current_player_seat;
-            const currentStep = gameState_data.current_action_step || 0;
-            const isMyTurn = currentPlayerSeat === getCurrentUserSeat();
+            try {
+                const gameState_data = gameState.game_state || {};
+                const phase = gameState.phase || 'setup';
+                const currentPlayerSeat = gameState_data.current_player_seat;
+                const currentStep = gameState_data.current_action_step || 0;
+
+                console.log('[UI] === START updateUI ===');
+                console.log('[UI] gameState keys:', Object.keys(gameState));
+                console.log('[UI] gameState_data keys:', Object.keys(gameState_data));
+                console.log('[UI] phase=' + phase + ', currentPlayerSeat=' + currentPlayerSeat + ', currentStep=' + currentStep);
+
+                const myUserSeat = getCurrentUserSeat();
+                const isMyTurn = currentPlayerSeat === myUserSeat;
+
+                console.log('[TURN] currentPlayerSeat=' + currentPlayerSeat + ', myUserSeat=' + myUserSeat);
+                console.log('[TURN] isMyTurn=' + isMyTurn + ' (types: ' + typeof currentPlayerSeat + ' vs ' + typeof myUserSeat + ')');
+                console.log('[TURN] phase=' + phase + ', isMyTurn=' + isMyTurn);
+                console.log('[TURN] Will show actionPanel? ' + (isMyTurn && phase !== 'setup'));
 
             // Update phase
             document.getElementById('phaseValue').textContent = phase.charAt(0).toUpperCase() + phase.slice(1);
@@ -727,12 +752,34 @@
 
             // Update action panel visibility and content
             const actionPanel = document.getElementById('actionPanel');
+            console.log('[DOM] actionPanel element exists:', !!actionPanel);
+            console.log('[DOM] actionPanel element:', actionPanel);
+
+            if (!actionPanel) {
+                console.error('[ERROR] actionPanel not found in DOM!');
+            }
+
+            console.log('[PANEL] isMyTurn=' + isMyTurn + ', phase !== setup: ' + (phase !== 'setup'));
+            console.log('[PANEL] Will set actionPanel.display to: ' + (isMyTurn && phase !== 'setup' ? 'block' : 'none'));
+
             if (isMyTurn && phase !== 'setup') {
+                console.log('[PANEL] === SHOWING ACTION PANEL ===');
                 actionPanel.style.display = 'block';
+                console.log('[PANEL] actionPanel.style.display is now: ' + actionPanel.style.display);
                 updateActionPanel(gameState_data, phase, currentStep);
             } else {
+                console.log('[PANEL] === HIDING ACTION PANEL ===');
                 actionPanel.style.display = 'none';
+                console.log('[PANEL] actionPanel.style.display is now: ' + actionPanel.style.display);
             }
+
+            // Log DOM state after
+            const escrowActions = document.getElementById('escrowActions');
+            const normalBetActions = document.getElementById('normalBetActions');
+            const drawActions = document.getElementById('drawActions');
+            console.log('[DOM] escrowActions.display=' + (escrowActions?.style.display || 'N/A'));
+            console.log('[DOM] normalBetActions.display=' + (normalBetActions?.style.display || 'N/A'));
+            console.log('[DOM] drawActions.display=' + (drawActions?.style.display || 'N/A'));
 
             // Update ready status display
             const readyStatus = document.getElementById('readyStatus');
@@ -773,31 +820,51 @@
                 // Ready or waiting
                 document.getElementById('status').innerHTML = `${seatedCount} players seated - Click Ready to start`;
             }
+
+            console.log('[UI] === END updateUI (success) ===');
+
+            } catch (uiError) {
+                console.error('[ERROR] Exception in updateUI:', uiError, uiError.stack);
+            }
         }
 
         function updateActionPanel(gameState_data, phase, currentStep) {
+            console.log('[ACTIONS] === ENTRY updateActionPanel, phase=' + phase + ', step=' + currentStep);
+
             const stepDisplay = document.getElementById('stepDisplay');
             const escrowActions = document.getElementById('escrowActions');
             const normalBetActions = document.getElementById('normalBetActions');
             const drawActions = document.getElementById('drawActions');
 
+            console.log('[ACTIONS] Elements exist: stepDisplay=' + !!stepDisplay + ', escrowActions=' + !!escrowActions + ', normalBetActions=' + !!normalBetActions + ', drawActions=' + !!drawActions);
+
+            if (!stepDisplay || !escrowActions || !normalBetActions || !drawActions) {
+                console.error('[ERROR] Missing action panel elements!');
+                return;
+            }
+
             // Hide all action types first
+            console.log('[ACTIONS] Hiding all action types');
             escrowActions.style.display = 'none';
             normalBetActions.style.display = 'none';
             drawActions.style.display = 'none';
 
             if (phase === 'preflop' || phase === 'river') {
+                console.log('[ACTIONS] Phase is preflop/river');
                 if (currentStep === 0) {
                     // Escrow step
+                    console.log('[ACTIONS] Step 0: showing ESCROW_ACTIONS');
                     stepDisplay.innerHTML = '<span class="step-indicator">Escrow Step</span>';
                     escrowActions.style.display = 'block';
                 } else {
                     // Normal betting step
+                    console.log('[ACTIONS] Step ' + currentStep + ': showing NORMAL_BET_ACTIONS');
                     stepDisplay.innerHTML = '<span class="step-indicator">Betting Round</span>';
                     normalBetActions.style.display = 'block';
                     updateBettingActions(gameState_data);
                 }
             } else if (phase === 'draw') {
+                console.log('[ACTIONS] Phase is draw: showing DRAW_ACTIONS');
                 stepDisplay.innerHTML = '<span class="step-indicator">Draw Phase</span>';
                 drawActions.style.display = 'block';
                 updateDrawActions(gameState_data);
@@ -805,12 +872,29 @@
         }
 
         function updateBettingActions(gameState_data) {
+            console.log('[BUTTONS] === updateBettingActions ENTRY');
+
             const buttonsDiv = document.getElementById('betActionButtons');
             const limitsDiv = document.getElementById('betLimits');
-            const currentHighest = gameState_data.current_highest_normal || 0;
-            const potLimit = gameState_data.current_highest_normal + (gameState_data.normal_pot + gameState_data.escrow_pot);
 
-            buttonsDiv.innerHTML = `
+            console.log('[BUTTONS] buttonsDiv exists:', !!buttonsDiv);
+            console.log('[BUTTONS] limitsDiv exists:', !!limitsDiv);
+
+            if (!buttonsDiv || !limitsDiv) {
+                console.error('[ERROR] betActionButtons or betLimits div not found!');
+                return;
+            }
+
+            const currentHighest = gameState_data.current_highest_normal || 0;
+            const normalPot = gameState_data.normal_pot || 0;
+            const escrowPot = gameState_data.escrow_pot || 0;
+            const potLimit = currentHighest + (normalPot + escrowPot);
+
+            console.log('[BUTTONS] currentHighest=' + currentHighest);
+            console.log('[BUTTONS] normalPot=' + normalPot + ', escrowPot=' + escrowPot);
+            console.log('[BUTTONS] potLimit=' + potLimit);
+
+            const html = `
                 <div class="action-buttons-grid">
                     <button class="action-btn action-btn-small" onclick="playerAction('check')">Check</button>
                     <button class="action-btn action-btn-small" onclick="playerAction('fold')">Fold</button>
@@ -819,18 +903,54 @@
                 </div>
             `;
 
-            limitsDiv.innerHTML = `Pot Limit: ${potLimit} | Highest Bet: ${currentHighest}`;
+            console.log('[BUTTONS] Generated HTML:', html);
+            console.log('[BUTTONS] Setting buttonsDiv.innerHTML');
+
+            try {
+                buttonsDiv.innerHTML = html;
+                console.log('[BUTTONS] Successfully set buttonsDiv.innerHTML');
+            } catch (e) {
+                console.error('[ERROR] Failed to set buttonsDiv.innerHTML:', e);
+            }
+
+            try {
+                limitsDiv.innerHTML = `Pot Limit: ${potLimit} | Highest Bet: ${currentHighest}`;
+                console.log('[BUTTONS] Successfully set limitsDiv.innerHTML');
+            } catch (e) {
+                console.error('[ERROR] Failed to set limitsDiv.innerHTML:', e);
+            }
         }
 
         function updateDrawActions(gameState_data) {
-            const currentPlayerSeat = gameState_data.current_player_seat;
-            const player = gameState_data.players.find(p => p.seat === currentPlayerSeat);
+            console.log('[DRAW] === updateDrawActions ENTRY');
 
-            if (!player) return;
+            const currentPlayerSeat = gameState_data.current_player_seat;
+            console.log('[DRAW] currentPlayerSeat=' + currentPlayerSeat);
+
+            const players = gameState_data.players || [];
+            console.log('[DRAW] players count=' + players.length);
+            console.log('[DRAW] players:', players);
+
+            const player = players.find(p => p.seat === currentPlayerSeat);
+            console.log('[DRAW] Found player:', player);
+
+            if (!player) {
+                console.error('[ERROR] Could not find player for seat ' + currentPlayerSeat);
+                return;
+            }
+
+            console.log('[DRAW] player.cards_drawn=' + player.cards_drawn);
+            console.log('[DRAW] player.cards=' + JSON.stringify(player.cards));
 
             // Show double if cards_drawn === 0
             const doubleBtn = document.getElementById('doubleBtn');
-            doubleBtn.style.display = player.cards_drawn === 0 ? 'block' : 'none';
+            if (!doubleBtn) {
+                console.error('[ERROR] doubleBtn not found in DOM');
+            } else {
+                const showDouble = player.cards_drawn === 0;
+                console.log('[DRAW] Setting doubleBtn.display=' + (showDouble ? 'block' : 'none'));
+                doubleBtn.style.display = showDouble ? 'block' : 'none';
+            }
 
             // Show split if cards_drawn === 0 and same rank
             const splitBtn = document.getElementById('splitBtn');
@@ -844,11 +964,31 @@
         }
 
         function getCurrentUserSeat() {
-            // Find current user's seat from seated_players using user_id
-            if (!gameState || !gameState.current_user_id) return null;
+            console.log('[USER_SEAT] === ENTRY ===');
+            if (!gameState) {
+                console.log('[USER_SEAT] ERROR: gameState is null');
+                return null;
+            }
+            if (!gameState.current_user_id) {
+                console.log('[USER_SEAT] ERROR: current_user_id not set in gameState');
+                console.log('[USER_SEAT] gameState keys:', Object.keys(gameState));
+                return null;
+            }
+
             const seatedPlayers = gameState.seated_players || [];
-            const myPlayer = seatedPlayers.find(p => p.user_id === gameState.current_user_id);
-            return myPlayer ? myPlayer.seat : null;
+            console.log('[USER_SEAT] current_user_id=' + gameState.current_user_id);
+            console.log('[USER_SEAT] seated_players count=' + seatedPlayers.length);
+            console.log('[USER_SEAT] seated_players:', seatedPlayers);
+
+            const myPlayer = seatedPlayers.find(p => {
+                console.log('[USER_SEAT] Checking player id=' + p.user_id + ', seat=' + p.seat + ', match=' + (p.user_id === gameState.current_user_id));
+                return p.user_id === gameState.current_user_id;
+            });
+
+            const result = myPlayer ? myPlayer.seat : null;
+            console.log('[USER_SEAT] Found my seat: ' + result);
+            console.log('[USER_SEAT] My player object:', myPlayer);
+            return result;
         }
 
         function showEscrowInput() {
@@ -933,38 +1073,56 @@
         }
 
         async function playerAction(actionName, amount = 0) {
+            console.log('[ACTION] === playerAction ENTRY, action=' + actionName + ', amount=' + amount);
+
             try {
                 const gameState_data = gameState.game_state || {};
                 const currentPlayerSeat = gameState_data.current_player_seat;
 
+                console.log('[ACTION] currentPlayerSeat=' + currentPlayerSeat);
+
                 if (currentPlayerSeat === null || currentPlayerSeat === undefined) {
+                    console.error('[ERROR] currentPlayerSeat is null/undefined, cannot take action');
                     throw new Error('Not your turn');
                 }
+
+                const payload = {
+                    seat: currentPlayerSeat,
+                    action: actionName,
+                    amount: amount
+                };
+
+                console.log('[ACTION] Sending payload:', payload);
+                console.log('[ACTION] Fetching /blackjack/api/table/' + TABLE_ID + '/action');
 
                 const response = await fetch(`/blackjack/api/table/${TABLE_ID}/action`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        seat: currentPlayerSeat,
-                        action: actionName,
-                        amount: amount
-                    })
+                    body: JSON.stringify(payload)
                 });
+
+                console.log('[ACTION] Response status: ' + response.status);
 
                 if (!response.ok) {
                     const data = await response.json();
+                    console.error('[ERROR] Server returned error:', data);
                     throw new Error(data.error || 'Failed to take action');
                 }
+
+                const responseData = await response.json();
+                console.log('[ACTION] Server response:', responseData);
 
                 // Clear input fields
                 document.getElementById('escrowInputGroup').style.display = 'none';
                 document.getElementById('escrowAmount').value = '';
 
+                console.log('[ACTION] Calling updateGameState()');
                 // Update game state
                 updateGameState();
             } catch (error) {
+                console.error('[ERROR] playerAction error:', error, error.stack);
                 alert(`Error: ${error.message}`);
             }
         }
@@ -973,6 +1131,23 @@
         window.addEventListener('beforeunload', () => {
             if (updateInterval) clearInterval(updateInterval);
         });
+
+        // Global error handling
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error('[ERROR] Uncaught error:', msg);
+            console.error('[ERROR] URL:', url);
+            console.error('[ERROR] Line:', lineNo);
+            console.error('[ERROR] Column:', columnNo);
+            console.error('[ERROR] Stack:', error?.stack);
+            return false;
+        };
+
+        window.addEventListener('error', function(event) {
+            console.error('[ERROR] Global error event:', event.error);
+            console.error('[ERROR] Stack:', event.error?.stack);
+        });
+
+        console.log('[INIT] Script loaded, ready to play!');
     </script>
 </body>
 </html>

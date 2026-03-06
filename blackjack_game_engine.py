@@ -17,12 +17,24 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class GamePhase(Enum):
+    """
+    High-level hand phases for free blackjack mode.
+
+    SETUP           – Prepare a new hand (rotate button, reset state, post antes, deal 2 cards).
+    PREFLOP_BETTING – Dual-pool betting round using normal/escrow circles before draw.
+    DRAW_PHASE      – Blackjack draw logic (hit/stand/double/split).
+    RIVER_BETTING   – Second dual-pool betting round after draw.
+    SHOWDOWN        – Reveal cards, evaluate hands, resolve pots.
+    HAND_END        – Cleanup and transition to next hand.
+    """
+
     SETUP = "setup"
-    PREFLOP = "preflop"
-    DRAW = "draw"
-    RIVER = "river"
+    PREFLOP_BETTING = "preflop_betting"
+    DRAW_PHASE = "draw_phase"
+    RIVER_BETTING = "river_betting"
     SHOWDOWN = "showdown"
     HAND_END = "hand_end"
+
 
 class ActionType(Enum):
     ADD_ESCROW = "add_escrow"
@@ -369,81 +381,163 @@ class GameEngine:
         self.game_state = game_state
         return game_state
 
-    def setup_hand(self) -> None:
-        """Initialize new hand: post antes, determine button, deal 2 face-down cards, transition to PREFLOP"""
-        gs = self.game_state
-        assert gs is not None
+def setup_hand(self) -> None:
+    """
+    Initialize a new hand:
+    - rotate or determine button
+    - reset per-hand player state
+    - post antes (escrow for everyone, normal for button)
+    - deal 2 cards to every active player
+    - enter PREFLOP_BETTING at escrow step 0, with first player after button to act
+    """
 
-        # Reset state for new hand
-        gs.normal_pot = 0
-        gs.escrow_pot = 0
-        gs.current_highest_normal = 0
-        gs.players_acted_this_step.clear()
-        gs.action_history.clear()
+    gs = self.gamestate
+    assert gs is not None
 
-        # Initialize hands and post escrow antes
-        for player in gs.players:
-            player.hand = PlayerHand()
-            player.is_active = True
+    logger.info("SETUPHAND: starting setup for new hand")
 
-            # Everyone antes 1 escrow (scaled by ante_value)
-            escrow_chips = ESCROW_ANTE * self.ante_value
-            if player.stack >= escrow_chips:
-                player.escrow_circle = escrow_chips  # Track in chips, not antes
-                player.stack -= escrow_chips
-                gs.escrow_pot += escrow_chips
+    # Reset pots and round-level tracking
+    gs.normalpot = 0
+    gs.escrowpot = 0
+    gs.currenthighestnormal = 0
+    gs.playersactedthisstep.clear()
+    gs.actionhistory.clear()
+    gs.currentplayerseat = None
+    gs.currentactionstep = 0
+    gs.lastraiserseat = None
 
-            # Initialize button status and normal circle
-            player.is_button = False
-            player.normal_circle = 0
+    # Reset per-player hand state
+    for player in gs.players:
+        player.hand = PlayerHand()
+        player.isactive = True
+        player.normalcircle = 0
+        player.escrowcircle = 0
+        player.isbutton = False
 
-        # Determine button via card draw (first hand only)
-        if not gs.table_initialized:
-            self._determine_button()
-            gs.table_initialized = True
+    # Everyone antes 1 escrow (in chips, scaled by antevalue) if they can afford it
+    escrow_chips = ESCROW_ANTE * self.antevalue
+    for player in gs.players:
+        if player.stack >= escrow_chips:
+            player.escrowcircle = escrow_chips
+            player.stack -= escrow_chips
+            gs.escrowpot += escrow_chips
         else:
-            # On subsequent hands, just rotate button one position left
-            gs.button_seat = (gs.button_seat + 1) % len(gs.players)
+            # If player cannot afford escrow ante, mark them inactive for this hand
+            player.isactive = False
+            logger.info(
+                "SETUPHAND: player %s (seat %s) cannot afford escrow ante; marking inactive",
+                player.username,
+                player.seat,
+            )
 
-        # DEBUG: Log player states after initialization
-        logger.info(f"=== SETUP_HAND: Button assignment and initial setup ===")
-        logger.info(f"Button seat: {gs.button_seat}, Total players: {len(gs.players)}")
+    # Button handling:
+    # - First ever hand on this table: determine button via card-draw mini-phase
+    # - Subsequent hands: rotate button clockwise and post button normal ante
+    if not gs.tableinitialized:
+        self.determine_button()
+        gs.tableinitialized = True
+    else:
+        # Rotate button one seat clockwise among active players
+        active_seats = [p.seat for p in gs.players if p.isactive]
+        if not active_seats:
+            logger.warning("SETUPHAND: no active players when rotating button")
+        else:
+            if gs.buttonseat not in active_seats:
+                # If previous button seat is not active, just take first active as button
+                gs.buttonseat = active_seats[0]
+            else:
+                idx = active_seats.index(gs.buttonseat)
+                gs.buttonseat = active_seats[(idx + 1) % len(active_seats)]
 
-        # Log seat-to-index mapping
-        seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
-        logger.info(f"Seat-to-index mapping: {seat_to_index}")
+        # Apply button flag and post button normal ante
+        button_player = next((p for p in gs.players if p.seat == gs.buttonseat), None)
+        if button_player and button_player.isactive:
+            button_chips = BUTTON_ANTE * self.antevalue
+            if button_player.stack >= button_chips:
+                button_player.normalcircle = button_chips
+                button_player.stack -= button_chips
+                gs.normalpot += button_chips
+                button_player.isbutton = True
+            else:
+                # If button cannot afford normal ante, mark them inactive
+                button_player.isactive = False
+                button_player.isbutton = False
+                logger.info(
+                    "SETUPHAND: button player %s (seat %s) cannot afford normal ante; marking inactive",
+                    button_player.username,
+                    button_player.seat,
+                )
+        else:
+            logger.warning("SETUPHAND: no valid button player found after rotation")
 
-        for i, player in enumerate(gs.players):
-            logger.info(f"  Player index {i} (seat {player.seat}): normal={player.normal_circle}, escrow={player.escrow_circle}, is_button={player.is_button}")
-
-        # Deal 2 face-down cards to each player
+        # Clear any draw cards from previous hands
         for player in gs.players:
-            cards = gs.deck.draw_n(2)
-            player.hand.original_cards = cards
+            player.hand.drawcards = []
 
-        # Transition to PREFLOP phase
-        gs.phase = GamePhase.PREFLOP
-        gs.current_action_step = 0  # Escrow step
+    # Log seat mapping and ante state
+    seattoindex = {p.seat: i for i, p in enumerate(gs.players)}
+    logger.info("SETUPHAND: Seat-to-index mapping %s", seattoindex)
+    for i, player in enumerate(gs.players):
+        logger.info(
+            "SETUPHAND: Player index %s seat %s normal %s escrow %s is_button %s",
+            i,
+            player.seat,
+            player.normalcircle,
+            player.escrowcircle,
+            player.isbutton,
+        )
 
-        # Find first player after button
-        seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
-        button_idx = seat_to_index[gs.button_seat]
-        first_player_idx = (button_idx + 1) % len(gs.players)
-        gs.current_player_seat = gs.players[first_player_idx].seat  # Store SEAT NUMBER
+    # Deal 2 face-down cards to each active player
+    for player in gs.players:
+        if not player.isactive:
+            continue
+        cards = gs.deck.draw(2)
+        player.hand.originalcards = cards
 
-        logger.info(f"=== SETUP_HAND: Transition to PREFLOP ===")
-        logger.info(f"  Button: seat {gs.button_seat} (index {button_idx})")
-        logger.info(f"  First to act: seat {gs.current_player_seat}")
-        logger.info(f"  phase={gs.phase.value}, step={gs.current_action_step}")
+    # Initialize PREFLOP_BETTING phase
+    gs.phase = GamePhase.PREFLOP_BETTING
+    gs.currentactionstep = 0  # escrow step
+    gs.playersactedthisstep.clear()
 
-        gs.players_acted_this_step.clear()
-        # Initialize current_highest_normal to button's ante (button has already posted)
-        button_player = next(p for p in gs.players if p.seat == gs.button_seat)
-        gs.current_highest_normal = button_player.normal_circle
-        gs.last_raiser_seat = gs.button_seat  # Button is the "raiser" that started action
+    # Determine button index and first player after button
+    active_players = [p for p in gs.players if p.isactive]
+    if not active_players:
+        logger.warning("SETUPHAND: no active players after setup; moving to HAND_END")
+        gs.phase = GamePhase.HAND_END
+        return
 
-        # Initialize betting action: auto-skip players who don't need to act
-        self._handle_initial_skips()
+    seattoindex = {p.seat: i for i, p in enumerate(gs.players)}
+    button_idx = seattoindex.get(gs.buttonseat, 0)
+    first_player_idx = (button_idx + 1) % len(gs.players)
+
+    # Find first active player clockwise after button
+    ordered = self.getactionorderfromseat(gs.players[first_player_idx].seat)
+    first_active_seat = None
+    for seat in ordered:
+        player = next((p for p in gs.players if p.seat == seat), None)
+        if player and player.isactive and not player.hand.folded:
+            first_active_seat = seat
+            break
+
+    gs.currentplayerseat = first_active_seat
+    logger.info(
+        "SETUPHAND: Transition to PREFLOP_BETTING; button seat %s, first to act seat %s",
+        gs.buttonseat,
+        gs.currentplayerseat,
+    )
+
+    # Initialize highest normal to button's contribution
+    button_player = next((p for p in gs.players if p.seat == gs.buttonseat), None)
+    if button_player:
+        gs.currenthighestnormal = button_player.normalcircle
+        gs.lastraiserseat = gs.buttonseat
+    else:
+        gs.currenthighestnormal = 0
+        gs.lastraiserseat = None
+
+    # Auto-skip escrow step where appropriate for the first acting player
+    self.handleinitialskips()
+
 
     def _determine_button(self) -> None:
         """Determine button by highest card draw. Handles tiebreakers. Posts button ante."""

@@ -160,6 +160,10 @@ def get_table_state(table_id):
 
                 seated_players.append(player_info)
 
+        # Get ready player count
+        ready_count = len(PLAYER_READY_STATUS.get(table_id, {}))
+        seated_count = len(seated_players)
+
         # Merge database seating with game engine state
         return jsonify({
             "phase": game_state.get("phase", "setup"),
@@ -170,6 +174,8 @@ def get_table_state(table_id):
             "game_state": game_state,
             "normal_pot": game_state.get("normal_pot", 0),
             "escrow_pot": game_state.get("escrow_pot", 0),
+            "ready_count": ready_count,
+            "seated_count": seated_count,
         })
     except Exception as e:
         current_app.logger.error(f"Error in get_table_state: {e}", exc_info=True)

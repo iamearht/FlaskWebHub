@@ -271,7 +271,7 @@ def player_ready(table_id):
                 engine.game_state.button_seat = button_seat
 
                 # Automatically start the hand
-                engine.start_hand()
+                engine.setup_hand()
                 hand_started = True
                 button_assigned = True
 
@@ -349,7 +349,7 @@ def start_hand(table_id):
         # Initialize game with seated players
         engine.create_table(player_list, initial_stack=1000)
         # Start the hand
-        engine.start_hand()
+        engine.setup_hand()
         return jsonify({"message": "Hand started", "state": engine.get_state()})
     except Exception as e:
         current_app.logger.error(f"Error starting hand: {e}")

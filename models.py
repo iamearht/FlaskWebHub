@@ -1053,7 +1053,7 @@ class BlackjackTable(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     table_name = db.Column(db.String(100), nullable=False, default='Main Table')
-    max_seats = db.Column(db.Integer, nullable=False, default=7)
+    max_seats = db.Column(db.Integer, nullable=False, default=5)
     big_blind = db.Column(db.Integer, nullable=False, default=10)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

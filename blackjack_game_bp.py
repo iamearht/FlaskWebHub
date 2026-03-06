@@ -398,10 +398,6 @@ def take_action(table_id):
         action = ActionType[action_name.upper()]
         engine.player_action(seat, action, amount)
 
-        # Auto-check for phase completion in draw phase
-        if engine.game_state.phase.value == "draw":
-            engine.phase_complete_check()
-
         return jsonify({"state": engine.get_state()})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -419,16 +415,13 @@ def advance_phase(table_id):
     engine = TABLES[table_id]
 
     try:
-        # Check phase completion and advance
-        advanced = engine.phase_complete_check()
-
         # If hand is over, prepare next hand
-        if engine.game_state.phase == GamePhase.HAND_OVER:
+        if engine.game_state.phase == GamePhase.HAND_END:
             # Reset ready status
             if table_id in PLAYER_READY_STATUS:
                 PLAYER_READY_STATUS[table_id] = {}
 
-        return jsonify({"state": engine.get_state(), "advanced": advanced})
+        return jsonify({"state": engine.get_state()})
     except Exception as e:
         current_app.logger.error(f"Error advancing phase: {e}")
         return jsonify({"error": str(e)}), 400

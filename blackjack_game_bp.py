@@ -132,15 +132,19 @@ def get_table_state(table_id):
         game_state = engine.get_state()
 
         # Build seated_players with card information
+        table = BlackjackTable.query.filter_by(id=table_id).first()
         seated_players = []
         for seat in seated_seats:
             if seat.user_id is not None:
+                # Use buy-in amount as initial stack, or get from game state
+                initial_stack = (seat.buy_in_antes * table.ante_value) if seat.buy_in_antes and table else 1000
+
                 player_info = {
                     "seat": seat.seat_number,
                     "username": seat.user.username if seat.user else None,
                     "user_id": seat.user_id,
                     "joined_at": seat.joined_at.isoformat() if seat.joined_at else None,
-                    "stack": 1000,  # Default stack
+                    "stack": initial_stack,
                     "card1": None,
                     "card2": None,
                 }
@@ -149,7 +153,7 @@ def get_table_state(table_id):
                 if game_state and game_state.get("players"):
                     for player in game_state.get("players", []):
                         if player.get("seat") == seat.seat_number:
-                            player_info["stack"] = player.get("stack", 1000)
+                            player_info["stack"] = player.get("stack", initial_stack)
                             player_info["card1"] = player.get("card1", "")
                             player_info["card2"] = player.get("card2", "")
                             break

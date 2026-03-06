@@ -218,50 +218,11 @@ def run_migrations():
         # ALTER blackjack_tables TO ADD MISSING COLUMNS (if table exists)
         # ------------------------------------------------------------------
 
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name='blackjack_tables'
-                AND column_name='ante_value'
-            ) THEN
-                ALTER TABLE blackjack_tables
-                ADD COLUMN ante_value INTEGER NOT NULL DEFAULT 10;
-            END IF;
-        END $$;
-        """,
+        """ALTER TABLE IF EXISTS blackjack_tables ADD COLUMN IF NOT EXISTS ante_value INTEGER NOT NULL DEFAULT 10;""",
 
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name='blackjack_tables'
-                AND column_name='admin_id'
-            ) THEN
-                ALTER TABLE blackjack_tables
-                ADD COLUMN admin_id INTEGER REFERENCES users(id);
-            END IF;
-        END $$;
-        """,
+        """ALTER TABLE IF EXISTS blackjack_tables ADD COLUMN IF NOT EXISTS admin_id INTEGER REFERENCES users(id);""",
 
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_name='blackjack_tables'
-                AND column_name='is_open'
-            ) THEN
-                ALTER TABLE blackjack_tables
-                ADD COLUMN is_open BOOLEAN NOT NULL DEFAULT TRUE;
-            END IF;
-        END $$;
-        """,
+        """ALTER TABLE IF EXISTS blackjack_tables ADD COLUMN IF NOT EXISTS is_open BOOLEAN NOT NULL DEFAULT TRUE;""",
     ]
 
     for migration in migrations:

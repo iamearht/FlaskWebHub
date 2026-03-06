@@ -13,6 +13,7 @@ from affiliate import affiliate_bp
 from admin import admin_bp
 from jackpot import jackpot_bp
 from blackjack_game_bp import blackjack_bp
+from migrate import run_migrations
 
 
 def _normalize_database_url(url: str) -> str:
@@ -90,6 +91,7 @@ def create_app() -> Flask:
     with app.app_context():
         try:
             db.create_all()
+            run_migrations()
 
             # Promote admin user
             user = User.query.filter(

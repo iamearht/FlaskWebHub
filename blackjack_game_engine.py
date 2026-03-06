@@ -826,17 +826,22 @@ class GameEngine:
 
             # Single winner - they become the button
             if tied_players:
-                # tied_players contains seat numbers, find the index
+                # tied_players contains seat numbers, find the player by seat number
                 button_seat_number = tied_players[0]
-                button_index = None
-                for idx, p in enumerate(gs.players):
+                button_player = None
+
+                # Search through all players to find the one with the button seat number
+                for p in gs.players:
                     if p.seat == button_seat_number:
-                        button_index = idx
+                        button_player = p
                         break
 
-                if button_index is not None:
-                    gs.button_seat = button_index
-                    button_player = gs.players[button_index]
+                # Set button and apply ante
+                if button_player:
+                    # Find the player's index for button_seat
+                    button_index = next((idx for idx, p in enumerate(gs.players) if p.seat == button_seat_number), None)
+                    if button_index is not None:
+                        gs.button_seat = button_index
 
                     # Button antes 1 chip to normal pot
                     if button_player.stack >= BUTTON_ANTE:
@@ -850,8 +855,9 @@ class GameEngine:
                         if p != button_player:
                             p.is_button = False
 
-                    gs.draw_phase_step = 2
-                    gs.draw_phase_timestamp = None
+                # Always advance to step 2 after determining button
+                gs.draw_phase_step = 2
+                gs.draw_phase_timestamp = None
 
         # Step 2: Wait 3 seconds then deal 2 face-down cards
         elif gs.draw_phase_step == 2:

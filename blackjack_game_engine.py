@@ -799,9 +799,11 @@ class GameEngine:
         if not active_players:
             return
 
+        # Convert seat numbers to array indices
+        seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
         non_folded = [
-            p for p in active_players
-            if p < len(gs.players) and not gs.players[p].hand.folded
+            seat_to_index[seat] for seat in active_players
+            if seat in seat_to_index and not gs.players[seat_to_index[seat]].hand.folded
         ]
         logger.info(f"  active_players={active_players}, non_folded={non_folded}")
 

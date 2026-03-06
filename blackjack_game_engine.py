@@ -292,6 +292,9 @@ class GameState:
     # Hand tracking
     hand_number: int = 1
 
+    # Table initialization tracking
+    table_initialized: bool = False  # True after first hand's button is determined
+
     # Table configuration
     ante_value: int = 1  # Chips per ante (e.g., 10)
 
@@ -393,8 +396,13 @@ class GameEngine:
             player.is_button = False
             player.normal_circle = 0
 
-        # Determine button via card draw
-        self._determine_button()
+        # Determine button via card draw (first hand only)
+        if not gs.table_initialized:
+            self._determine_button()
+            gs.table_initialized = True
+        else:
+            # On subsequent hands, just rotate button one position left
+            gs.button_seat = (gs.button_seat + 1) % len(gs.players)
 
         # Deal 2 face-down cards to each player
         for player in gs.players:
@@ -810,17 +818,23 @@ class GameEngine:
         assert gs is not None
 
         if gs.phase == GamePhase.PREFLOP:
-            gs.phase = GamePhase.DRAW
-            # Initialize DRAW phase button determination progression
-            gs.draw_phase_step = 0
-            gs.draw_phase_timestamp = None
-            # Initialize draw_cards for each player
-            for player in gs.players:
-                player.hand.draw_cards = []
-            # Deal 1 face-up card to each player for button determination
-            for player in gs.players:
-                card = gs.deck.draw()
-                player.hand.draw_cards.append(card)
+            # First hand: show DRAW phase for button determination animation
+            # Subsequent hands: skip DRAW and go straight to RIVER
+            if not gs.table_initialized or gs.hand_number == 1:
+                gs.phase = GamePhase.DRAW
+                # Initialize DRAW phase button determination progression
+                gs.draw_phase_step = 0
+                gs.draw_phase_timestamp = None
+                # Initialize draw_cards for each player
+                for player in gs.players:
+                    player.hand.draw_cards = []
+                # Deal 1 face-up card to each player for button determination
+                for player in gs.players:
+                    card = gs.deck.draw()
+                    player.hand.draw_cards.append(card)
+            else:
+                gs.phase = GamePhase.RIVER
+                gs.current_highest_normal = 0
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
             gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)

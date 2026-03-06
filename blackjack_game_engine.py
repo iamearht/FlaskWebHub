@@ -1072,11 +1072,13 @@ class GameEngine:
             if len(tied_players) > 1:
                 # Deal another card to tied players
                 for seat in tied_players:
-                    player = gs.players[seat]
-                    new_card = gs.deck.draw()  # Fixed: draw() takes no arguments
-                    if not hasattr(player.hand, 'draw_cards'):
-                        player.hand.draw_cards = []
-                    player.hand.draw_cards.append(new_card)
+                    # Find player by seat number, not by using seat as index
+                    player = next((p for p in gs.players if p.seat == seat), None)
+                    if player:
+                        new_card = gs.deck.draw()  # Fixed: draw() takes no arguments
+                        if not hasattr(player.hand, 'draw_cards'):
+                            player.hand.draw_cards = []
+                        player.hand.draw_cards.append(new_card)
 
                 # Recurse to check again
                 tied_players_new = []
@@ -1118,7 +1120,9 @@ class GameEngine:
                     logger.warning(f"Button determination: button_seat_number={button_seat_number}, button_index={button_index}, total_players={len(gs.players)}")
 
                     if button_index is not None:
-                        gs.button_seat = button_index
+                        # CRITICAL: button_seat should be SEAT NUMBER, not INDEX!
+                        gs.button_seat = button_seat_number
+                        logger.warning(f"Button determination: SET gs.button_seat = {gs.button_seat} (seat number, not index)")
                         button_player = gs.players[button_index]  # Get player by index for reliability
 
                         # Button antes 1 chip to normal pot (scaled by ante_value)

@@ -118,18 +118,8 @@ async function startGame() {
         return;
     }
 
-    try {
-        const response = await fetch(`/api/games/${GameState.gameId}/start`, {
-            method: 'POST'
-        });
-
-        const data = await response.json();
-        sendAction('start_hand');
-        addLog('Game started!', 'action');
-    } catch (error) {
-        console.error('Error starting game:', error);
-        addLog('Failed to start game', 'error');
-    }
+    sendAction('start_hand');
+    addLog('Game started!', 'action');
 }
 
 function getGameState() {

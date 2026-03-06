@@ -160,6 +160,8 @@ def get_table_state(table_id):
                             player_info["normal_circle"] = player.get("normal_circle", 0)
                             player_info["escrow_circle"] = player.get("escrow_circle", 0)
                             player_info["is_button"] = player.get("is_button", False)
+                            draw_cards = player.get("draw_cards", [])
+                            player_info["draw_card"] = draw_cards[0] if len(draw_cards) > 0 else ""
                             break
 
                 seated_players.append(player_info)

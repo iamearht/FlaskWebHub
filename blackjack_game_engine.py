@@ -354,7 +354,7 @@ class GameEngine:
         return game_state
 
     def setup_hand(self) -> None:
-        """Initialize new hand: antes, deal, set first-to-act"""
+        """Initialize new hand: antes, deal button-determination card, set phase to DRAW"""
         gs = self.game_state
         assert gs is not None
 
@@ -376,7 +376,7 @@ class GameEngine:
                 player.stack -= ESCROW_ANTE
                 gs.escrow_pot += ESCROW_ANTE
 
-            # Button antes 1 normal
+            # Button antes 1 normal (for initial ante)
             if player.seat == gs.button_seat:
                 player.is_button = True
                 if player.stack >= BUTTON_ANTE:
@@ -386,18 +386,22 @@ class GameEngine:
             else:
                 player.is_button = False
 
-        # Deal 2 cards to each
+        # Set phase to DRAW for button determination via card draw
+        gs.phase = GamePhase.DRAW
+        gs.current_action_step = 0  # Track button determination step
+
+        # Initialize draw phase state tracking
+        if not hasattr(gs, 'draw_phase_step'):
+            gs.draw_phase_step = 0  # 0=initial cards, 1=determining button, 2=final cards
+        gs.draw_phase_step = 0
+        gs.draw_phase_timestamp = None
+        gs.draw_phase_tied_players = set()  # Track tied players for tiebreaker draws
+
+        # Deal 1 face-up card to each player for button determination
         for player in gs.players:
-            player.hand.original_cards = gs.deck.draw_n(2)
-
-        # Set first-to-act and phase
-        gs.phase = GamePhase.PREFLOP
-        gs.current_action_step = 0  # Start with escrow step
-        first_to_act = (gs.button_seat + 1) % len(gs.players)
-        gs.current_player_seat = first_to_act
-
-        # Handle initial auto-skips (e.g., if first-to-act player should skip escrow)
-        self._handle_initial_skips()
+            if not hasattr(player.hand, 'draw_cards'):
+                player.hand.draw_cards = []
+            player.hand.draw_cards = gs.deck.draw_n(1)  # 1 card for button determination
 
     def _handle_initial_skips(self) -> None:
         """Auto-skip players who don't need to act in current step"""
@@ -731,6 +735,107 @@ class GameEngine:
         if all(p.hand.action_this_phase for p in active if not p.hand.folded):
             self._advance_phase()
 
+    def progress_button_determination_draw(self) -> None:
+        """Automatically progress through DRAW phase for button determination"""
+        import time
+        gs = self.game_state
+        assert gs is not None
+
+        if gs.phase != GamePhase.DRAW or not hasattr(gs, 'draw_phase_step'):
+            return
+
+        current_time = time.time()
+
+        # Step 0: Initial 1 card dealt (cards already dealt in setup_hand)
+        if gs.draw_phase_step == 0:
+            # First time in this step, initialize timestamp
+            if gs.draw_phase_timestamp is None:
+                gs.draw_phase_timestamp = current_time
+            # Wait 3 seconds before determining button
+            elif current_time - gs.draw_phase_timestamp >= 3:
+                gs.draw_phase_step = 1
+                gs.draw_phase_timestamp = None
+
+        # Step 1: Determine button from highest card
+        elif gs.draw_phase_step == 1:
+            gs.draw_phase_step = 1  # Already set
+            if gs.draw_phase_timestamp is None:
+                gs.draw_phase_timestamp = current_time
+
+            # Find highest card value(s)
+            highest_value = 0
+            tied_players = []
+
+            for player in gs.players:
+                if player.hand.draw_cards:
+                    card = player.hand.draw_cards[0]
+                    value = RANK_VALUES.get(card.rank, 0)
+                    if value > highest_value:
+                        highest_value = value
+                        tied_players = [player.seat]
+                    elif value == highest_value:
+                        tied_players.append(player.seat)
+
+            # Handle ties - draw more cards
+            if len(tied_players) > 1:
+                # Deal another card to tied players
+                for seat in tied_players:
+                    player = gs.players[seat]
+                    new_card = gs.deck.draw(1)
+                    if not hasattr(player.hand, 'draw_cards'):
+                        player.hand.draw_cards = []
+                    player.hand.draw_cards.append(new_card)
+
+                # Recurse to check again
+                tied_players_new = []
+                highest_value_new = 0
+                for seat in tied_players:
+                    player = gs.players[seat]
+                    # Get latest card
+                    latest_card = player.hand.draw_cards[-1]
+                    value = RANK_VALUES.get(latest_card.rank, 0)
+                    if value > highest_value_new:
+                        highest_value_new = value
+                        tied_players_new = [seat]
+                    elif value == highest_value_new:
+                        tied_players_new.append(seat)
+
+                tied_players = tied_players_new
+
+            # If still tied, keep drawing (continue this step)
+            if len(tied_players) > 1:
+                # Will recurse on next call
+                return
+
+            # Single winner - they become the button
+            if tied_players:
+                gs.button_seat = tied_players[0]
+                gs.players[gs.button_seat].is_button = True
+                for i, p in enumerate(gs.players):
+                    if i != gs.button_seat:
+                        p.is_button = False
+
+                gs.draw_phase_step = 2
+                gs.draw_phase_timestamp = None
+
+        # Step 2: Wait 3 seconds then deal 2 face-down cards
+        elif gs.draw_phase_step == 2:
+            if gs.draw_phase_timestamp is None:
+                gs.draw_phase_timestamp = current_time
+            # Wait 3 seconds then deal
+            elif current_time - gs.draw_phase_timestamp >= 3:
+                # Deal 2 cards face-down to each player
+                for player in gs.players:
+                    player.hand.original_cards = gs.deck.draw_n(2)
+
+                # Transition to RIVER phase for actual gameplay
+                gs.phase = GamePhase.RIVER
+                gs.current_action_step = 0
+                first_to_act = (gs.button_seat + 1) % len(gs.players)
+                gs.current_player_seat = first_to_act
+                gs.draw_phase_step = 0
+                gs.draw_phase_timestamp = None
+
     def execute_showdown(self) -> Dict[str, int]:
         """Evaluate hands and distribute pots. Returns {player_id: winnings}"""
         gs = self.game_state
@@ -779,6 +884,10 @@ class GameEngine:
 
         gs = self.game_state
 
+        # Automatically progress DRAW phase for button determination
+        if gs.phase.value == "draw" and hasattr(gs, 'draw_phase_step'):
+            self.progress_button_determination_draw()
+
         return {
             "hand_number": gs.hand_number,
             "phase": gs.phase.value,
@@ -801,6 +910,7 @@ class GameEngine:
                     "is_folded": p.hand.folded if p.hand else False,
                     "escrow_locked": p.hand.escrow_locked if p.hand else False,
                     "cards": [str(c) for c in (p.hand.original_cards if p.hand else [])],
+                    "draw_cards": [str(c) for c in (p.hand.draw_cards if hasattr(p.hand, 'draw_cards') and p.hand.draw_cards else [])],
                     "exposed_card": str(p.hand.exposed_card) if p.hand and p.hand.exposed_card else None,
                 }
                 for p in gs.players

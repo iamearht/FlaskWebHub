@@ -218,14 +218,12 @@
             margin-top: 5px;
         }
 
-        /* Position seats around table */
-        .seat:nth-child(1) { top: 20px; left: 50%; transform: translateX(-50%); }
-        .seat:nth-child(2) { top: 80px; right: 60px; }
-        .seat:nth-child(3) { bottom: 80px; right: 60px; }
-        .seat:nth-child(4) { bottom: 20px; left: 50%; transform: translateX(-50%); }
-        .seat:nth-child(5) { bottom: 80px; left: 60px; }
-        .seat:nth-child(6) { top: 80px; left: 60px; }
-        .seat:nth-child(7) { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        /* Position 5 seats in pentagon around table */
+        .seat:nth-child(1) { top: 10%; left: 50%; transform: translateX(-50%); }
+        .seat:nth-child(2) { top: 30%; right: 8%; }
+        .seat:nth-child(3) { bottom: 15%; right: 12%; }
+        .seat:nth-child(4) { bottom: 15%; left: 12%; }
+        .seat:nth-child(5) { top: 30%; left: 8%; }
 
         /* Right Sidebar */
         .sidebar {
@@ -443,7 +441,7 @@
                     <value id="currentPhase">Loading...</value>
                 </div>
                 <div>
-                    <a href="{{ url_for('blackjack.blackjack_lobby') }}" class="btn btn-secondary">
+                    <a href="{{ url_for('game.lobby') }}" class="btn btn-secondary">
                         ← Back to Lobby
                     </a>
                 </div>
@@ -605,8 +603,8 @@
                 });
             }
 
-            // Render all 7 seats
-            for (let seatNum = 0; seatNum < 7; seatNum++) {
+            // Render all 5 seats
+            for (let seatNum = 0; seatNum < 5; seatNum++) {
                 const seatEl = document.createElement('div');
                 seatEl.className = 'seat';
 

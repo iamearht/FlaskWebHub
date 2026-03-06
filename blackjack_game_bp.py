@@ -58,10 +58,10 @@ def create_table():
     global TABLE_COUNTER
 
     data = request.get_json() or {}
-    num_seats = int(data.get("num_seats", 7))
+    num_seats = int(data.get("num_seats", 5))
 
-    if num_seats < 2 or num_seats > 7:
-        return jsonify({"error": "Table must have 2-7 seats"}), 400
+    if num_seats < 2 or num_seats > 5:
+        return jsonify({"error": "Table must have 2-5 seats"}), 400
 
     TABLE_COUNTER += 1
     table_id = TABLE_COUNTER

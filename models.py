@@ -1053,10 +1053,14 @@ class BlackjackTable(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     table_name = db.Column(db.String(100), nullable=False, default='Main Table')
-    max_seats = db.Column(db.Integer, nullable=False, default=7)
+    max_seats = db.Column(db.Integer, nullable=False, default=5)
     big_blind = db.Column(db.Integer, nullable=False, default=10)
+    ante_value = db.Column(db.Integer, nullable=False, default=10)  # Ante in coins
+    admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Table admin
+    is_open = db.Column(db.Boolean, nullable=False, default=True)  # Whether table is accepting players
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    admin = db.relationship('User', backref='blackjack_tables')
     seats = db.relationship('BlackjackTableSeat', backref='table', cascade='all, delete-orphan')
 
     @property

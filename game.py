@@ -108,33 +108,8 @@ def lobby():
 
     jackpot_pools = _get_jackpot_pools_for_lobby()
 
-    # Get main Free Blackjack table (create if doesn't exist)
-    main_table = BlackjackTable.query.filter_by(table_name="Main Table").first()
-    if not main_table:
-        try:
-            main_table = BlackjackTable(
-                table_name="Main Table",
-                max_seats=7,
-                big_blind=10
-            )
-            db.session.add(main_table)
-            db.session.flush()
-
-            # Create 7 empty seats
-            for seat_num in range(7):
-                seat = BlackjackTableSeat(
-                    table_id=main_table.id,
-                    seat_number=seat_num
-                )
-                db.session.add(seat)
-
-            db.session.commit()
-            import logging
-            logging.getLogger().info("Main Free Blackjack table created with 7 seats.")
-        except Exception as e:
-            import logging
-            logging.getLogger().warning(f"Could not create Free Blackjack table: {e}")
-            main_table = None
+    # Get all open Free Blackjack tables
+    blackjack_tables = BlackjackTable.query.filter_by(is_open=True).all()
 
     return render_template(
         "lobby.html",
@@ -143,7 +118,8 @@ def lobby():
         my_active=my_active,
         waiting=waiting,
         jackpot_pools=jackpot_pools,
-        main_table=main_table,
+        blackjack_tables=blackjack_tables,
+        is_admin=user.is_admin if hasattr(user, 'is_admin') else False,
     )
 
 
@@ -607,6 +583,86 @@ def state(match_id):
     return jsonify(get_client_state(match, player_num))
 
 
+# -------------------------------------------------------------------
+# Free Blackjack Table Management (Admin Only)
+# -------------------------------------------------------------------
+
+@game_bp.route("/blackjack/create_table", methods=["POST"])
+@login_required
+def create_blackjack_table():
+    """Admin endpoint to create a new Free Blackjack table"""
+    user = _get_user_or_401()
+
+    # Check if user is admin
+    if not (hasattr(user, 'is_admin') and user.is_admin):
+        return jsonify({"error": "Admin access required"}), 403
+
+    data = request.get_json() or {}
+    table_name = data.get("table_name", f"Table {BlackjackTable.query.count() + 1}")
+    ante_value = int(data.get("ante_value", 10))
+
+    if ante_value < 1:
+        return jsonify({"error": "Ante value must be at least 1 coin"}), 400
+
+    try:
+        table = BlackjackTable(
+            table_name=table_name,
+            max_seats=5,
+            big_blind=ante_value * 2,
+            ante_value=ante_value,
+            admin_id=user.id,
+            is_open=True
+        )
+        db.session.add(table)
+        db.session.flush()
+
+        # Create 5 empty seats
+        for seat_num in range(5):
+            seat = BlackjackTableSeat(
+                table_id=table.id,
+                seat_number=seat_num
+            )
+            db.session.add(seat)
+
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "table_id": table.id,
+            "message": f"Table '{table_name}' created with {ante_value} coin ante"
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create table: {str(e)}"}), 400
+
+
+@game_bp.route("/blackjack/close_table/<int:table_id>", methods=["POST"])
+@login_required
+def close_blackjack_table(table_id):
+    """Admin endpoint to close a Free Blackjack table"""
+    user = _get_user_or_401()
+
+    # Check if user is admin
+    if not (hasattr(user, 'is_admin') and user.is_admin):
+        return jsonify({"error": "Admin access required"}), 403
+
+    table = BlackjackTable.query.get(table_id)
+    if not table:
+        return jsonify({"error": "Table not found"}), 404
+
+    # Check if user is the table admin
+    if table.admin_id != user.id:
+        return jsonify({"error": "You can only close tables you created"}), 403
+
+    try:
+        table.is_open = False
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": f"Table '{table.table_name}' has been closed"
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to close table: {str(e)}"}), 400
 
 
 

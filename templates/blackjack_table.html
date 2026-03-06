@@ -739,7 +739,7 @@
             if (hasButtonAssigned && phase === 'setup') {
                 // Button has been assigned - show button info
                 const buttonPlayer = gameState.seated_players.find(p => p.seat === gameState_data.button_seat);
-                const buttonName = buttonPlayer ? buttonPlayer.username : `Seat ${gameState_data.button_seat + 1}`;
+                const buttonName = buttonPlayer ? buttonPlayer.username : `Seat ${gameState_data.button_seat}`;
                 readyStatus.innerHTML = `<strong>🎯 Button:</strong> ${buttonName}<br><small>Hand starting...</small>`;
                 readyStatus.style.display = 'block';
             } else if (phase === 'setup' && seatedCount >= 2) {
@@ -756,7 +756,7 @@
             if (phase !== 'setup' && currentPlayerSeat !== null) {
                 // Game in progress - show current player
                 const players = gameState_data.players || [];
-                const player = players[currentPlayerSeat];
+                const player = players.find(p => p.seat === currentPlayerSeat);
                 if (player) {
                     const stepText = phase === 'draw' ? '' : (currentStep === 0 ? ' (Escrow Step)' : ' (Betting)');
                     document.getElementById('status').innerHTML = `
@@ -824,7 +824,9 @@
 
         function updateDrawActions(gameState_data) {
             const currentPlayerSeat = gameState_data.current_player_seat;
-            const player = gameState_data.players[currentPlayerSeat];
+            const player = gameState_data.players.find(p => p.seat === currentPlayerSeat);
+
+            if (!player) return;
 
             // Show double if cards_drawn === 0
             const doubleBtn = document.getElementById('doubleBtn');

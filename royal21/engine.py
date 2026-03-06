@@ -367,6 +367,30 @@ class GameEngine:
         elif self.game.phase == Phase.DRAW:
             # All draws done, move to river
             self.game.phase = Phase.RIVER
+
+            # Post antes for river phase
+            for player in self.game.players:
+                if not player.in_hand or player.folded:
+                    continue
+
+                # Escrow ante: 1 chip
+                if player.chips_remaining() >= 1:
+                    player.escrow_circle += 1
+                    player.stack -= 1
+                    self.game.escrow_pot += 1
+                else:
+                    player.all_in = True
+
+            # Button posts: 1 chip to normal
+            button_player = self.game.players[self.game.button_index]
+            if button_player.in_hand and not button_player.folded:
+                if button_player.chips_remaining() >= 1:
+                    button_player.normal_circle += 1
+                    button_player.stack -= 1
+                    self.game.normal_pot += 1
+                else:
+                    button_player.all_in = True
+
             active = self.game.active_seats()
             if active:
                 self.game.current_action_index = active[0]

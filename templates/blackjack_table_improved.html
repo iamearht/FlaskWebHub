@@ -695,7 +695,7 @@
                 } else {
                     document.getElementById('readyBtn').style.display = 'none';
                     document.getElementById('readyStatus').textContent = '';
-                    if (data.phase === 'draw' || data.phase === 'river') {
+                    if (data.phase === 'river') {
                         document.getElementById('gameActions').style.display = 'flex';
                     } else {
                         document.getElementById('gameActions').style.display = 'none';
@@ -729,18 +729,27 @@
 
                 if (player && player.user_id) {
                     // Player is seated
-                    const cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
-                    const cardsHtml = cards.map(c => renderCard(c)).join('');
-
                     const stackInAntes = Math.floor((player.stack || 0) / ANTE_VALUE);
                     const buttonIndicator = player.is_button ? '<span style="color: #fbbf24; font-weight: bold;">♠ BUTTON</span>' : '';
                     const normalCircle = player.normal_circle || 0;
                     const escrowCircle = player.escrow_circle || 0;
 
+                    let cardsHtml = '';
+
+                    // Show draw card during DRAW phase for button determination
+                    if (tableState && tableState.phase === 'draw' && player.draw_card) {
+                        const drawCard = parseCard(player.draw_card);
+                        cardsHtml = drawCard ? renderCard(drawCard) : '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
+                    } else {
+                        // Show actual hand cards during other phases
+                        const cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
+                        cardsHtml = cards.map(c => renderCard(c)).join('') || '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
+                    }
+
                     seat.innerHTML = `
                         <div class="seat-number">Seat ${i}</div>
                         <div class="player-name">${player.username}${buttonIndicator ? ' ' + buttonIndicator : ''}</div>
-                        <div class="cards-display">${cardsHtml || '<span style="color: #999; font-size: 0.8rem;">No cards</span>'}</div>
+                        <div class="cards-display">${cardsHtml}</div>
                         <div class="ante-display" style="font-size: 0.75rem; margin-top: 4px;">
                             <span style="color: #10b981;">●N:${normalCircle}</span>
                             <span style="color: #3b82f6; margin-left: 4px;">●E:${escrowCircle}</span>
@@ -891,12 +900,22 @@
         }
 
         function updateActionButtons(data) {
-            // Determine if it's the current player's turn
-            const isMyTurn = data.current_player_seat === currentPlayerSeat &&
-                            (data.phase === 'draw' || data.phase === 'river');
-
-            // Get legal actions for this player
             const playerTurnStatus = document.getElementById('playerTurnStatus');
+
+            // During DRAW phase, button is determined automatically - no player actions
+            if (data.phase === 'draw') {
+                playerTurnStatus.textContent = 'Determining button... Cards will be dealt shortly.';
+                playerTurnStatus.style.display = 'block';
+                document.getElementById('hitBtn').style.display = 'none';
+                document.getElementById('standBtn').style.display = 'none';
+                document.getElementById('doubleBtn').style.display = 'none';
+                document.getElementById('splitBtn').style.display = 'none';
+                return;
+            }
+
+            // During RIVER phase, show actions if it's the current player's turn
+            const isMyTurn = data.current_player_seat === currentPlayerSeat &&
+                            data.phase === 'river';
 
             if (isMyTurn) {
                 playerTurnStatus.textContent = 'Your turn! Choose an action.';

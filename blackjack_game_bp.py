@@ -17,6 +17,7 @@ from blackjack_game_engine import (
     BlackjackGameEngine,
     GamePhase,
     ActionType,
+    get_legal_actions,
 )
 
 # Simple in-memory table store (for demo; in production use DB)
@@ -251,11 +252,12 @@ def player_ready(table_id):
     )
 
     button_assigned = False
+    hand_started = False
     if all_ready and len(seated_seats) >= 2 and table_id in TABLES:
-        # All players ready and at least 2 players - initialize game and assign button with RNG
+        # All players ready and at least 2 players - initialize game, assign button, and start hand
         try:
             engine = TABLES[table_id]
-            if engine.game_state is None or engine.game_state.phase == GamePhase.SETUP:
+            if engine.game_state is None or engine.game_state.phase == GamePhase.HAND_OVER:
                 # Create player list from database seating
                 player_list = [
                     (s.user_id, s.user.username)
@@ -268,11 +270,17 @@ def player_ready(table_id):
                 button_seat = random.randint(0, len(player_list) - 1)
                 engine.game_state.button_seat = button_seat
 
+                # Automatically start the hand
+                engine.start_hand()
+                hand_started = True
                 button_assigned = True
-                current_app.logger.info(f"Button assigned to seat {button_seat} at table {table_id}")
-                # Do NOT call start_hand yet - wait for advance_phase
+
+                current_app.logger.info(f"Button assigned to seat {button_seat} at table {table_id}, hand started")
+
+                # Reset ready status for next hand
+                PLAYER_READY_STATUS[table_id] = {}
         except Exception as e:
-            current_app.logger.error(f"Error assigning button: {e}")
+            current_app.logger.error(f"Error assigning button and starting hand: {e}")
             return jsonify({"error": str(e)}), 400
 
     return jsonify({
@@ -280,9 +288,11 @@ def player_ready(table_id):
         "table_id": table_id,
         "user_id": current_user.id,
         "button_assigned": button_assigned,
+        "hand_started": hand_started,
         "all_ready": all_ready,
         "ready_count": len([u for u, r in PLAYER_READY_STATUS[table_id].items() if r]),
-        "seated_count": len(seated_seats)
+        "seated_count": len(seated_seats),
+        "game_state": TABLES[table_id].get_state() if hand_started and table_id in TABLES else None
     })
 
 
@@ -346,6 +356,23 @@ def start_hand(table_id):
         return jsonify({"error": str(e)}), 400
 
 
+@blackjack_bp.route("/api/table/<int:table_id>/legal_actions/<int:seat>", methods=["GET"])
+@login_required
+def get_legal_actions_endpoint(table_id, seat):
+    """Get legal actions for a player"""
+    try:
+        if table_id not in TABLES:
+            return jsonify({"error": "Table not found"}), 404
+
+        engine = TABLES[table_id]
+        actions_info = get_legal_actions(engine.game_state, seat)
+
+        return jsonify(actions_info)
+    except Exception as e:
+        current_app.logger.error(f"Error getting legal actions: {e}")
+        return jsonify({"error": str(e)}), 400
+
+
 @blackjack_bp.route("/api/table/<int:table_id>/action", methods=["POST"])
 @login_required
 def take_action(table_id):
@@ -366,8 +393,15 @@ def take_action(table_id):
         return jsonify({"error": "Not your seat"}), 403
 
     try:
+        # Import here to avoid circular dependency
+        from blackjack_game_engine import ActionType
         action = ActionType[action_name.upper()]
         engine.player_action(seat, action, amount)
+
+        # Auto-check for phase completion in draw phase
+        if engine.game_state.phase.value == "draw":
+            engine.phase_complete_check()
+
         return jsonify({"state": engine.get_state()})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -385,17 +419,16 @@ def advance_phase(table_id):
     engine = TABLES[table_id]
 
     try:
-        # If in SETUP phase with button assigned, start the hand
-        if engine.game_state and engine.game_state.phase == GamePhase.SETUP:
-            if engine.game_state.button_seat is not None:
-                engine.start_hand()
-                # Reset ready status for next hand after it completes
-                if table_id in PLAYER_READY_STATUS:
-                    PLAYER_READY_STATUS[table_id] = {}
-                return jsonify({"state": engine.get_state()})
+        # Check phase completion and advance
+        advanced = engine.phase_complete_check()
 
-        # Otherwise, check phase completion and advance
-        engine.phase_complete_check()
-        return jsonify({"state": engine.get_state()})
+        # If hand is over, prepare next hand
+        if engine.game_state.phase == GamePhase.HAND_OVER:
+            # Reset ready status
+            if table_id in PLAYER_READY_STATUS:
+                PLAYER_READY_STATUS[table_id] = {}
+
+        return jsonify({"state": engine.get_state(), "advanced": advanced})
     except Exception as e:
+        current_app.logger.error(f"Error advancing phase: {e}")
         return jsonify({"error": str(e)}), 400

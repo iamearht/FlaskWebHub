@@ -291,9 +291,11 @@ class GameState:
     # Pots
     normal_pot: int = 0
     escrow_pot: int = 0
+    current_highest_normal: int = 0  # Highest normal bet this round
 
-    # Action history
+    # Action tracking
     action_history: List[Dict] = field(default_factory=list)
+    players_acted_this_step: Set[int] = field(default_factory=set)  # seat numbers who acted this step
 
     # Hand number
     hand_number: int = 1
@@ -367,24 +369,70 @@ def settle_pots(
     Returns dict: {seat: total_winnings}
     """
     payouts = defaultdict(int)
-    active_seats = {p.seat for p in game_state.players if p.is_active}
 
-    # Collect hands
+    # Collect non-folded hands
     hands: Dict[int, List[Card]] = {}
+    active_seats = set()
     for p in game_state.players:
         if p.is_active and p.hand and p.hand.original_cards and not p.hand.is_folded:
             hands[p.seat] = p.hand.original_cards
+            active_seats.add(p.seat)
 
-    # Main pot: winner takes all normal circle contributions
-    if hands:
-        winner_seat, _ = determine_hand_winner(hands, active_seats)
-        payouts[winner_seat] += game_state.normal_pot
+    if not hands:
+        # No active players, no payouts
+        return dict(payouts)
 
-    # Escrow pot: proportional/layered settlement
-    # For simplicity: award to same winner; refine with side-pot logic as needed
-    if game_state.escrow_pot > 0 and hands:
-        winner_seat, _ = determine_hand_winner(hands, active_seats)
-        payouts[winner_seat] += game_state.escrow_pot
+    # Main pot: best hand wins all normal circle contributions
+    winner_seat, _ = determine_hand_winner(hands, active_seats)
+    payouts[winner_seat] += game_state.normal_pot
+
+    # Escrow pot: layered distribution based on escrow contributions
+    if game_state.escrow_pot > 0:
+        # Collect escrow amounts for remaining players
+        escrow_amounts = {
+            p.seat: p.escrow_circle
+            for p in game_state.players
+            if p.seat in active_seats
+        }
+
+        if escrow_amounts:
+            # Sort seats by escrow amount ascending
+            sorted_seats = sorted(escrow_amounts.keys(), key=lambda s: escrow_amounts[s])
+
+            # Create layers
+            remaining_escrow = game_state.escrow_pot
+            remaining_seats = set(sorted_seats)
+
+            for i, min_seat in enumerate(sorted_seats):
+                if remaining_escrow <= 0 or not remaining_seats:
+                    break
+
+                min_escrow = escrow_amounts[min_seat]
+                # Layer size is difference to next level or current escrow if last
+                if i < len(sorted_seats) - 1:
+                    next_escrow = escrow_amounts[sorted_seats[i + 1]]
+                    layer_per_player = next_escrow - min_escrow
+                else:
+                    # Last layer: all remaining
+                    layer_per_player = min_escrow
+
+                # Eligible players for this layer (those with enough escrow)
+                eligible = {s for s in remaining_seats if escrow_amounts[s] >= min_escrow}
+                if not eligible:
+                    break
+
+                # Distribute this layer
+                layer_total = min(layer_per_player * len(eligible), remaining_escrow)
+
+                # Find best hand among eligible
+                eligible_hands = {s: hands[s] for s in eligible if s in hands}
+                if eligible_hands:
+                    layer_winner, _ = determine_hand_winner(eligible_hands, eligible)
+                    payouts[layer_winner] += layer_total
+                    remaining_escrow -= layer_total
+                    # Remove seated players from remaining
+                    if i < len(sorted_seats) - 1:
+                        remaining_seats = {s for s in remaining_seats if escrow_amounts[s] > next_escrow}
 
     return dict(payouts)
 
@@ -393,48 +441,87 @@ def settle_pots(
 # ACTION VALIDATION & EXECUTION
 # ============================================================================
 
+def calculate_pot_limit(game_state: GameState) -> int:
+    """
+    Calculate the maximum bet/raise amount under pot-limit rules.
+    Pot Limit: max_raise_to = current_highest_normal + TABLE_TOTAL
+    where TABLE_TOTAL = sum(all normal circles) + sum(all escrow circles)
+    """
+    table_total = game_state.normal_pot + game_state.escrow_pot
+    max_bet = game_state.current_highest_normal + table_total
+    return max_bet
+
+
 def can_player_act_now(game_state: GameState, seat: int) -> bool:
     """Check if player at seat can act right now"""
     return game_state.current_player_seat == seat
 
 
-def get_legal_actions(game_state: GameState, seat: int) -> List[ActionType]:
-    """Get legal actions for player at seat in current phase"""
+def get_legal_actions(game_state: GameState, seat: int) -> Dict:
+    """Get legal actions for player at seat in current phase. Returns dict with action details and limits."""
     if not can_player_act_now(game_state, seat):
-        return []
+        return {"actions": []}
 
     player = next((p for p in game_state.players if p.seat == seat), None)
-    if not player or player.hand.is_folded or player.is_active == False:
-        return []
+    if not player or player.hand.is_folded or not player.is_active:
+        return {"actions": []}
 
     actions = []
+    pot_limit_amount = calculate_pot_limit(game_state)
 
     if game_state.phase == GamePhase.PREFLOP:
         if game_state.current_action_step == 0:
             # Escrow phase: can add escrow or skip
-            actions = [ActionType.ADD_ESCROW]
+            actions = [
+                {"action": ActionType.ADD_ESCROW.value, "min": 0, "max": min(player.stack, player.stack)}
+            ]
         else:
             # Normal betting phase
-            actions = [ActionType.FOLD, ActionType.CALL, ActionType.BET, ActionType.RAISE, ActionType.CHECK]
+            max_raise = min(player.stack, pot_limit_amount)
+            actions = [
+                {"action": ActionType.CHECK.value},
+                {"action": ActionType.FOLD.value},
+                {"action": ActionType.CALL.value, "amount": game_state.current_highest_normal},
+                {"action": ActionType.BET.value, "min": 1, "max": max_raise},
+                {"action": ActionType.RAISE.value, "min": game_state.current_highest_normal + 1, "max": max_raise},
+            ]
 
     elif game_state.phase == GamePhase.DRAW:
         # Can hit, stand, double, or split
-        actions = [ActionType.HIT, ActionType.STAND]
+        actions = [
+            {"action": ActionType.HIT.value},
+            {"action": ActionType.STAND.value}
+        ]
         if player.hand.cards_drawn == 0:  # Only on initial 2 cards
             if len(player.hand.original_cards) == 2 and player.hand.original_cards[0].rank == player.hand.original_cards[1].rank:
-                actions.append(ActionType.SPLIT)
-            actions.append(ActionType.DOUBLE)
+                actions.append({"action": ActionType.SPLIT.value})
+            actions.append({"action": ActionType.DOUBLE.value})
 
     elif game_state.phase == GamePhase.RIVER:
         if game_state.current_action_step == 0:
             # Escrow phase: can add escrow (if not escrow-locked from hit)
             if not player.hand.escrow_locked:
-                actions = [ActionType.ADD_ESCROW]
+                actions = [
+                    {"action": ActionType.ADD_ESCROW.value, "min": 0, "max": min(player.stack, player.stack)}
+                ]
+            # If escrow_locked, player cannot act in escrow step - auto-skip handled in _advance_turn
         else:
             # Normal betting phase
-            actions = [ActionType.FOLD, ActionType.CALL, ActionType.BET, ActionType.RAISE, ActionType.CHECK]
+            max_raise = min(player.stack, pot_limit_amount)
+            actions = [
+                {"action": ActionType.CHECK.value},
+                {"action": ActionType.FOLD.value},
+                {"action": ActionType.CALL.value, "amount": game_state.current_highest_normal},
+                {"action": ActionType.BET.value, "min": 1, "max": max_raise},
+                {"action": ActionType.RAISE.value, "min": game_state.current_highest_normal + 1, "max": max_raise},
+            ]
 
-    return actions
+    return {
+        "actions": actions,
+        "current_highest_normal": game_state.current_highest_normal,
+        "pot_limit": pot_limit_amount,
+        "player_stack": player.stack
+    }
 
 
 # ============================================================================
@@ -472,15 +559,22 @@ class BlackjackGameEngine:
         return game_state
 
     def start_hand(self) -> None:
-        """Initialize a new hand: antes, deal, reveal first action"""
+        """Initialize a new hand: antes, deal, set up first-to-act"""
         gs = self.game_state
+
+        # Reset pots and tracking
+        gs.normal_pot = 0
+        gs.escrow_pot = 0
+        gs.current_highest_normal = 0
+        gs.players_acted_this_step.clear()
+        gs.action_history.clear()
 
         # Phase 0a: Post antes
         for player in gs.players:
             player.hand = PlayerHand()
             player.is_active = True
 
-            # Escrow ante
+            # Escrow ante (all active players)
             if player.stack >= ESCROW_ANTE:
                 player.escrow_circle = ESCROW_ANTE
                 player.stack -= ESCROW_ANTE
@@ -498,13 +592,13 @@ class BlackjackGameEngine:
 
         # Update phase and set first-to-act
         gs.phase = GamePhase.PREFLOP
+        gs.current_action_step = 0  # Start with escrow step
         first_to_act = (gs.button_seat + 1) % len(gs.players)
         gs.current_player_seat = first_to_act
-        gs.current_action_step = 1  # Start with normal betting phase (skip escrow for simplicity in tests)
 
     def player_action(self, seat: int, action: ActionType, amount: int = 0) -> None:
         """
-        Execute a player action.
+        Execute a player action with proper state management.
         """
         gs = self.game_state
         player = next((p for p in gs.players if p.seat == seat), None)
@@ -513,34 +607,69 @@ class BlackjackGameEngine:
             raise ValueError(f"Player {seat} cannot act now")
 
         if action == ActionType.ADD_ESCROW:
-            if gs.phase == GamePhase.PREFLOP and gs.current_action_step == 0:
-                # Add to escrow (up to stack)
+            if gs.current_action_step == 0:  # Escrow step
+                # Add to escrow (up to stack, respecting river restrictions)
+                # In river escrow step, cannot add escrow if escrow_locked
+                if gs.phase == GamePhase.RIVER and player.hand.escrow_locked:
+                    raise ValueError("Cannot add escrow - escrow was locked in draw phase")
                 add_amount = min(amount, player.stack)
-                player.escrow_circle += add_amount
-                player.stack -= add_amount
-                gs.escrow_pot += add_amount
-                self._advance_action(gs)
+                if add_amount > 0:
+                    player.escrow_circle += add_amount
+                    player.stack -= add_amount
+                    gs.escrow_pot += add_amount
+                gs.players_acted_this_step.add(seat)
+                self._advance_turn(gs)
             else:
-                raise ValueError("Cannot add escrow outside escrow phase")
+                raise ValueError("Cannot add escrow outside escrow step")
 
         elif action == ActionType.FOLD:
             player.hand.is_folded = True
-            self._advance_action(gs)
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
+
+        elif action == ActionType.CHECK:
+            # Only valid if current highest is 0
+            if gs.current_highest_normal > 0:
+                raise ValueError("Cannot check when there's a bet")
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         elif action == ActionType.CALL:
-            # Match current bet (simplified)
-            call_amount = min(amount, player.stack)
-            player.normal_circle += call_amount
-            player.stack -= call_amount
-            gs.normal_pot += call_amount
-            self._advance_action(gs)
+            # Match current highest bet
+            call_amount = min(gs.current_highest_normal - player.normal_circle, player.stack)
+            if call_amount > 0:
+                player.normal_circle += call_amount
+                player.stack -= call_amount
+                gs.normal_pot += call_amount
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         elif action == ActionType.BET:
-            bet_amount = min(amount, player.stack)
+            # Place new bet
+            pot_limit = calculate_pot_limit(gs)
+            bet_amount = min(amount, player.stack, pot_limit)
+            if bet_amount <= 0:
+                raise ValueError("Bet amount must be positive")
             player.normal_circle += bet_amount
             player.stack -= bet_amount
             gs.normal_pot += bet_amount
-            self._advance_action(gs)
+            gs.current_highest_normal = max(gs.current_highest_normal, player.normal_circle)
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
+
+        elif action == ActionType.RAISE:
+            # Raise to specified amount
+            pot_limit = calculate_pot_limit(gs)
+            raise_to = min(amount, player.stack + player.normal_circle, pot_limit)
+            additional = raise_to - player.normal_circle
+            if additional <= 0:
+                raise ValueError("Raise must be more than current bet")
+            player.normal_circle = raise_to
+            player.stack -= additional
+            gs.normal_pot += additional
+            gs.current_highest_normal = raise_to
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         elif action == ActionType.HIT:
             new_card = gs.deck.draw()
@@ -548,11 +677,13 @@ class BlackjackGameEngine:
             player.hand.cards_drawn += 1
             player.hand.action_this_phase = "hit"
             player.hand.escrow_locked = True  # Lock escrow after hit
-            self._advance_action(gs)
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         elif action == ActionType.STAND:
             player.hand.action_this_phase = "stand"
-            self._advance_action(gs)
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         elif action == ActionType.DOUBLE:
             if player.hand.cards_drawn > 0:
@@ -567,7 +698,9 @@ class BlackjackGameEngine:
             player.hand.original_cards.append(new_card)
             player.hand.cards_drawn = 1
             player.hand.action_this_phase = "double"
-            self._advance_action(gs)
+            player.hand.escrow_locked = True  # Escrow locked after double (counts as hitting)
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         elif action == ActionType.SPLIT:
             if len(player.hand.original_cards) != 2:
@@ -580,56 +713,97 @@ class BlackjackGameEngine:
             split2 = SplitHand(cards=[player.hand.original_cards[1]])
             player.hand.split_hands = [split1, split2]
             player.hand.action_this_phase = "split"
-            # (simplified; full logic would handle each split hand separately)
-            self._advance_action(gs)
+            player.hand.escrow_locked = True  # Escrow locked after split
+            gs.players_acted_this_step.add(seat)
+            self._advance_turn(gs)
 
         else:
             raise ValueError(f"Unknown action: {action}")
 
-    def _advance_action(self, gs: GameState) -> None:
-        """Move to next player/step"""
-        # Simplified: move to next player
-        # Full logic would handle escrow/normal step transitions
-        players = gs.get_action_order_from_seat(gs.current_player_seat)
-        try:
-            current_idx = players.index(gs.current_player_seat)
-            next_idx = (current_idx + 1) % len(players)
-            gs.current_player_seat = players[next_idx]
-        except (ValueError, IndexError):
-            gs.current_player_seat = None
+    def _advance_turn(self, gs: GameState) -> None:
+        """
+        Advance turn within a phase, handling step transitions.
+        For PREFLOP/RIVER: each player acts in 2 steps (escrow=0, normal=1)
+        For DRAW: players act in sequence without steps
+        """
+        # Get players who need to act
+        active_players = gs.get_action_order_from_seat(gs.current_player_seat)
+        non_folded = [p for p in active_players if p < len(gs.players) and not gs.players[p].hand.is_folded]
+
+        if not non_folded:
+            return
+
+        # Check if all players have acted in current step
+        if all(seat in gs.players_acted_this_step for seat in non_folded):
+            # All players acted in this step
+            if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER]:
+                if gs.current_action_step == 0:
+                    # Transition from escrow step (0) to normal step (1)
+                    gs.current_action_step = 1
+                    gs.players_acted_this_step.clear()
+                    # Reset current player to first-to-act for normal step
+                    gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+                else:
+                    # Both steps complete for this round, phase will advance
+                    self._phase_complete(gs)
+            elif gs.phase == GamePhase.DRAW:
+                # DRAW phase: check if all players have acted
+                # Use phase_complete_check to transition to river
+                self.phase_complete_check()
+        else:
+            # Move to next player who hasn't acted
+            try:
+                current_idx = active_players.index(gs.current_player_seat)
+                for i in range(1, len(active_players)):
+                    next_idx = (current_idx + i) % len(active_players)
+                    next_seat = active_players[next_idx]
+                    if next_seat not in gs.players_acted_this_step:
+                        # Check if this player can act (not escrow-locked in river escrow step)
+                        player = gs.players[next_seat]
+                        if gs.phase == GamePhase.RIVER and gs.current_action_step == 0 and player.hand.escrow_locked:
+                            # Auto-skip this player's escrow turn
+                            gs.players_acted_this_step.add(next_seat)
+                            # Recursively advance to next player
+                            self._advance_turn(gs)
+                            return
+                        gs.current_player_seat = next_seat
+                        return
+                # All players have acted - for draw phase, check for completion
+                if gs.phase == GamePhase.DRAW:
+                    self.phase_complete_check()
+            except (ValueError, IndexError):
+                gs.current_player_seat = None
+
+    def _phase_complete(self, gs: GameState) -> None:
+        """Mark betting round as complete and transition to next phase"""
+        # Reset for next phase
+        gs.players_acted_this_step.clear()
+        gs.current_action_step = 0
+        gs.current_highest_normal = 0
+
+        if gs.phase == GamePhase.PREFLOP:
+            gs.phase = GamePhase.DRAW
+        elif gs.phase == GamePhase.RIVER:
+            gs.phase = GamePhase.SHOWDOWN
 
     def phase_complete_check(self) -> bool:
         """Check if current phase is complete; auto-advance if needed"""
         gs = self.game_state
 
-        # Simplified: check if all active players have acted
-        active = gs.get_active_players()
-        if not active:
-            return False
+        if gs.phase == GamePhase.DRAW:
+            # Check if all active players have acted in draw phase
+            active = gs.get_active_players()
+            if not active:
+                return False
 
-        # If all acted, advance phase
-        all_acted = all(p.hand.action_this_phase is not None for p in active if not p.hand.is_folded)
-        if all_acted:
-            return self._advance_phase()
+            if all(p.hand.action_this_phase is not None for p in active if not p.hand.is_folded):
+                gs.phase = GamePhase.RIVER
+                gs.current_action_step = 0  # Start river with escrow step
+                gs.players_acted_this_step.clear()
+                gs.current_highest_normal = 0
+                gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+                return True
 
-        return False
-
-    def _advance_phase(self) -> bool:
-        """Move to next game phase. Returns True if advanced."""
-        gs = self.game_state
-
-        if gs.phase == GamePhase.SETUP:
-            gs.phase = GamePhase.PREFLOP
-            return True
-        elif gs.phase == GamePhase.PREFLOP:
-            gs.phase = GamePhase.DRAW
-            return True
-        elif gs.phase == GamePhase.DRAW:
-            gs.phase = GamePhase.RIVER
-            return True
-        elif gs.phase == GamePhase.RIVER:
-            gs.phase = GamePhase.SHOWDOWN
-            return True
         elif gs.phase == GamePhase.SHOWDOWN:
             # Execute showdown
             payouts = settle_pots(gs)
@@ -643,6 +817,14 @@ class BlackjackGameEngine:
 
         return False
 
+    def next_hand(self) -> None:
+        """Rotate button and start next hand"""
+        gs = self.game_state
+        # Rotate button clockwise
+        gs.button_seat = (gs.button_seat + 1) % len(gs.players)
+        gs.hand_number += 1
+        self.start_hand()
+
     def get_state(self) -> Dict:
         """Export game state as JSON-serializable dict"""
         if not self.game_state:
@@ -655,19 +837,26 @@ class BlackjackGameEngine:
             "phase": gs.phase.value,
             "button_seat": gs.button_seat,
             "current_player_seat": gs.current_player_seat,
+            "current_action_step": gs.current_action_step,  # 0=escrow, 1=normal
             "normal_pot": gs.normal_pot,
             "escrow_pot": gs.escrow_pot,
+            "current_highest_normal": gs.current_highest_normal,
             "players": [
                 {
                     "seat": p.seat,
+                    "user_id": p.user_id,
                     "username": p.username,
                     "stack": p.stack,
                     "normal_circle": p.normal_circle,
                     "escrow_circle": p.escrow_circle,
                     "is_active": p.is_active,
+                    "is_button": p.seat == gs.button_seat,
                     "is_folded": p.hand.is_folded if p.hand else False,
-                    "revealed_card": str(p.hand.revealed_card) if p.hand and p.hand.revealed_card else None,
+                    "escrow_locked": p.hand.escrow_locked if p.hand else False,
+                    "cards": [str(c) for c in (p.hand.original_cards if p.hand else [])],
+                    "cards_count": len(p.hand.original_cards) if p.hand else 0,
                     "cards_drawn": p.hand.cards_drawn if p.hand else 0,
+                    "action_this_phase": p.hand.action_this_phase if p.hand else None,
                 }
                 for p in gs.players
             ],

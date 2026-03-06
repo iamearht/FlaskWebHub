@@ -385,7 +385,7 @@ class GameEngine:
             # Everyone antes 1 escrow (scaled by ante_value)
             escrow_chips = ESCROW_ANTE * self.ante_value
             if player.stack >= escrow_chips:
-                player.escrow_circle = ESCROW_ANTE
+                player.escrow_circle = escrow_chips  # Track in chips, not antes
                 player.stack -= escrow_chips
                 gs.escrow_pot += escrow_chips
 
@@ -437,7 +437,7 @@ class GameEngine:
             # Button antes 1 chip to normal pot (scaled by ante_value)
             button_chips = BUTTON_ANTE * self.ante_value
             if button_player.stack >= button_chips:
-                button_player.normal_circle = BUTTON_ANTE
+                button_player.normal_circle = button_chips  # Track in chips, not antes
                 button_player.stack -= button_chips
                 gs.normal_pot += button_chips
 

@@ -14,14 +14,13 @@ from flask_login import login_required, current_user
 from extensions import db
 from models import User, BlackjackTable, BlackjackTableSeat
 from blackjack_game_engine import (
-    BlackjackGameEngine,
+    GameEngine,
     GamePhase,
     ActionType,
-    get_legal_actions,
 )
 
 # Simple in-memory table store (for demo; in production use DB)
-TABLES = {}  # table_id -> BlackjackGameEngine instance
+TABLES = {}  # table_id -> GameEngine instance
 TABLE_COUNTER = 0
 PLAYER_READY_STATUS = {}  # table_id -> {user_id: bool}
 
@@ -73,7 +72,7 @@ def create_table():
     for i in range(1, num_seats):
         players.append((0, f"Empty Seat {i}"))
 
-    engine = BlackjackGameEngine(seed=table_id)  # Deterministic seed
+    engine = GameEngine(seed=table_id)  # Deterministic seed
     engine.create_table(players, initial_stack=1000)
 
     TABLES[table_id] = engine
@@ -96,7 +95,7 @@ def view_table(table_id):
     # Lazy initialize engine if not already done
     if table_id not in TABLES:
         try:
-            engine = BlackjackGameEngine(seed=table_id)
+            engine = GameEngine(seed=table_id)
             TABLES[table_id] = engine
             current_app.logger.info(f"Game engine initialized for table {table_id}")
         except Exception as e:
@@ -366,9 +365,9 @@ def get_legal_actions_endpoint(table_id, seat):
             return jsonify({"error": "Table not found"}), 404
 
         engine = TABLES[table_id]
-        actions_info = get_legal_actions(engine.game_state, seat)
+        actions = engine.get_legal_actions(seat)
 
-        return jsonify(actions_info)
+        return jsonify({"actions": actions})
     except Exception as e:
         current_app.logger.error(f"Error getting legal actions: {e}")
         return jsonify({"error": str(e)}), 400

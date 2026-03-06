@@ -154,8 +154,12 @@ def get_table_state(table_id):
                     for player in game_state.get("players", []):
                         if player.get("seat") == seat.seat_number:
                             player_info["stack"] = player.get("stack", initial_stack)
-                            player_info["card1"] = player.get("card1", "")
-                            player_info["card2"] = player.get("card2", "")
+                            cards = player.get("cards", [])
+                            player_info["card1"] = cards[0] if len(cards) > 0 else ""
+                            player_info["card2"] = cards[1] if len(cards) > 1 else ""
+                            player_info["normal_circle"] = player.get("normal_circle", 0)
+                            player_info["escrow_circle"] = player.get("escrow_circle", 0)
+                            player_info["is_button"] = player.get("is_button", False)
                             break
 
                 seated_players.append(player_info)

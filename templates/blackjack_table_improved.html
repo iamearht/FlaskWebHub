@@ -553,12 +553,27 @@
                 </div>
 
                 <div class="actions">
-                    <button class="action-btn" onclick="toggleReady()" id="readyBtn">
+                    <button class="action-btn" onclick="toggleReady()" id="readyBtn" style="display: none;">
                         ✓ Ready
                     </button>
+                    <div id="gameActions" style="display: none; gap: 10px;">
+                        <button class="action-btn" onclick="playerAction('hit')" id="hitBtn" style="display: none; background-color: #3b82f6;">
+                            HIT
+                        </button>
+                        <button class="action-btn" onclick="playerAction('stand')" id="standBtn" style="display: none; background-color: #ef4444;">
+                            STAND
+                        </button>
+                        <button class="action-btn" onclick="playerAction('double')" id="doubleBtn" style="display: none; background-color: #8b5cf6;">
+                            DOUBLE
+                        </button>
+                        <button class="action-btn" onclick="playerAction('split')" id="splitBtn" style="display: none; background-color: #10b981;">
+                            SPLIT
+                        </button>
+                    </div>
                 </div>
 
                 <div id="readyStatus" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; text-align: center; font-size: 0.9rem; color: #bbb;"></div>
+                <div id="playerTurnStatus" style="margin-top: 10px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; text-align: center; font-size: 0.9rem; color: #10b981; display: none;"></div>
             </div>
         </div>
     </div>
@@ -666,13 +681,24 @@
                 renderSeats(data.seated_players);
                 updatePots(data);
                 updatePhase(data.phase);
+                updateActionButtons(data);
 
                 // Update ready status display
                 if (data.phase === 'setup' && data.seated_count > 0) {
+                    document.getElementById('readyBtn').style.display = 'block';
+                    document.getElementById('gameActions').style.display = 'none';
                     if (data.ready_count > 0) {
                         document.getElementById('readyStatus').textContent = `${data.ready_count}/${data.seated_count} players ready`;
                     } else {
                         document.getElementById('readyStatus').textContent = 'No players ready yet';
+                    }
+                } else {
+                    document.getElementById('readyBtn').style.display = 'none';
+                    document.getElementById('readyStatus').textContent = '';
+                    if (data.phase === 'draw' || data.phase === 'river') {
+                        document.getElementById('gameActions').style.display = 'flex';
+                    } else {
+                        document.getElementById('gameActions').style.display = 'none';
                     }
                 }
             } catch (error) {
@@ -707,10 +733,18 @@
                     const cardsHtml = cards.map(c => renderCard(c)).join('');
 
                     const stackInAntes = Math.floor((player.stack || 0) / ANTE_VALUE);
+                    const buttonIndicator = player.is_button ? '<span style="color: #fbbf24; font-weight: bold;">♠ BUTTON</span>' : '';
+                    const normalCircle = player.normal_circle || 0;
+                    const escrowCircle = player.escrow_circle || 0;
+
                     seat.innerHTML = `
                         <div class="seat-number">Seat ${i}</div>
-                        <div class="player-name">${player.username}</div>
+                        <div class="player-name">${player.username}${buttonIndicator ? ' ' + buttonIndicator : ''}</div>
                         <div class="cards-display">${cardsHtml || '<span style="color: #999; font-size: 0.8rem;">No cards</span>'}</div>
+                        <div class="ante-display" style="font-size: 0.75rem; margin-top: 4px;">
+                            <span style="color: #10b981;">●N:${normalCircle}</span>
+                            <span style="color: #3b82f6; margin-left: 4px;">●E:${escrowCircle}</span>
+                        </div>
                         <div class="player-stack">Stack: ${stackInAntes}a</div>
                     `;
                 } else {
@@ -856,6 +890,57 @@
             }
         }
 
+        function updateActionButtons(data) {
+            // Determine if it's the current player's turn
+            const isMyTurn = data.current_player_seat === currentPlayerSeat &&
+                            (data.phase === 'draw' || data.phase === 'river');
+
+            // Get legal actions for this player
+            const playerTurnStatus = document.getElementById('playerTurnStatus');
+
+            if (isMyTurn) {
+                playerTurnStatus.textContent = 'Your turn! Choose an action.';
+                playerTurnStatus.style.display = 'block';
+
+                // Show relevant action buttons based on phase
+                document.getElementById('hitBtn').style.display = 'block';
+                document.getElementById('standBtn').style.display = 'block';
+                // TODO: Enable double/split based on game rules
+                document.getElementById('doubleBtn').style.display = 'none';
+                document.getElementById('splitBtn').style.display = 'none';
+            } else {
+                playerTurnStatus.style.display = 'none';
+                document.getElementById('hitBtn').style.display = 'none';
+                document.getElementById('standBtn').style.display = 'none';
+                document.getElementById('doubleBtn').style.display = 'none';
+                document.getElementById('splitBtn').style.display = 'none';
+            }
+        }
+
+        async function playerAction(action) {
+            try {
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/action`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: action,
+                        seat: currentPlayerSeat
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    updateTableState();
+                } else {
+                    alert('Error: ' + (data.error || 'Action failed'));
+                }
+            } catch (error) {
+                console.error('Error performing action:', error);
+                alert('Failed to perform action');
+            }
+        }
 
         // Update table state every 2 seconds
         setInterval(updateTableState, 2000);

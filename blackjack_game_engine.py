@@ -406,9 +406,15 @@ class GameEngine:
             gs.button_seat = (gs.button_seat + 1) % len(gs.players)
 
         # DEBUG: Log player states after initialization
-        logger.info(f"=== SETUP_HAND: Player states after button reset ===")
+        logger.info(f"=== SETUP_HAND: Button assignment and initial setup ===")
+        logger.info(f"Button seat: {gs.button_seat}, Total players: {len(gs.players)}")
+
+        # Log seat-to-index mapping
+        seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+        logger.info(f"Seat-to-index mapping: {seat_to_index}")
+
         for i, player in enumerate(gs.players):
-            logger.info(f"Player {i} (seat {player.seat}): normal={player.normal_circle}, escrow={player.escrow_circle}, is_button={player.is_button}")
+            logger.info(f"  Player index {i} (seat {player.seat}): normal={player.normal_circle}, escrow={player.escrow_circle}, is_button={player.is_button}")
 
         # Deal 2 face-down cards to each player
         for player in gs.players:
@@ -424,6 +430,12 @@ class GameEngine:
         button_idx = seat_to_index[gs.button_seat]
         first_player_idx = (button_idx + 1) % len(gs.players)
         gs.current_player_seat = first_player_idx
+
+        logger.info(f"=== SETUP_HAND: Transition to PREFLOP ===")
+        logger.info(f"  Button: seat {gs.button_seat} (index {button_idx})")
+        logger.info(f"  First to act: index {first_player_idx} (seat {gs.players[first_player_idx].seat})")
+        logger.info(f"  current_player_seat SET TO: {gs.current_player_seat}")
+        logger.info(f"  phase={gs.phase.value}, step={gs.current_action_step}")
 
         gs.players_acted_this_step.clear()
         # Initialize current_highest_normal to button's ante (button has already posted)
@@ -520,19 +532,26 @@ class GameEngine:
         gs = self.game_state
         assert gs is not None
 
+        logger.info(f"[SKIP_CHECK] Entry: phase={gs.phase.value if gs else 'None'}, step={gs.current_action_step if gs else 'None'}, current_player_seat={gs.current_player_seat}, acted={gs.players_acted_this_step}")
+
         # In escrow step, check if current player should skip
         if gs.current_action_step == 0 and gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER]:
+            if gs.current_player_seat is None:
+                logger.info(f"[SKIP_CHECK] WARNING: current_player_seat is None!")
+                return
+
             current_player = gs.players[gs.current_player_seat]
-            logger.info(f"_handle_initial_skips: phase={gs.phase.value}, step={gs.current_action_step}, current_player_seat={gs.current_player_seat}, player_seat={current_player.seat}, normal={current_player.normal_circle}, escrow={current_player.escrow_circle}")
+            logger.info(f"[SKIP_CHECK] Escrow step - Checking player index={gs.current_player_seat}, seat={current_player.seat}, normal={current_player.normal_circle}, escrow={current_player.escrow_circle}")
+
             if self.should_skip_escrow_step(current_player):
-                logger.info(f"  -> Skipping player seat {current_player.seat}, advancing turn")
+                logger.info(f"[SKIP_CHECK] -> SKIP player index {gs.current_player_seat} (seat {current_player.seat}), advancing turn")
                 # Mark them as acted and advance
                 gs.players_acted_this_step.add(gs.current_player_seat)
                 self._advance_turn()
             else:
-                logger.info(f"  -> Player seat {current_player.seat} should ACT")
+                logger.info(f"[SKIP_CHECK] -> CONTINUE player index {gs.current_player_seat} (seat {current_player.seat}) should ACT")
         else:
-            logger.info(f"_handle_initial_skips: Not escrow step (phase={gs.phase.value if gs else 'None'}, step={gs.current_action_step if gs else 'None'})")
+            logger.info(f"[SKIP_CHECK] Not escrow step - skipping auto-skip logic")
 
     def should_skip_escrow_step(self, player: PlayerState) -> bool:
         """Check if player should skip escrow step"""
@@ -794,14 +813,19 @@ class GameEngine:
         gs = self.game_state
         assert gs is not None
 
-        logger.info(f"_advance_turn: phase={gs.phase.value}, step={gs.current_action_step}, current_player={gs.current_player_seat}, acted={gs.players_acted_this_step}")
+        logger.info(f"\n[ADVANCE] === ENTRY ===")
+        logger.info(f"[ADVANCE] phase={gs.phase.value}, step={gs.current_action_step}, current_player_seat={gs.current_player_seat}")
+        logger.info(f"[ADVANCE] players_acted_this_step={gs.players_acted_this_step}")
 
         active_players = gs.get_action_order_from_seat(gs.current_player_seat or 0)
+        logger.info(f"[ADVANCE] active_players from current_player_seat={active_players}")
         if not active_players:
+            logger.info(f"[ADVANCE] No active players, returning")
             return
 
         # Map seat numbers to player indices for folded check
         seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+        logger.info(f"[ADVANCE] seat_to_index mapping: {seat_to_index}")
         # Keep non_folded as seat numbers for downstream code compatibility
         non_folded = [
             seat for seat in active_players
@@ -860,22 +884,30 @@ class GameEngine:
                 self._check_draw_complete()
         else:
             # Move to next player - only consider non_folded players
+            logger.info(f"[ADVANCE] === MOVING TO NEXT PLAYER ===")
+
             # Create reverse mapping from seat to index
             index_to_seat = {i: p.seat for i, p in enumerate(gs.players)}
 
             # Find starting position in non_folded list
             if gs.current_player_seat is None:
                 # First action in step - start from first non_folded player
+                logger.info(f"[ADVANCE] current_player_seat is None, starting from first non_folded")
                 start_pos = 0
             else:
                 # Convert current player INDEX to SEAT
                 current_seat = index_to_seat.get(gs.current_player_seat)
+                logger.info(f"[ADVANCE] current_player_seat={gs.current_player_seat} -> seat={current_seat}")
                 if current_seat in non_folded:
                     # Find position in non_folded list
                     start_pos = non_folded.index(current_seat)
+                    logger.info(f"[ADVANCE] Found in non_folded at position {start_pos}")
                 else:
                     # Current player not in non_folded, restart
+                    logger.info(f"[ADVANCE] Current seat {current_seat} not in non_folded {non_folded}, restarting")
                     start_pos = 0
+
+            logger.info(f"[ADVANCE] Searching from position {start_pos} in non_folded={non_folded}")
 
             # Search for next player to act in non_folded list
             for i in range(len(non_folded)):
@@ -884,25 +916,35 @@ class GameEngine:
                 # Convert seat to index for consistency
                 next_idx = seat_to_index[next_seat]
 
+                logger.info(f"[ADVANCE] Loop iteration {i}: checking seat {next_seat} (idx {next_idx}), in_acted={next_idx in gs.players_acted_this_step}")
+
                 if next_idx not in gs.players_acted_this_step:
                     next_player = gs.players[next_idx]
+                    logger.info(f"[ADVANCE] Found non-acted player: seat {next_seat} (idx {next_idx}), normal={next_player.normal_circle}, escrow={next_player.escrow_circle}")
 
                     # Check if should skip escrow step
                     if (gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and
                         gs.current_action_step == 0 and
                         self.should_skip_escrow_step(next_player)):
                         # Auto-skip this player
+                        logger.info(f"[ADVANCE] AUTO-SKIPPING seat {next_seat} (idx {next_idx})")
                         gs.players_acted_this_step.add(next_idx)
                         gs.current_player_seat = next_idx
+                        logger.info(f"[ADVANCE] Set current_player_seat={gs.current_player_seat} (for recursion)")
                         # Recursively find next non-skipped player
                         self._advance_turn()
                         return
 
                     # Set to INDEX, not seat
+                    logger.info(f"[ADVANCE] === SETTING CURRENT PLAYER ===")
+                    logger.info(f"[ADVANCE] current_player_seat = {next_idx} (seat {next_seat})")
                     gs.current_player_seat = next_idx
+                    logger.info(f"[ADVANCE] CONFIRMED: current_player_seat is now {gs.current_player_seat}")
+                    logger.info(f"[ADVANCE] === EXIT (player to act) ===\n")
                     return
 
             # All non_folded players have acted
+            logger.info(f"[ADVANCE] All players have acted in this step")
             if gs.phase == GamePhase.DRAW:
                 self._check_draw_complete()
 

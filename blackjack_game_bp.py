@@ -174,8 +174,14 @@ def get_table_state(table_id):
         ready_count = len(PLAYER_READY_STATUS.get(table_id, {}))
         seated_count = len(seated_players)
 
+        # LOG API RESPONSE
+        current_app.logger.info(f"[API_RESPONSE] phase={game_state.get('phase')}, current_player_seat={game_state.get('current_player_seat')}, button_seat={game_state.get('button_seat')}")
+        current_app.logger.info(f"[API_RESPONSE] pots: normal={game_state.get('normal_pot')}, escrow={game_state.get('escrow_pot')}")
+        for sp in seated_players:
+            current_app.logger.info(f"[API_RESPONSE] player seat {sp.get('seat')}: normal={sp.get('normal_circle')}, escrow={sp.get('escrow_circle')}")
+
         # Merge database seating with game engine state
-        return jsonify({
+        response_data = {
             "phase": game_state.get("phase", "setup"),
             "current_player_seat": game_state.get("current_player_seat"),
             "button_seat": game_state.get("button_seat"),
@@ -186,7 +192,9 @@ def get_table_state(table_id):
             "escrow_pot": game_state.get("escrow_pot", 0),
             "ready_count": ready_count,
             "seated_count": seated_count,
-        })
+        }
+        current_app.logger.info(f"[API_RESPONSE] FINAL current_player_seat in response: {response_data.get('current_player_seat')}")
+        return jsonify(response_data)
     except Exception as e:
         current_app.logger.error(f"Error in get_table_state: {e}", exc_info=True)
         return jsonify({"error": f"Server error: {str(e)}"}), 500

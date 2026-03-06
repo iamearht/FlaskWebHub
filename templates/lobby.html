@@ -161,14 +161,29 @@
           <p>Created: {{ table.created_at.strftime('%Y-%m-%d %H:%M') if table.created_at else "N/A" }}</p>
         </div>
 
-        <div class="table-actions" style="margin-top: 15px;">
+        <div class="table-actions" style="margin-top: 15px; display: flex; gap: 10px;">
+          {% if table.id in user_seated_table_ids %}
           <a href="{{ url_for('blackjack.view_table', table_id=table.id) }}"
-             class="btn btn-primary">
+             class="btn btn-secondary"
+             style="flex: 1;">
+            View Table
+          </a>
+          <button type="button" class="btn btn-danger"
+                  onclick="leaveSeat({{ table.id }})"
+                  style="flex: 1;">
+            Leave Table
+          </button>
+          {% else %}
+          <a href="{{ url_for('blackjack.view_table', table_id=table.id) }}"
+             class="btn btn-primary"
+             style="flex: 1;">
             Join/View
           </a>
+          {% endif %}
           {% if is_admin and table.admin_id == user.id %}
           <button type="button" class="btn btn-danger"
-                  onclick="closeTable({{ table.id }})">
+                  onclick="closeTable({{ table.id }})"
+                  style="flex: 1;">
             Close Table
           </button>
           {% endif %}

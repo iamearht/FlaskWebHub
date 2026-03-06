@@ -111,6 +111,11 @@ def lobby():
     # Get all open Free Blackjack tables
     blackjack_tables = BlackjackTable.query.filter_by(is_open=True).all()
 
+    # Get tables where user is currently seated
+    user_seated_table_ids = {
+        seat.table_id for seat in BlackjackTableSeat.query.filter_by(user_id=user.id).all()
+    }
+
     return render_template(
         "lobby.html",
         user=user,
@@ -119,6 +124,7 @@ def lobby():
         waiting=waiting,
         jackpot_pools=jackpot_pools,
         blackjack_tables=blackjack_tables,
+        user_seated_table_ids=user_seated_table_ids,
         is_admin=user.is_admin if hasattr(user, 'is_admin') else False,
     )
 

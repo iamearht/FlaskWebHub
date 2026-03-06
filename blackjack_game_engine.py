@@ -288,6 +288,7 @@ class GameState:
     # Action tracking
     players_acted_this_step: Set[int] = field(default_factory=set)
     action_history: List[Dict] = field(default_factory=list)
+    last_raiser_seat: Optional[int] = None  # Track last raise/bet for betting round end condition
 
     # Hand tracking
     hand_number: int = 1
@@ -414,6 +415,9 @@ class GameEngine:
         gs.current_action_step = 0  # Escrow step
         gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)  # Left of button
         gs.players_acted_this_step.clear()
+        # Initialize current_highest_normal to button's ante (button has already posted)
+        gs.current_highest_normal = gs.players[gs.button_seat].normal_circle
+        gs.last_raiser_seat = gs.button_seat  # Button is the "raiser" that started action
 
     def _determine_button(self) -> None:
         """Determine button by highest card draw. Handles tiebreakers. Posts button ante."""
@@ -551,15 +555,24 @@ class GameEngine:
         if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and gs.current_action_step == 1:
             actions = [ActionType.FOLD]
 
+            # Compute to_call for this player
+            to_call = gs.current_highest_normal - player.normal_circle
+
             # Check availability
-            if gs.current_highest_normal == 0:
-                actions.append(ActionType.CHECK)
+            if to_call == 0:
+                # Player has matched the current highest
+                # Cannot check on first action if not button (special opening situation)
+                is_button = (gs.button_seat < len(gs.players) and gs.players[gs.button_seat] == player)
+                if is_button or player.hand.first_action_taken:
+                    actions.append(ActionType.CHECK)
+                actions.append(ActionType.BET)
             else:
+                # Player is facing a bet
                 actions.append(ActionType.CALL)
+                actions.append(ActionType.BET)
 
-            actions.append(ActionType.BET)
-
-            if gs.current_highest_normal > 0:
+            # Can raise if facing a bet or starting a new betting level
+            if to_call > 0 or gs.current_highest_normal > 0:
                 actions.append(ActionType.RAISE)
 
             return actions
@@ -654,6 +667,7 @@ class GameEngine:
             player.stack -= bet_amount
             gs.normal_pot += bet_amount
             gs.current_highest_normal = max(gs.current_highest_normal, player.normal_circle)
+            gs.last_raiser_seat = seat  # Track this bet for end-of-round detection
             gs.players_acted_this_step.add(seat)
 
         # RAISE
@@ -674,6 +688,7 @@ class GameEngine:
             player.stack -= additional
             gs.normal_pot += additional
             gs.current_highest_normal = raise_to
+            gs.last_raiser_seat = seat  # Track this raise for end-of-round detection
             gs.players_acted_this_step.add(seat)
 
         # HIT
@@ -764,7 +779,40 @@ class GameEngine:
             if p < len(gs.players) and not gs.players[p].hand.folded
         ]
 
-        # Check if all players have acted
+        # Check if betting round ends
+        if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and gs.current_action_step == 1:
+            # Betting round ends when:
+            # 1. Only one active player remains, or
+            # 2. All active players have matched the highest normal AND action has cycled back after last raiser
+            if len(non_folded) <= 1:
+                # Only one player left - they win the hand
+                self._handle_sole_remaining_player()
+                return
+
+            # Check if all non-folded players have matched the highest
+            all_matched = all(
+                gs.players[seat].normal_circle == gs.current_highest_normal
+                for seat in non_folded
+            )
+
+            if all_matched and gs.last_raiser_seat is not None:
+                # Check if action has cycled back to the seat after the last raiser
+                active_seats = gs.get_action_order_from_seat(gs.button_seat or 0)
+                non_folded_seats = [s for s in active_seats if s in non_folded]
+
+                if non_folded_seats and gs.current_player_seat is not None:
+                    try:
+                        last_raiser_idx = non_folded_seats.index(gs.last_raiser_seat)
+                        next_seat_after_raiser = non_folded_seats[(last_raiser_idx + 1) % len(non_folded_seats)]
+
+                        # If we've cycled back to seat after last raiser, round ends
+                        if gs.current_player_seat == next_seat_after_raiser:
+                            self._advance_phase()
+                            return
+                    except ValueError:
+                        pass
+
+        # Check if all players in step have acted (for escrow step or draw phase)
         if all(seat in gs.players_acted_this_step for seat in non_folded):
             if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER]:
                 if gs.current_action_step == 0:
@@ -772,11 +820,12 @@ class GameEngine:
                     gs.current_action_step = 1
                     gs.players_acted_this_step.clear()
                     gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+                    gs.last_raiser_seat = gs.button_seat  # Reset raiser tracking for normal betting step
 
                     # Auto-skip normal betting step if no bets have been placed
-                    if gs.current_highest_normal == 0:
-                        # Mark all players as acted and advance phase
-                        gs.players_acted_this_step = set(non_folded)
+                    button_ante = gs.players[gs.button_seat].normal_circle
+                    if gs.current_highest_normal <= button_ante:
+                        # Only button's ante, no further bets - skip to next phase
                         self._advance_phase()
                 else:
                     # Both steps done, move to next phase
@@ -811,6 +860,27 @@ class GameEngine:
                     self._check_draw_complete()
             except (ValueError, IndexError):
                 gs.current_player_seat = None
+
+    def _handle_sole_remaining_player(self) -> None:
+        """Handle case where only one player remains after others fold"""
+        gs = self.game_state
+        assert gs is not None
+
+        non_folded = [
+            p for p in gs.players
+            if p.is_active and p.hand and not p.hand.folded
+        ]
+
+        if len(non_folded) == 1:
+            # One player wins the hand
+            winner = non_folded[0]
+            winner.stack += gs.normal_pot + gs.escrow_pot
+
+            # Move to showdown to complete hand
+            gs.phase = GamePhase.SHOWDOWN
+            gs.current_action_step = 0
+            gs.players_acted_this_step.clear()
+            gs.current_player_seat = None
 
     def _advance_phase(self) -> None:
         """Move to next phase"""

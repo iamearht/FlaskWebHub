@@ -1,8 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from models import (db, User, AdminConfig, RakeTransaction, RakebackProgress,
                      Tournament, Match, get_lobby_rake_percent, get_tournament_rake_percent,
                      get_tournament_payouts, JackpotPool, JackpotEntry,
-                     get_jackpot_rake_percent, get_jackpot_payouts, get_affiliate_tiers)
+                     get_jackpot_rake_percent, get_jackpot_payouts, get_affiliate_tiers,
+                     BlackjackTable)
 from auth import login_required, get_current_user
 from datetime import datetime, timedelta
 from functools import wraps
@@ -410,3 +411,57 @@ def affiliate_config():
 
     current_tiers = get_affiliate_tiers()
     return render_template('admin/affiliate.html', user=user, tiers=current_tiers)
+
+
+@admin_bp.route('/blackjack-tables')
+@admin_required
+def blackjack_tables():
+    """View and manage blackjack tables"""
+    user = get_current_user()
+    tables = BlackjackTable.query.order_by(BlackjackTable.id.desc()).all()
+
+    return render_template('admin/blackjack_tables.html', user=user, tables=tables)
+
+
+@admin_bp.route('/api/mark-table-for-close/<int:table_id>', methods=['POST'])
+@admin_required
+def mark_table_for_close(table_id):
+    """Mark a table to close after the current hand finishes"""
+    user = get_current_user()
+    table = BlackjackTable.query.get(table_id)
+
+    if not table:
+        return jsonify({"error": "Table not found"}), 404
+
+    try:
+        table.marked_for_close = True
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": f"Table '{table.table_name}' marked to close after the current hand"
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to mark table: {str(e)}"}), 400
+
+
+@admin_bp.route('/api/unmark-table-for-close/<int:table_id>', methods=['POST'])
+@admin_required
+def unmark_table_for_close(table_id):
+    """Unmark a table from closing"""
+    user = get_current_user()
+    table = BlackjackTable.query.get(table_id)
+
+    if not table:
+        return jsonify({"error": "Table not found"}), 404
+
+    try:
+        table.marked_for_close = False
+        db.session.commit()
+        return jsonify({
+            "success": True,
+            "message": f"Table '{table.table_name}' unmarked from closing"
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to unmark table: {str(e)}"}), 400

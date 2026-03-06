@@ -1058,6 +1058,7 @@ class BlackjackTable(db.Model):
     ante_value = db.Column(db.Integer, nullable=False, default=10)  # Ante in coins
     admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Table admin
     is_open = db.Column(db.Boolean, nullable=False, default=True)  # Whether table is accepting players
+    marked_for_close = db.Column(db.Boolean, nullable=False, default=False)  # Close table after current hand
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     admin = db.relationship('User', backref='blackjack_tables')

@@ -743,14 +743,10 @@ class BlackjackGameEngine:
                 else:
                     # Both steps complete for this round, phase will advance
                     self._phase_complete(gs)
-            else:
-                # DRAW phase: just move to next player
-                try:
-                    current_idx = active_players.index(gs.current_player_seat)
-                    next_idx = (current_idx + 1) % len(active_players)
-                    gs.current_player_seat = active_players[next_idx]
-                except (ValueError, IndexError):
-                    gs.current_player_seat = None
+            elif gs.phase == GamePhase.DRAW:
+                # DRAW phase: check if all players have acted
+                # Use phase_complete_check to transition to river
+                self.phase_complete_check()
         else:
             # Move to next player who hasn't acted
             try:
@@ -761,8 +757,9 @@ class BlackjackGameEngine:
                     if next_seat not in gs.players_acted_this_step:
                         gs.current_player_seat = next_seat
                         return
-                # All players have acted
-                gs.current_player_seat = None
+                # All players have acted - for draw phase, check for completion
+                if gs.phase == GamePhase.DRAW:
+                    self.phase_complete_check()
             except (ValueError, IndexError):
                 gs.current_player_seat = None
 

@@ -876,7 +876,10 @@ class GameEngine:
                     # Transition from escrow to normal
                     gs.current_action_step = 1
                     gs.players_acted_this_step.clear()
-                    gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+                    # Convert button SEAT to INDEX, then calculate next player INDEX
+                    seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+                    button_idx = seat_to_index[gs.button_seat]
+                    gs.current_player_seat = (button_idx + 1) % len(gs.players)
                     gs.last_raiser_seat = gs.button_seat  # Reset raiser tracking for normal betting step
                     # Initialize normal betting action: auto-skip any players who don't need to act
                     self._handle_initial_skips()
@@ -997,14 +1000,20 @@ class GameEngine:
                 gs.current_highest_normal = 0
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
-            gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+            # Convert button SEAT to INDEX, then calculate next player INDEX
+            seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+            button_idx = seat_to_index[gs.button_seat]
+            gs.current_player_seat = (button_idx + 1) % len(gs.players)
 
         elif gs.phase == GamePhase.DRAW:
             gs.phase = GamePhase.RIVER
             gs.current_action_step = 0
             gs.players_acted_this_step.clear()
             gs.current_highest_normal = 0
-            gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+            # Convert button SEAT to INDEX, then calculate next player INDEX
+            seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+            button_idx = seat_to_index[gs.button_seat]
+            gs.current_player_seat = (button_idx + 1) % len(gs.players)
 
         elif gs.phase == GamePhase.RIVER:
             gs.phase = GamePhase.SHOWDOWN
@@ -1173,7 +1182,10 @@ class GameEngine:
                 # Transition to RIVER phase for actual gameplay
                 gs.phase = GamePhase.RIVER
                 gs.current_action_step = 0
-                first_to_act = (gs.button_seat + 1) % len(gs.players)
+                # Convert button SEAT to INDEX, then calculate next player INDEX
+                seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+                button_idx = seat_to_index[gs.button_seat]
+                first_to_act = (button_idx + 1) % len(gs.players)
                 gs.current_player_seat = first_to_act
 
                 # Initialize action tracking for RIVER phase

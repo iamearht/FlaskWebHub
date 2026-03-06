@@ -332,7 +332,7 @@ def player_ready(table_id):
 
                 # Use first player's buy-in as initial stack (or default to 1000 if not set)
                 initial_stack = seated_seats[0].buy_in_antes * table.ante_value if seated_seats and seated_seats[0].buy_in_antes else 1000
-                engine.create_table(player_list, initial_stack=initial_stack)
+                engine.create_table(player_list, initial_stack=initial_stack, ante_value=table.ante_value)
 
                 # Set individual stacks based on buy-in amounts
                 if engine.game_state and engine.game_state.players:
@@ -429,7 +429,7 @@ def start_hand(table_id):
         initial_stack = seated_seats[0].buy_in_antes * table.ante_value if seated_seats[0].buy_in_antes else 1000
 
         # Initialize game with seated players
-        engine.create_table(player_list, initial_stack=initial_stack)
+        engine.create_table(player_list, initial_stack=initial_stack, ante_value=table.ante_value)
 
         # Set individual stacks based on buy-in amounts
         if engine.game_state and engine.game_state.players:

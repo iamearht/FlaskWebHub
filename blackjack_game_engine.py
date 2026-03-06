@@ -292,6 +292,9 @@ class GameState:
     # Hand tracking
     hand_number: int = 1
 
+    # Table configuration
+    ante_value: int = 1  # Chips per ante (e.g., 10)
+
     def __post_init__(self):
         if not self.deck:
             self.deck = Deck()
@@ -323,14 +326,16 @@ class GameState:
 class GameEngine:
     """Core game engine"""
 
-    def __init__(self, seed: Optional[int] = None):
+    def __init__(self, seed: Optional[int] = None, ante_value: int = 1):
         self.game_state: Optional[GameState] = None
         self.seed = seed
+        self.ante_value = ante_value  # Chips per ante (e.g., 10)
 
     def create_table(
         self,
         player_list: List[Tuple[int, str, str]],  # [(seat_number, player_id, username), ...]
-        initial_stack: int = 1000
+        initial_stack: int = 1000,
+        ante_value: int = 1
     ) -> GameState:
         """Create new table and initialize game state"""
         if len(player_list) > MAX_PLAYERS:
@@ -338,8 +343,12 @@ class GameEngine:
         if len(player_list) < MIN_PLAYERS:
             raise ValueError(f"Min {MIN_PLAYERS} players required")
 
+        # Store ante_value for later use
+        self.ante_value = ante_value
+
         game_state = GameState(hand_number=1)
         game_state.deck = Deck(seed=self.seed)
+        game_state.ante_value = ante_value  # Store in game state for reference
 
         for seat_number, player_id, username in player_list:
             player = PlayerState(
@@ -373,11 +382,12 @@ class GameEngine:
             player.hand = PlayerHand()
             player.is_active = True
 
-            # Everyone antes 1 escrow
-            if player.stack >= ESCROW_ANTE:
+            # Everyone antes 1 escrow (scaled by ante_value)
+            escrow_chips = ESCROW_ANTE * self.ante_value
+            if player.stack >= escrow_chips:
                 player.escrow_circle = ESCROW_ANTE
-                player.stack -= ESCROW_ANTE
-                gs.escrow_pot += ESCROW_ANTE
+                player.stack -= escrow_chips
+                gs.escrow_pot += escrow_chips
 
             # Don't ante for button here - button is determined later via card draw
             player.is_button = False
@@ -849,16 +859,17 @@ class GameEngine:
                         gs.button_seat = button_index
                         button_player = gs.players[button_index]  # Get player by index for reliability
 
-                        # Button antes 1 chip to normal pot
-                        logger.warning(f"ANTE CHECK: player_id={id(button_player)}, seat={button_player.seat}, stack={button_player.stack}, ante={BUTTON_ANTE}")
+                        # Button antes 1 chip to normal pot (scaled by ante_value)
+                        button_chips = BUTTON_ANTE * gs.ante_value
+                        logger.warning(f"ANTE CHECK: player_id={id(button_player)}, seat={button_player.seat}, stack={button_player.stack}, ante={BUTTON_ANTE}, ante_value={gs.ante_value}, button_chips={button_chips}")
 
-                        if button_player.stack >= BUTTON_ANTE:
+                        if button_player.stack >= button_chips:
                             button_player.normal_circle = BUTTON_ANTE
-                            button_player.stack -= BUTTON_ANTE
-                            gs.normal_pot += BUTTON_ANTE
+                            button_player.stack -= button_chips
+                            gs.normal_pot += button_chips
                             logger.warning(f"ANTE APPLIED: player_id={id(button_player)}, stack_after={button_player.stack}, normal_pot={gs.normal_pot}, gs.players[button_index].stack={gs.players[button_index].stack}")
                         else:
-                            logger.warning(f"ANTE SKIPPED: stack {button_player.stack} < ante {BUTTON_ANTE}")
+                            logger.warning(f"ANTE SKIPPED: stack {button_player.stack} < button_chips {button_chips}")
 
                         # Update is_button flag for all players
                         button_player.is_button = True

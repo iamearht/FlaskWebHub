@@ -32,6 +32,10 @@ class GameEngine:
 
     def start_hand(self):
         """Start a new hand: SETUP phase."""
+        # Reset previous hand state (only if transitioning from HAND_OVER)
+        if self.game.phase == Phase.HAND_OVER:
+            self.game.reset_hand()
+
         self.game.phase = Phase.SETUP
 
         # Post antes/blinds

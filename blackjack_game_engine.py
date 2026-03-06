@@ -326,7 +326,7 @@ class GameEngine:
 
     def create_table(
         self,
-        player_list: List[Tuple[str, str]],  # [(player_id, username), ...]
+        player_list: List[Tuple[int, str, str]],  # [(seat_number, player_id, username), ...]
         initial_stack: int = 1000
     ) -> GameState:
         """Create new table and initialize game state"""
@@ -338,9 +338,9 @@ class GameEngine:
         game_state = GameState(hand_number=1)
         game_state.deck = Deck(seed=self.seed)
 
-        for seat, (player_id, username) in enumerate(player_list):
+        for seat_number, player_id, username in player_list:
             player = PlayerState(
-                seat=seat,
+                seat=seat_number,
                 player_id=player_id,
                 username=username,
                 stack=initial_stack

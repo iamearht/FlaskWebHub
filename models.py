@@ -1056,7 +1056,7 @@ class BlackjackTable(db.Model):
     max_seats = db.Column(db.Integer, nullable=False, default=5)
     big_blind = db.Column(db.Integer, nullable=False, default=10)
     ante_value = db.Column(db.Integer, nullable=False, default=10)  # Ante in coins
-    admin_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Table admin
+    admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Table admin
     is_open = db.Column(db.Boolean, nullable=False, default=True)  # Whether table is accepting players
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

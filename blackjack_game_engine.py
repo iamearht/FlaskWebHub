@@ -405,11 +405,6 @@ class GameEngine:
             # On subsequent hands, just rotate button one position left
             gs.button_seat = (gs.button_seat + 1) % len(gs.players)
 
-        # Reset button's escrow_circle to 0 (button only posts normal ante, not escrow ante)
-        # This prevents button from being incorrectly skipped in escrow step
-        if gs.button_seat < len(gs.players):
-            gs.players[gs.button_seat].escrow_circle = 0
-
         # DEBUG: Log player states after initialization
         logger.info(f"=== SETUP_HAND: Player states after button reset ===")
         for i, player in enumerate(gs.players):
@@ -423,7 +418,13 @@ class GameEngine:
         # Transition to PREFLOP phase
         gs.phase = GamePhase.PREFLOP
         gs.current_action_step = 0  # Escrow step
-        gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)  # Left of button
+
+        # Find first player after button (convert button SEAT to INDEX first)
+        seat_to_index = {p.seat: i for i, p in enumerate(gs.players)}
+        button_idx = seat_to_index[gs.button_seat]
+        first_player_idx = (button_idx + 1) % len(gs.players)
+        gs.current_player_seat = first_player_idx
+
         gs.players_acted_this_step.clear()
         # Initialize current_highest_normal to button's ante (button has already posted)
         gs.current_highest_normal = gs.players[gs.button_seat].normal_circle
@@ -880,10 +881,10 @@ class GameEngine:
             for i in range(len(non_folded)):
                 pos = (start_pos + i) % len(non_folded)
                 next_seat = non_folded[pos]
+                # Convert seat to index for consistency
+                next_idx = seat_to_index[next_seat]
 
-                if next_seat not in gs.players_acted_this_step:
-                    # Convert seat back to index
-                    next_idx = seat_to_index[next_seat]
+                if next_idx not in gs.players_acted_this_step:
                     next_player = gs.players[next_idx]
 
                     # Check if should skip escrow step
@@ -891,7 +892,7 @@ class GameEngine:
                         gs.current_action_step == 0 and
                         self.should_skip_escrow_step(next_player)):
                         # Auto-skip this player
-                        gs.players_acted_this_step.add(next_seat)
+                        gs.players_acted_this_step.add(next_idx)
                         gs.current_player_seat = next_idx
                         # Recursively find next non-skipped player
                         self._advance_turn()

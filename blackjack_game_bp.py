@@ -254,6 +254,20 @@ def player_ready(table_id):
     button_assigned = False
     hand_started = False
     if all_ready and len(seated_seats) >= 2 and table_id in TABLES:
+        # Check if table is marked for closing - if so, close it instead of starting new hand
+        table = BlackjackTable.query.filter_by(id=table_id).first()
+        if table and table.marked_for_close:
+            table.is_open = False
+            db.session.commit()
+            current_app.logger.info(f"Table {table_id} closed before starting new hand (marked for close)")
+            return jsonify({
+                "status": "ready",
+                "table_id": table_id,
+                "user_id": current_user.id,
+                "table_closed": True,
+                "message": "Table has been closed by admin after the hand finished"
+            })
+
         # All players ready and at least 2 players - initialize game, assign button, and start hand
         try:
             engine = TABLES[table_id]
@@ -420,6 +434,13 @@ def advance_phase(table_id):
             # Reset ready status
             if table_id in PLAYER_READY_STATUS:
                 PLAYER_READY_STATUS[table_id] = {}
+
+            # Check if table is marked for closing and close it
+            table = BlackjackTable.query.filter_by(id=table_id).first()
+            if table and table.marked_for_close:
+                table.is_open = False
+                db.session.commit()
+                current_app.logger.info(f"Table {table_id} closed after hand (marked for close)")
 
         return jsonify({"state": engine.get_state()})
     except Exception as e:

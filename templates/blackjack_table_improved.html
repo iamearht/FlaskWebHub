@@ -642,6 +642,19 @@
             </div>`;
         }
 
+        function renderHiddenCard() {
+            return `<div class="card-hidden" style="
+                display: inline-block;
+                width: 50px;
+                height: 70px;
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                border-radius: 4px;
+                border: 2px solid #1e40af;
+                margin-right: 4px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            "></div>`;
+        }
+
         function calculateSeatPositions(totalSeats, currentSeat) {
             const positions = [];
             const centerX = 50; // percentage
@@ -742,8 +755,27 @@
                         cardsHtml = drawCard ? renderCard(drawCard) : '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
                     } else {
                         // Show actual hand cards during other phases
-                        const cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
-                        cardsHtml = cards.map(c => renderCard(c)).join('') || '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
+                        // Determine if we're viewing current player or opponent
+                        const isCurrentPlayer = currentPlayerSeat === i;
+
+                        if (isCurrentPlayer && player.hole_cards && player.hole_cards.length > 0) {
+                            // Current player: show actual hole cards
+                            const cards = player.hole_cards.map(cardStr => parseCard(cardStr)).filter(c => c);
+                            cardsHtml = cards.map(c => renderCard(c)).join('');
+                        } else if (!isCurrentPlayer && player.hole_cards === null) {
+                            // Opponent: show 2 blue rectangle placeholders
+                            cardsHtml = renderHiddenCard() + renderHiddenCard();
+                        } else {
+                            cardsHtml = '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
+                        }
+
+                        // Add exposed card if it exists (visible to everyone)
+                        if (player.exposed_card) {
+                            const exposedCard = parseCard(player.exposed_card);
+                            if (exposedCard) {
+                                cardsHtml += `<div style="margin-top: 4px; font-size: 0.7rem; color: #666;">Exposed: </div>` + renderCard(exposedCard);
+                            }
+                        }
                     }
 
                     seat.innerHTML = `

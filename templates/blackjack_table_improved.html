@@ -752,7 +752,7 @@
                         <div class="cards-display">${cardsHtml}</div>
                         <div class="ante-display" style="font-size: 0.75rem; margin-top: 4px;">
                             <span style="color: #10b981;">●N:${normalCircle}</span>
-                            <span style="color: #3b82f6; margin-left: 4px;">●E:${escrowCircle}</span>
+                            <span style="color: #ef4444; margin-left: 4px;">●E:${escrowCircle}</span>
                         </div>
                         <div class="player-stack">Stack: ${stackInAntes}a</div>
                     `;
@@ -770,11 +770,14 @@
         }
 
         function updatePots(data) {
-            document.getElementById('normalPot').textContent = data.normal_pot || 0;
-            document.getElementById('escrowPot').textContent = data.escrow_pot || 0;
-            const total = (data.normal_pot || 0) + (data.escrow_pot || 0);
-            document.getElementById('totalPot').textContent = total;
-            document.getElementById('centerPot').textContent = total;
+            const normalPotAntes = Math.floor((data.normal_pot || 0) / ANTE_VALUE);
+            const escrowPotAntes = Math.floor((data.escrow_pot || 0) / ANTE_VALUE);
+            const totalPotAntes = normalPotAntes + escrowPotAntes;
+
+            document.getElementById('normalPot').textContent = normalPotAntes + 'a';
+            document.getElementById('escrowPot').textContent = escrowPotAntes + 'a';
+            document.getElementById('totalPot').textContent = totalPotAntes + 'a';
+            document.getElementById('centerPot').textContent = totalPotAntes + 'a';
         }
 
         function updatePhase(phase) {

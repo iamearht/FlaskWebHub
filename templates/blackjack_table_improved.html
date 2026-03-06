@@ -85,7 +85,6 @@
             background: #2563eb;
         }
 
-        /* Table Layout */
         .table-view {
             display: grid;
             grid-template-columns: 1fr 300px;
@@ -116,7 +115,6 @@
             justify-content: center;
         }
 
-        /* Center pot display */
         .center-pot {
             position: absolute;
             top: 50%;
@@ -220,7 +218,6 @@
             flex-wrap: wrap;
         }
 
-        /* Card styling */
         .card {
             width: 40px;
             height: 56px;
@@ -277,7 +274,6 @@
             background: #16a34a;
         }
 
-        /* Right Sidebar */
         .sidebar {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -358,19 +354,11 @@
             cursor: not-allowed;
         }
 
-        .loading {
-            text-align: center;
-            padding: 40px;
-            font-size: 1.1rem;
-            color: #bbb;
-        }
-
         .empty-seat {
             color: #999;
             font-size: 0.9rem;
         }
 
-        /* Buy-in Modal */
         .modal {
             display: none;
             position: fixed;
@@ -556,17 +544,32 @@
                     <button class="action-btn" onclick="toggleReady()" id="readyBtn" style="display: none;">
                         ✓ Ready
                     </button>
-                    <div id="gameActions" style="display: none; gap: 10px;">
-                        <button class="action-btn" onclick="playerAction('hit')" id="hitBtn" style="display: none; background-color: #3b82f6;">
+
+                    <!-- Betting actions (preflop_betting and river_betting) -->
+                    <div id="bettingActions" style="display: none; gap: 8px; margin-top: 12px; flex-direction: column;">
+                        <button class="action-btn" id="foldBtn" onclick="playerBetAction('FOLD')" style="background-color: #ef4444;">
+                            FOLD
+                        </button>
+                        <button class="action-btn" id="checkCallBtn" onclick="playerBetAction('CALL')" style="background-color: #3b82f6;">
+                            CHECK / CALL
+                        </button>
+                        <button class="action-btn" id="betRaiseBtn" onclick="playerBetAction('BET')" style="background-color: #fbbf24; color: #000;">
+                            BET / RAISE (1 pot)
+                        </button>
+                    </div>
+
+                    <!-- Draw actions (draw_phase) -->
+                    <div id="drawActions" style="display: none; gap: 10px; margin-top: 12px;">
+                        <button class="action-btn" onclick="playerAction('hit')" id="hitBtn" style="background-color: #3b82f6;">
                             HIT
                         </button>
-                        <button class="action-btn" onclick="playerAction('stand')" id="standBtn" style="display: none; background-color: #ef4444;">
+                        <button class="action-btn" onclick="playerAction('stand')" id="standBtn" style="background-color: #ef4444;">
                             STAND
                         </button>
-                        <button class="action-btn" onclick="playerAction('double')" id="doubleBtn" style="display: none; background-color: #8b5cf6;">
+                        <button class="action-btn" onclick="playerAction('double')" id="doubleBtn" style="background-color: #8b5cf6;">
                             DOUBLE
                         </button>
-                        <button class="action-btn" onclick="playerAction('split')" id="splitBtn" style="display: none; background-color: #10b981;">
+                        <button class="action-btn" onclick="playerAction('split')" id="splitBtn" style="background-color: #10b981;">
                             SPLIT
                         </button>
                     </div>
@@ -578,7 +581,6 @@
         </div>
     </div>
 
-    <!-- Buy-in Selection Modal -->
     <div id="buyInModal" class="modal">
         <div class="modal-content">
             <h2>Buy In</h2>
@@ -613,15 +615,7 @@
         let tableState = null;
         let userBalance = 0;
 
-        // Card suit symbols
-        const SUITS = {
-            'H': '♥',
-            'D': '♦',
-            'C': '♣',
-            'S': '♠'
-        };
-
-        const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        const SUITS = { 'H': '♥', 'D': '♦', 'C': '♣', 'S': '♠' };
 
         function parseCard(cardStr) {
             if (!cardStr || cardStr === '') return null;
@@ -657,26 +651,17 @@
 
         function calculateSeatPositions(totalSeats, currentSeat) {
             const positions = [];
-            const centerX = 50; // percentage
-            const centerY = 50; // percentage
-            const radius = 35; // percentage of container
+            const centerX = 50;
+            const centerY = 50;
+            const radius = 35;
 
             for (let i = 0; i < totalSeats; i++) {
-                // Calculate angle: start from bottom (270°) and distribute evenly
-                // Current player's seat is always at the bottom
                 let angleOffset = (currentSeat - i) * (360 / totalSeats);
                 let angle = (270 + angleOffset) * (Math.PI / 180);
-
                 const x = centerX + radius * Math.cos(angle);
                 const y = centerY + radius * Math.sin(angle);
-
-                positions.push({
-                    x: x,
-                    y: y,
-                    seat: i
-                });
+                positions.push({ x, y, seat: i });
             }
-
             return positions;
         }
 
@@ -688,31 +673,29 @@
                 tableState = data;
                 currentUserId = data.current_user_id;
 
-                // Find current player's seat
-                currentPlayerSeat = data.seated_players.find(p => p.user_id === currentUserId)?.seat || 0;
+                const seatedPlayers = data.players || data.seated_players || [];
 
-                renderSeats(data.seated_players);
+                const myPlayer = seatedPlayers.find(
+                    p => p.player_id === currentUserId || p.user_id === currentUserId
+                );
+                currentPlayerSeat = myPlayer ? myPlayer.seat : 0;
+
+                renderSeats(seatedPlayers);
                 updatePots(data);
                 updatePhase(data.phase);
-                updateActionButtons(data);
+                updateActionButtons(data, seatedPlayers);
 
-                // Update ready status display
-                if (data.phase === 'setup' && data.seated_count > 0) {
+                if (data.phase === 'setup' && data.seated_count !== undefined && data.seated_count > 0) {
                     document.getElementById('readyBtn').style.display = 'block';
-                    document.getElementById('gameActions').style.display = 'none';
                     if (data.ready_count > 0) {
-                        document.getElementById('readyStatus').textContent = `${data.ready_count}/${data.seated_count} players ready`;
+                        document.getElementById('readyStatus').textContent =
+                            `${data.ready_count}/${data.seated_count} players ready`;
                     } else {
                         document.getElementById('readyStatus').textContent = 'No players ready yet';
                     }
                 } else {
                     document.getElementById('readyBtn').style.display = 'none';
                     document.getElementById('readyStatus').textContent = '';
-                    if (data.phase === 'river') {
-                        document.getElementById('gameActions').style.display = 'flex';
-                    } else {
-                        document.getElementById('gameActions').style.display = 'none';
-                    }
                 }
             } catch (error) {
                 console.error('Error updating table state:', error);
@@ -732,16 +715,19 @@
 
                 const seat = document.createElement('div');
                 seat.className = 'seat';
-                if (player && player.user_id === currentUserId) {
+
+                if (player && (player.player_id === currentUserId || player.user_id === currentUserId)) {
                     seat.classList.add('current');
+                }
+                if (player && (player.is_folded || player.folded)) {
+                    seat.classList.add('folded');
                 }
 
                 seat.style.left = pos.x + '%';
                 seat.style.top = pos.y + '%';
                 seat.style.transform = 'translate(-50%, -50%)';
 
-                if (player && player.user_id) {
-                    // Player is seated
+                if (player && (player.player_id || player.user_id)) {
                     const stackInAntes = Math.floor((player.stack || 0) / ANTE_VALUE);
                     const buttonIndicator = player.is_button ? '<span style="color: #fbbf24; font-weight: bold;">♠ BUTTON</span>' : '';
                     const normalCircle = player.normal_circle || 0;
@@ -750,49 +736,30 @@
                     const escrowCircleAntes = Math.floor(escrowCircle / ANTE_VALUE);
 
                     let cardsHtml = '';
+                    const isCurrentPlayer = currentPlayerSeat === i;
 
-                    // Show draw card during DRAW phase for button determination
-                    if (player && player.draw_card && tableState && tableState.phase === 'draw') {
-                        const drawCard = parseCard(player.draw_card);
-                        cardsHtml = drawCard ? renderCard(drawCard) : '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
-                    } else {
-                        // Show actual hand cards during other phases
-                        // Determine if we're viewing current player or opponent
-                        const isCurrentPlayer = currentPlayerSeat === i;
-
-                        if (isCurrentPlayer) {
-                            // Current player: try new format first, fallback to old format
-                            let cards = [];
-                            if (player.hole_cards && Array.isArray(player.hole_cards) && player.hole_cards.length > 0) {
-                                // New format: hole_cards as array of card strings
-                                cards = player.hole_cards.map(cardStr => parseCard(cardStr)).filter(c => c);
-                            } else if (player.card1 || player.card2) {
-                                // Old format: card1 and card2 fields
-                                cards = [parseCard(player.card1), parseCard(player.card2)].filter(c => c);
-                            }
-
-                            if (cards.length > 0) {
-                                cardsHtml = cards.map(c => renderCard(c)).join('');
-                            } else {
-                                cardsHtml = '<span style="color: #999; font-size: 0.8rem;">No cards</span>';
-                            }
+                    if (isCurrentPlayer) {
+                        if (player.cards && Array.isArray(player.cards) && player.cards.length > 0) {
+                            const parsed = player.cards.map(parseCard).filter(c => c);
+                            cardsHtml = parsed.map(c => renderCard(c)).join('');
                         } else {
-                            // Opponent: show 2 blue rectangle placeholders
-                            cardsHtml = renderHiddenCard() + renderHiddenCard();
+                            cardsHtml = '<span style="color: #999; font-size: 0.8rem;">Your cards</span>';
                         }
+                    } else {
+                        cardsHtml = renderHiddenCard() + renderHiddenCard();
+                    }
 
-                        // Add exposed card if it exists (visible to everyone)
-                        if (player.exposed_card) {
-                            const exposedCard = parseCard(player.exposed_card);
-                            if (exposedCard) {
-                                cardsHtml += `<div style="margin-top: 4px; font-size: 0.7rem; color: #666;">Exposed: </div>` + renderCard(exposedCard);
-                            }
+                    if (player.exposed_card) {
+                        const exposedCard = parseCard(player.exposed_card);
+                        if (exposedCard) {
+                            cardsHtml += `<div style="margin-top: 4px; font-size: 0.7rem; color: #666;">Exposed: </div>` +
+                                         renderCard(exposedCard);
                         }
                     }
 
                     seat.innerHTML = `
                         <div class="seat-number">Seat ${i}</div>
-                        <div class="player-name">${player.username}${buttonIndicator ? ' ' + buttonIndicator : ''}</div>
+                        <div class="player-name">${player.username || 'Player'}${buttonIndicator ? ' ' + buttonIndicator : ''}</div>
                         <div class="cards-display">${cardsHtml}</div>
                         <div class="ante-display" style="font-size: 0.75rem; margin-top: 4px;">
                             <span style="color: #10b981;">●N:${normalCircleAntes}a</span>
@@ -801,7 +768,6 @@
                         <div class="player-stack">Stack: ${stackInAntes}a</div>
                     `;
                 } else {
-                    // Empty seat
                     seat.innerHTML = `
                         <div class="seat-number">Seat ${i}</div>
                         <div class="empty-seat">Empty</div>
@@ -825,8 +791,9 @@
         }
 
         function updatePhase(phase) {
-            document.getElementById('phaseValue').textContent = phase || 'Setup';
-            document.getElementById('currentPhase').textContent = phase || 'Setup';
+            const display = phase || 'setup';
+            document.getElementById('phaseValue').textContent = display;
+            document.getElementById('currentPhase').textContent = display;
         }
 
         let pendingSeatNumber = null;
@@ -835,16 +802,13 @@
             pendingSeatNumber = seatNumber;
             document.getElementById('buyInAmount').value = '200';
 
-            // Fetch user balance
             fetch('/account')
                 .then(r => r.text())
                 .then(html => {
-                    const match = html.match(/Balance:<\/span>\s*<span[^>]*>(\d+)/);
+                    const match = html.match(/Balance:<\\/span>\\s*<span[^>]*>(\\d+)/);
                     if (match) {
                         userBalance = parseInt(match[1]);
                         validateBuyIn();
-                    } else {
-                        console.log('Could not extract balance from HTML');
                     }
                 })
                 .catch(e => console.log('Could not fetch balance'));
@@ -881,7 +845,6 @@
             }
         }
 
-        // Add real-time validation
         document.addEventListener('DOMContentLoaded', function() {
             const input = document.getElementById('buyInAmount');
             if (input) {
@@ -909,12 +872,8 @@
             try {
                 const response = await fetch(`/blackjack/api/join_seat/${TABLE_ID}/${pendingSeatNumber}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        buy_in_antes: buyInAntes
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ buy_in_antes: buyInAntes }),
                 });
 
                 const data = await response.json();
@@ -933,10 +892,9 @@
         async function toggleReady() {
             try {
                 const response = await fetch(`/blackjack/api/table/${TABLE_ID}/player_ready`, {
-                    method: 'POST'
+                    method: 'POST',
                 });
                 if (response.ok) {
-                    // Update table state to sync with server
                     updateTableState();
                 } else {
                     console.error('Error marking ready:', response.statusText);
@@ -946,40 +904,37 @@
             }
         }
 
-        function updateActionButtons(data) {
+        function updateActionButtons(data, seatedPlayers) {
             const playerTurnStatus = document.getElementById('playerTurnStatus');
+            const bettingActions = document.getElementById('bettingActions');
+            const drawActions = document.getElementById('drawActions');
 
-            // During DRAW phase, button is determined automatically - no player actions
-            if (data.phase === 'draw') {
-                playerTurnStatus.textContent = 'Determining button... Cards will be dealt shortly.';
-                playerTurnStatus.style.display = 'block';
-                document.getElementById('hitBtn').style.display = 'none';
-                document.getElementById('standBtn').style.display = 'none';
-                document.getElementById('doubleBtn').style.display = 'none';
-                document.getElementById('splitBtn').style.display = 'none';
+            const phase = data.phase;
+            const isMyTurn = data.current_player_seat === currentPlayerSeat;
+
+            bettingActions.style.display = 'none';
+            drawActions.style.display = 'none';
+            playerTurnStatus.style.display = 'none';
+
+            if (!phase) return;
+            if (phase === 'setup') return;
+
+            if (phase === 'draw_phase') {
+                if (isMyTurn) {
+                    playerTurnStatus.textContent = 'Your turn! Choose a draw action.';
+                    playerTurnStatus.style.display = 'block';
+                    drawActions.style.display = 'flex';
+                }
                 return;
             }
 
-            // During RIVER phase, show actions if it's the current player's turn
-            const isMyTurn = data.current_player_seat === currentPlayerSeat &&
-                            data.phase === 'river';
-
-            if (isMyTurn) {
-                playerTurnStatus.textContent = 'Your turn! Choose an action.';
-                playerTurnStatus.style.display = 'block';
-
-                // Show relevant action buttons based on phase
-                document.getElementById('hitBtn').style.display = 'block';
-                document.getElementById('standBtn').style.display = 'block';
-                // TODO: Enable double/split based on game rules
-                document.getElementById('doubleBtn').style.display = 'none';
-                document.getElementById('splitBtn').style.display = 'none';
-            } else {
-                playerTurnStatus.style.display = 'none';
-                document.getElementById('hitBtn').style.display = 'none';
-                document.getElementById('standBtn').style.display = 'none';
-                document.getElementById('doubleBtn').style.display = 'none';
-                document.getElementById('splitBtn').style.display = 'none';
+            if (phase === 'preflop_betting' || phase === 'river_betting') {
+                if (isMyTurn) {
+                    playerTurnStatus.textContent = 'Your turn! Choose a betting action.';
+                    playerTurnStatus.style.display = 'block';
+                    bettingActions.style.display = 'flex';
+                }
+                return;
             }
         }
 
@@ -987,17 +942,16 @@
             try {
                 const response = await fetch(`/blackjack/api/table/${TABLE_ID}/action`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: action,
-                        seat: currentPlayerSeat
-                    })
+                        seat: currentPlayerSeat,
+                    }),
                 });
 
                 const data = await response.json();
                 if (response.ok) {
+                    tableState = data.state || tableState;
                     updateTableState();
                 } else {
                     alert('Error: ' + (data.error || 'Action failed'));
@@ -1008,10 +962,51 @@
             }
         }
 
-        // Update table state every 2 seconds
-        setInterval(updateTableState, 2000);
+        async function playerBetAction(actionName) {
+            if (currentPlayerSeat === null || currentPlayerSeat === undefined) {
+                alert('No current player seat detected.');
+                return;
+            }
 
-        // Initial load
+            let engineAction = actionName;
+            let amount = 0;
+
+            if (engineAction === 'BET' || engineAction === 'RAISE') {
+                const totalChips = (tableState.normal_pot || 0) + (tableState.escrow_pot || 0);
+                amount = totalChips > 0 ? totalChips : ANTE_VALUE;
+            }
+
+            try {
+                const payload = {
+                    action: engineAction.toLowerCase(),
+                    seat: currentPlayerSeat,
+                    amount: amount,
+                };
+
+                if (tableState.phase === 'preflop_betting') {
+                    payload.card_index = 0;
+                }
+
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/action`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    tableState = data.state || tableState;
+                    updateTableState();
+                } else {
+                    alert('Error: ' + (data.error || 'Betting action failed'));
+                }
+            } catch (error) {
+                console.error('Error performing betting action:', error);
+                alert('Failed to perform betting action');
+            }
+        }
+
+        setInterval(updateTableState, 2000);
         updateTableState();
     </script>
 </body>

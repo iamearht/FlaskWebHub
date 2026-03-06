@@ -661,6 +661,12 @@ class GameEngine:
                     gs.current_action_step = 1
                     gs.players_acted_this_step.clear()
                     gs.current_player_seat = (gs.button_seat + 1) % len(gs.players)
+
+                    # Auto-skip normal betting step if no bets have been placed
+                    if gs.current_highest_normal == 0:
+                        # Mark all players as acted and advance phase
+                        gs.players_acted_this_step = set(non_folded)
+                        self._advance_phase()
                 else:
                     # Both steps done, move to next phase
                     self._advance_phase()

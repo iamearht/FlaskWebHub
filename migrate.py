@@ -223,6 +223,8 @@ def run_migrations():
         """ALTER TABLE IF EXISTS blackjack_tables ADD COLUMN IF NOT EXISTS admin_id INTEGER REFERENCES users(id);""",
 
         """ALTER TABLE IF EXISTS blackjack_tables ADD COLUMN IF NOT EXISTS is_open BOOLEAN NOT NULL DEFAULT TRUE;""",
+
+        """ALTER TABLE IF EXISTS blackjack_tables ADD COLUMN IF NOT EXISTS marked_for_close BOOLEAN NOT NULL DEFAULT FALSE;""",
     ]
 
     for migration in migrations:

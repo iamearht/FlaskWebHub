@@ -1,0 +1,296 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Blackjack Tables - Admin{% endblock %}
+
+{% block admin_content %}
+<div class="admin-container">
+    <h1>🎰 Blackjack Tables Management</h1>
+
+    {% if tables %}
+    <div class="tables-section">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Table ID</th>
+                    <th>Table Name</th>
+                    <th>Admin</th>
+                    <th>Players</th>
+                    <th>Ante</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for table in tables %}
+                <tr class="{% if table.marked_for_close %}marked-for-close{% endif %}">
+                    <td>#{{ table.id }}</td>
+                    <td>{{ table.table_name }}</td>
+                    <td>{{ table.admin.username if table.admin else 'System' }}</td>
+                    <td>{{ table.seat_count }}/{{ table.max_seats }}</td>
+                    <td>{{ table.ante_value }} coins</td>
+                    <td>
+                        {% if table.is_open %}
+                            <span class="badge badge-open">Open</span>
+                        {% else %}
+                            <span class="badge badge-closed">Closed</span>
+                        {% endif %}
+                        {% if table.marked_for_close %}
+                            <span class="badge badge-warning">⚠️ Marked for Close</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ table.created_at.strftime('%Y-%m-%d %H:%M') if table.created_at else 'N/A' }}</td>
+                    <td>
+                        <div class="action-buttons">
+                            {% if table.is_open %}
+                                {% if not table.marked_for_close %}
+                                <button class="btn btn-warning btn-sm" onclick="markTableForClose({{ table.id }}, '{{ table.table_name }}')">
+                                    Mark for Close
+                                </button>
+                                {% else %}
+                                <button class="btn btn-secondary btn-sm" onclick="unmarkTableForClose({{ table.id }}, '{{ table.table_name }}')">
+                                    Unmark
+                                </button>
+                                {% endif %}
+                                <button class="btn btn-danger btn-sm" onclick="forceCloseTable({{ table.id }}, '{{ table.table_name }}')">
+                                    Force Close
+                                </button>
+                            {% else %}
+                                <span style="color: #999;">Closed</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No blackjack tables exist yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.admin-container {
+    padding: 20px;
+    background: #1f2937;
+    color: #fff;
+    min-height: 100vh;
+}
+
+.admin-container h1 {
+    margin-bottom: 30px;
+    color: #22c55e;
+}
+
+.tables-section {
+    background: #374151;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 20px;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.admin-table thead {
+    background: #4b5563;
+    font-weight: bold;
+}
+
+.admin-table th {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 2px solid #555;
+}
+
+.admin-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #555;
+}
+
+.admin-table tbody tr:hover {
+    background: #3b3f4f;
+}
+
+.admin-table tbody tr.marked-for-close {
+    background: rgba(251, 146, 60, 0.1);
+}
+
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.badge-open {
+    background: #10b981;
+    color: #fff;
+}
+
+.badge-closed {
+    background: #ef4444;
+    color: #fff;
+}
+
+.badge-warning {
+    background: #f97316;
+    color: #fff;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.3s;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-warning {
+    background: #f59e0b;
+    color: #000;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: #fff;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-secondary {
+    background: #6b7280;
+    color: #fff;
+}
+
+.btn-secondary:hover {
+    background: #4b5563;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #9ca3af;
+}
+</style>
+
+<script>
+async function markTableForClose(tableId, tableName) {
+    if (!confirm(`Mark "${tableName}" to close after the current hand finishes?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/admin/api/mark-table-for-close/${tableId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unable to mark table'));
+        }
+    } catch (error) {
+        console.error('Error marking table:', error);
+        alert('Failed to mark table. Please try again.');
+    }
+}
+
+async function unmarkTableForClose(tableId, tableName) {
+    if (!confirm(`Unmark "${tableName}" from closing?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/admin/api/unmark-table-for-close/${tableId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unable to unmark table'));
+        }
+    } catch (error) {
+        console.error('Error unmarking table:', error);
+        alert('Failed to unmark table. Please try again.');
+    }
+}
+
+async function forceCloseTable(tableId, tableName) {
+    if (!confirm(`Force close "${tableName}" immediately? This will end the current hand.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/game/blackjack/close_table/${tableId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Unable to close table'));
+        }
+    } catch (error) {
+        console.error('Error closing table:', error);
+        alert('Failed to close table. Please try again.');
+    }
+}
+</script>
+
+{% endblock %}

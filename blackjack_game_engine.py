@@ -410,6 +410,11 @@ class GameEngine:
         if gs.button_seat < len(gs.players):
             gs.players[gs.button_seat].escrow_circle = 0
 
+        # DEBUG: Log player states after initialization
+        logger.info(f"=== SETUP_HAND: Player states after button reset ===")
+        for i, player in enumerate(gs.players):
+            logger.info(f"Player {i} (seat {player.seat}): normal={player.normal_circle}, escrow={player.escrow_circle}, is_button={player.is_button}")
+
         # Deal 2 face-down cards to each player
         for player in gs.players:
             cards = gs.deck.draw_n(2)
@@ -517,10 +522,16 @@ class GameEngine:
         # In escrow step, check if current player should skip
         if gs.current_action_step == 0 and gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER]:
             current_player = gs.players[gs.current_player_seat]
+            logger.info(f"_handle_initial_skips: phase={gs.phase.value}, step={gs.current_action_step}, current_player_seat={gs.current_player_seat}, player_seat={current_player.seat}, normal={current_player.normal_circle}, escrow={current_player.escrow_circle}")
             if self.should_skip_escrow_step(current_player):
+                logger.info(f"  -> Skipping player seat {current_player.seat}, advancing turn")
                 # Mark them as acted and advance
                 gs.players_acted_this_step.add(gs.current_player_seat)
                 self._advance_turn()
+            else:
+                logger.info(f"  -> Player seat {current_player.seat} should ACT")
+        else:
+            logger.info(f"_handle_initial_skips: Not escrow step (phase={gs.phase.value if gs else 'None'}, step={gs.current_action_step if gs else 'None'})")
 
     def should_skip_escrow_step(self, player: PlayerState) -> bool:
         """Check if player should skip escrow step"""
@@ -529,17 +540,21 @@ class GameEngine:
 
         # Skip if circles already equal
         if player.normal_circle == player.escrow_circle:
+            logger.info(f"  should_skip_escrow_step: circles equal ({player.normal_circle} == {player.escrow_circle}) -> SKIP")
             return True
 
         # Skip if normal < escrow
         if player.normal_circle < player.escrow_circle:
+            logger.info(f"  should_skip_escrow_step: normal < escrow ({player.normal_circle} < {player.escrow_circle}) -> SKIP")
             return True
 
         # Skip if river and escrow locked
         if (self.game_state.phase == GamePhase.RIVER and
             player.hand.escrow_locked):
+            logger.info(f"  should_skip_escrow_step: river and escrow_locked -> SKIP")
             return True
 
+        logger.info(f"  should_skip_escrow_step: no skip conditions met (normal={player.normal_circle}, escrow={player.escrow_circle}) -> ACT")
         return False
 
     def get_legal_actions(self, seat: int) -> List[ActionType]:
@@ -778,6 +793,8 @@ class GameEngine:
         gs = self.game_state
         assert gs is not None
 
+        logger.info(f"_advance_turn: phase={gs.phase.value}, step={gs.current_action_step}, current_player={gs.current_player_seat}, acted={gs.players_acted_this_step}")
+
         active_players = gs.get_action_order_from_seat(gs.current_player_seat or 0)
         if not active_players:
             return
@@ -786,6 +803,7 @@ class GameEngine:
             p for p in active_players
             if p < len(gs.players) and not gs.players[p].hand.folded
         ]
+        logger.info(f"  active_players={active_players}, non_folded={non_folded}")
 
         # Check if betting round ends
         if gs.phase in [GamePhase.PREFLOP, GamePhase.RIVER] and gs.current_action_step == 1:

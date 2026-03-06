@@ -64,19 +64,6 @@ async def get_game(game_id: str, player_seat: int = 0):
     return engine.state_for_player(player_seat)
 
 
-@app.post("/api/games/{game_id}/start")
-async def start_game(game_id: str):
-    """Start the game (begin first hand)."""
-    if game_id not in games:
-        raise HTTPException(status_code=404, detail="Game not found")
-
-    engine = games[game_id]
-    engine.start_hand()
-
-    logger.info(f"Started game {game_id}")
-    return {"status": "started", "phase": engine.game.phase.value}
-
-
 # ============================================================================
 # WEBSOCKET ROUTES
 # ============================================================================

@@ -687,7 +687,13 @@
             const phase = gameState.phase || 'setup';
             const currentPlayerSeat = gameState_data.current_player_seat;
             const currentStep = gameState_data.current_action_step || 0;
-            const isMyTurn = currentPlayerSeat === getCurrentUserSeat();
+            const myUserSeat = getCurrentUserSeat();
+            const isMyTurn = currentPlayerSeat === myUserSeat;
+
+            // DEBUG: Log turn detection
+            console.log(`[TURN] currentPlayerSeat=${currentPlayerSeat}, myUserSeat=${myUserSeat}, isMyTurn=${isMyTurn}, phase=${phase}`);
+            console.log(`[TURN] current_user_id=${gameState.current_user_id}`);
+            console.log(`[TURN] seated_players:`, gameState.seated_players);
 
             // Update phase
             document.getElementById('phaseValue').textContent = phase.charAt(0).toUpperCase() + phase.slice(1);
@@ -845,10 +851,19 @@
 
         function getCurrentUserSeat() {
             // Find current user's seat from seated_players using user_id
-            if (!gameState || !gameState.current_user_id) return null;
+            if (!gameState || !gameState.current_user_id) {
+                console.log(`[USER_SEAT] No gameState or current_user_id, returning null`);
+                return null;
+            }
             const seatedPlayers = gameState.seated_players || [];
-            const myPlayer = seatedPlayers.find(p => p.user_id === gameState.current_user_id);
-            return myPlayer ? myPlayer.seat : null;
+            console.log(`[USER_SEAT] current_user_id=${gameState.current_user_id}, checking ${seatedPlayers.length} seated players`);
+            const myPlayer = seatedPlayers.find(p => {
+                console.log(`  [USER_SEAT] Checking player user_id=${p.user_id}, seat=${p.seat}`);
+                return p.user_id === gameState.current_user_id;
+            });
+            const result = myPlayer ? myPlayer.seat : null;
+            console.log(`[USER_SEAT] Found my seat: ${result}`);
+            return result;
         }
 
         function showEscrowInput() {

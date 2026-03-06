@@ -67,10 +67,10 @@ def create_table():
     table_id = TABLE_COUNTER
 
     # Initialize with current user + AI/empty seats
-    players = [(current_user.id, current_user.username)]
+    players = [(0, current_user.id, current_user.username)]
     # Add empty seats
     for i in range(1, num_seats):
-        players.append((0, f"Empty Seat {i}"))
+        players.append((i, 0, f"Empty Seat {i}"))
 
     engine = GameEngine(seed=table_id)  # Deterministic seed
     engine.create_table(players, initial_stack=1000)
@@ -326,7 +326,7 @@ def player_ready(table_id):
 
                 # Create player list from database seating with buy-in amounts
                 player_list = [
-                    (s.user_id, s.user.username)
+                    (s.seat_number, s.user_id, s.user.username)
                     for s in seated_seats
                 ]
 
@@ -418,7 +418,7 @@ def start_hand(table_id):
 
     # Create player list from database seating
     player_list = [
-        (seat.user_id, seat.user.username)
+        (seat.seat_number, seat.user_id, seat.user.username)
         for seat in seated_seats
     ]
 

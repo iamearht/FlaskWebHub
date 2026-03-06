@@ -147,6 +147,10 @@ def get_table_state(table_id):
                     "stack": initial_stack,
                     "card1": None,
                     "card2": None,
+                    "draw_card": None,
+                    "normal_circle": 0,
+                    "escrow_circle": 0,
+                    "is_button": False,
                 }
 
                 # Try to get card information from game state

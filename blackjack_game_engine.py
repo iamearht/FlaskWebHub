@@ -399,17 +399,20 @@ class GameEngine:
 
         # Deal 1 face-up card to EACH player for button determination
         # Make sure every player gets exactly one card
+        print(f"DEBUG: setup_hand() starting - {len(gs.players)} players in game")
         for player in gs.players:
             player.hand.draw_cards = []  # Initialize as empty list
 
         for player in gs.players:
             draw_cards = gs.deck.draw_n(1)  # Draw 1 card
             player.hand.draw_cards = draw_cards  # Assign to player
+            print(f"DEBUG: Dealt to seat {player.seat}: {draw_cards}")
 
             # Verify the card was drawn
             if not player.hand.draw_cards or len(player.hand.draw_cards) == 0:
                 # Fallback: try drawing again
                 player.hand.draw_cards = gs.deck.draw_n(1)
+                print(f"DEBUG: Fallback draw for seat {player.seat}: {player.hand.draw_cards}")
 
     def _handle_initial_skips(self) -> None:
         """Auto-skip players who don't need to act in current step"""
@@ -771,10 +774,14 @@ class GameEngine:
                 gs.draw_phase_timestamp = current_time
 
             # Ensure ALL players have draw_cards (handle initialization failures)
+            print(f"DEBUG: Step 1 - {len(gs.players)} players")
             for player in gs.players:
+                has_cards = hasattr(player.hand, 'draw_cards') and player.hand.draw_cards
+                print(f"DEBUG: Seat {player.seat} has draw_cards: {has_cards}, cards: {player.hand.draw_cards if hasattr(player.hand, 'draw_cards') else 'NO ATTR'}")
                 if not hasattr(player.hand, 'draw_cards') or not player.hand.draw_cards:
                     # If player somehow doesn't have a draw card, give them one now
                     player.hand.draw_cards = gs.deck.draw_n(1)
+                    print(f"DEBUG: Had to redraw for seat {player.seat}: {player.hand.draw_cards}")
 
             # Find highest card value(s) - check ALL players
             highest_value = 0
@@ -785,6 +792,7 @@ class GameEngine:
                     # Get the LATEST card (for tiebreaker rounds, it's the newest)
                     card = player.hand.draw_cards[-1]
                     value = RANK_VALUES.get(card.rank, 0)
+                    print(f"DEBUG: Seat {player.seat} card {card} value {value}")
                     if value > highest_value:
                         highest_value = value
                         tied_players = [player.seat]

@@ -421,8 +421,25 @@ def take_action(table_id):
     amount = int(data.get("amount", 0))
 
     player = next((p for p in engine.game_state.players if p.seat == seat), None)
-    if not player or player.playerid != current_user.id:
+    if not player or player.player_id != current_user.id:
         return jsonify({"error": "Not your seat"}), 403
+
+    try:
+        action = ActionType[action_name.upper()]
+
+        card_index = data.get("card_index")
+        if card_index is not None:
+            card_index = int(card_index)
+
+        engine.player_action(seat, action, amount, card_index=card_index)
+
+        return jsonify({"state": engine.get_state()})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except KeyError:
+        return jsonify({"error": f"Unknown action: {action_name}"}), 400
+
+
 
     try:
         action = ActionType[action_name.upper()]

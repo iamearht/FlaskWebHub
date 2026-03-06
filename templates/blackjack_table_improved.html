@@ -572,8 +572,11 @@
             <h2>Buy In</h2>
             <div class="buy-in-group">
                 <label class="buy-in-label">Select amount in antes:</label>
-                <input type="number" id="buyInAmount" class="buy-in-input" min="100" max="500" value="200" placeholder="200">
+                <input type="number" id="buyInAmount" class="buy-in-input" min="100" value="200" placeholder="200">
                 <div class="buy-in-range">Min: 100a | Max: 500a</div>
+                <div id="balanceWarning" style="margin-top: 8px; font-size: 0.85rem; color: #f59e0b; display: none;">
+                    <strong>⚠️ Insufficient balance!</strong> You can afford max <span id="maxAffordable">0</span>a
+                </div>
             </div>
 
             <div class="quick-select">
@@ -584,7 +587,7 @@
             </div>
 
             <div class="modal-actions">
-                <button class="modal-btn modal-btn-primary" onclick="confirmBuyIn()">Join</button>
+                <button class="modal-btn modal-btn-primary" onclick="confirmBuyIn()" id="confirmBtn">Join</button>
                 <button class="modal-btn modal-btn-secondary" onclick="closeBuyInModal()">Cancel</button>
             </div>
         </div>
@@ -596,6 +599,7 @@
         let currentUserId = null;
         let currentPlayerSeat = null;
         let tableState = null;
+        let userBalance = 0;
 
         // Card suit symbols
         const SUITS = {
@@ -734,6 +738,19 @@
         function showBuyInModal(seatNumber) {
             pendingSeatNumber = seatNumber;
             document.getElementById('buyInAmount').value = '200';
+
+            // Fetch user balance
+            fetch('/account')
+                .then(r => r.text())
+                .then(html => {
+                    const match = html.match(/Balance:\s*<strong>(\d+)</);
+                    if (match) {
+                        userBalance = parseInt(match[1]);
+                        validateBuyIn();
+                    }
+                })
+                .catch(e => console.log('Could not fetch balance'));
+
             document.getElementById('buyInModal').classList.add('active');
         }
 
@@ -744,15 +761,50 @@
 
         function setBuyInAmount(amount) {
             document.getElementById('buyInAmount').value = amount;
+            validateBuyIn();
         }
+
+        function validateBuyIn() {
+            const buyInAntes = parseInt(document.getElementById('buyInAmount').value);
+            const buyInChips = buyInAntes * ANTE_VALUE;
+            const maxAffordableChips = userBalance;
+            const maxAffordableAntes = Math.floor(maxAffordableChips / ANTE_VALUE);
+
+            const warningEl = document.getElementById('balanceWarning');
+            const confirmBtn = document.getElementById('confirmBtn');
+
+            if (!isNaN(buyInAntes) && buyInChips > userBalance) {
+                warningEl.style.display = 'block';
+                document.getElementById('maxAffordable').textContent = maxAffordableAntes;
+                confirmBtn.disabled = true;
+            } else {
+                warningEl.style.display = 'none';
+                confirmBtn.disabled = false;
+            }
+        }
+
+        // Add real-time validation
+        document.addEventListener('DOMContentLoaded', function() {
+            const input = document.getElementById('buyInAmount');
+            if (input) {
+                input.addEventListener('input', validateBuyIn);
+                input.addEventListener('change', validateBuyIn);
+            }
+        });
 
         async function confirmBuyIn() {
             if (pendingSeatNumber === null) return;
 
             const buyInAntes = parseInt(document.getElementById('buyInAmount').value);
+            const buyInChips = buyInAntes * ANTE_VALUE;
 
             if (isNaN(buyInAntes) || buyInAntes < 100 || buyInAntes > 500) {
                 alert('Please enter a value between 100 and 500 antes');
+                return;
+            }
+
+            if (buyInChips > userBalance) {
+                alert(`Insufficient balance. You need ${buyInChips} coins but only have ${userBalance}`);
                 return;
             }
 

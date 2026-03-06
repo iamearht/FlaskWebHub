@@ -190,8 +190,11 @@ def run_migrations():
         CREATE TABLE IF NOT EXISTS blackjack_tables (
             id SERIAL PRIMARY KEY,
             table_name VARCHAR(100) NOT NULL DEFAULT 'Main Table',
-            max_seats INTEGER NOT NULL DEFAULT 7,
+            max_seats INTEGER NOT NULL DEFAULT 5,
             big_blind INTEGER NOT NULL DEFAULT 10,
+            ante_value INTEGER NOT NULL DEFAULT 10,
+            admin_id INTEGER REFERENCES users(id),
+            is_open BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """,
@@ -209,6 +212,55 @@ def run_migrations():
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(table_id, seat_number)
         );
+        """,
+
+        # ------------------------------------------------------------------
+        # ALTER blackjack_tables TO ADD MISSING COLUMNS (if table exists)
+        # ------------------------------------------------------------------
+
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name='blackjack_tables'
+                AND column_name='ante_value'
+            ) THEN
+                ALTER TABLE blackjack_tables
+                ADD COLUMN ante_value INTEGER NOT NULL DEFAULT 10;
+            END IF;
+        END $$;
+        """,
+
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name='blackjack_tables'
+                AND column_name='admin_id'
+            ) THEN
+                ALTER TABLE blackjack_tables
+                ADD COLUMN admin_id INTEGER REFERENCES users(id);
+            END IF;
+        END $$;
+        """,
+
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name='blackjack_tables'
+                AND column_name='is_open'
+            ) THEN
+                ALTER TABLE blackjack_tables
+                ADD COLUMN is_open BOOLEAN NOT NULL DEFAULT TRUE;
+            END IF;
+        END $$;
         """,
     ]
 

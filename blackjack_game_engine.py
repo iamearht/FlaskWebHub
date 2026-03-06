@@ -504,6 +504,7 @@ def get_legal_actions(game_state: GameState, seat: int) -> Dict:
                 actions = [
                     {"action": ActionType.ADD_ESCROW.value, "min": 0, "max": min(player.stack, player.stack)}
                 ]
+            # If escrow_locked, player cannot act in escrow step - auto-skip handled in _advance_turn
         else:
             # Normal betting phase
             max_raise = min(player.stack, pot_limit_amount)
@@ -608,12 +609,14 @@ class BlackjackGameEngine:
         if action == ActionType.ADD_ESCROW:
             if gs.current_action_step == 0:  # Escrow step
                 # Add to escrow (up to stack, respecting river restrictions)
+                # In river escrow step, cannot add escrow if escrow_locked
                 if gs.phase == GamePhase.RIVER and player.hand.escrow_locked:
-                    raise ValueError("Cannot add escrow after hitting in draw phase")
+                    raise ValueError("Cannot add escrow - escrow was locked in draw phase")
                 add_amount = min(amount, player.stack)
-                player.escrow_circle += add_amount
-                player.stack -= add_amount
-                gs.escrow_pot += add_amount
+                if add_amount > 0:
+                    player.escrow_circle += add_amount
+                    player.stack -= add_amount
+                    gs.escrow_pot += add_amount
                 gs.players_acted_this_step.add(seat)
                 self._advance_turn(gs)
             else:
@@ -755,6 +758,14 @@ class BlackjackGameEngine:
                     next_idx = (current_idx + i) % len(active_players)
                     next_seat = active_players[next_idx]
                     if next_seat not in gs.players_acted_this_step:
+                        # Check if this player can act (not escrow-locked in river escrow step)
+                        player = gs.players[next_seat]
+                        if gs.phase == GamePhase.RIVER and gs.current_action_step == 0 and player.hand.escrow_locked:
+                            # Auto-skip this player's escrow turn
+                            gs.players_acted_this_step.add(next_seat)
+                            # Recursively advance to next player
+                            self._advance_turn(gs)
+                            return
                         gs.current_player_seat = next_seat
                         return
                 # All players have acted - for draw phase, check for completion

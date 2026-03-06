@@ -41,31 +41,24 @@ class GameEngine:
         # Post antes/blinds
         for player in self.game.players:
             if not player.in_hand:
-                print(f"DEBUG: Skipping escrow for player {player.seat_index} (in_hand=False)")
                 continue
 
             # Escrow ante: 1 chip
-            print(f"DEBUG: Escrow for player {player.seat_index} - chips_remaining={player.chips_remaining()}, stack={player.stack}")
             if player.chips_remaining() >= 1:
                 player.escrow_circle += 1
                 player.stack -= 1
                 self.game.escrow_pot += 1
-                print(f"DEBUG: After escrow - stack={player.stack}, escrow={player.escrow_circle}, escrow_pot={self.game.escrow_pot}")
             else:
                 player.all_in = True
-                print(f"DEBUG: Player {player.seat_index} all-in (escrow)")
 
         # Button posts: 1 chip to normal
         button_player = self.game.players[self.game.button_index]
-        print(f"DEBUG: Button player {button_player.seat_index} chips_remaining={button_player.chips_remaining()}, stack={button_player.stack}, escrow={button_player.escrow_circle}, normal={button_player.normal_circle}")
         if button_player.chips_remaining() >= 1:
             button_player.normal_circle += 1
             button_player.stack -= 1
             self.game.normal_pot += 1
-            print(f"DEBUG: After button post - stack={button_player.stack}, normal={button_player.normal_circle}, normal_pot={self.game.normal_pot}")
         else:
             button_player.all_in = True
-            print(f"DEBUG: Button all-in (chips_remaining={button_player.chips_remaining()})")
 
         # Shuffle and deal
         self.game.deck.reset()

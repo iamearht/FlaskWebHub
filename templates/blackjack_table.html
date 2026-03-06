@@ -145,8 +145,32 @@
             border-color: #fbbf24;
         }
 
+        .dealer-button {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 32px;
+            height: 32px;
+            background: #fbbf24;
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+            border: 2px solid #f59e0b;
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.8);
+        }
+
         .seat.folded {
             opacity: 0.6;
+        }
+
+        .cards-display {
+            margin-top: 5px;
+            font-size: 0.9rem;
+            min-height: 24px;
         }
 
         .seat-number {
@@ -327,6 +351,84 @@
         .join-btn:hover {
             background: #16a34a;
         }
+
+        .action-panel {
+            background: rgba(59, 130, 246, 0.1);
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .action-panel h4 {
+            margin-bottom: 12px;
+            color: #3b82f6;
+        }
+
+        .action-step {
+            background: rgba(255, 193, 7, 0.1);
+            border-left: 3px solid #fbbf24;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .action-buttons-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .action-btn-small {
+            padding: 8px;
+            font-size: 0.85rem;
+        }
+
+        .bet-input-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .bet-input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #3b82f6;
+            border-radius: 4px;
+            background: rgba(59, 130, 246, 0.1);
+            color: #fff;
+            font-size: 0.9rem;
+        }
+
+        .bet-input::placeholder {
+            color: #666;
+        }
+
+        .bet-limits {
+            font-size: 0.8rem;
+            color: #bbb;
+            margin-top: 8px;
+        }
+
+        .phase-step-display {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(255, 193, 7, 0.1);
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .step-indicator {
+            display: inline-block;
+            padding: 4px 8px;
+            background: #fbbf24;
+            color: #000;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
     </style>
 </head>
 <body>
@@ -389,6 +491,42 @@
                 </div>
 
                 <div id="readyStatus" style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 4px; text-align: center; font-size: 0.9rem; color: #bbb;"></div>
+
+                <!-- Action Panel (shown during betting/draw phases) -->
+                <div class="action-panel" id="actionPanel" style="display: none;">
+                    <h4>Your Action</h4>
+                    <div class="phase-step-display" id="stepDisplay"></div>
+
+                    <!-- Escrow Step Actions -->
+                    <div id="escrowActions" style="display: none;">
+                        <div class="action-step">Escrow Step - Add chips or skip</div>
+                        <div class="action-buttons-grid">
+                            <button class="action-btn action-btn-small" onclick="playerAction('add_escrow', 0)">Skip</button>
+                            <button class="action-btn action-btn-small" onclick="showEscrowInput()">Add Escrow</button>
+                        </div>
+                        <div class="bet-input-group" id="escrowInputGroup" style="display: none;">
+                            <input type="number" id="escrowAmount" class="bet-input" placeholder="Amount" min="1">
+                            <button class="action-btn action-btn-small" onclick="submitEscrow()">OK</button>
+                        </div>
+                    </div>
+
+                    <!-- Normal Betting Step Actions -->
+                    <div id="normalBetActions" style="display: none;">
+                        <div class="action-step">Betting Round</div>
+                        <div id="betActionButtons"></div>
+                        <div class="bet-limits" id="betLimits"></div>
+                    </div>
+
+                    <!-- Draw Phase Actions -->
+                    <div id="drawActions" style="display: none;">
+                        <div class="action-buttons-grid">
+                            <button class="action-btn action-btn-small" onclick="playerAction('hit')">Hit</button>
+                            <button class="action-btn action-btn-small" onclick="playerAction('stand')">Stand</button>
+                            <button class="action-btn action-btn-small" id="doubleBtn" onclick="playerAction('double')" style="display: none;">Double</button>
+                            <button class="action-btn action-btn-small" id="splitBtn" onclick="playerAction('split')" style="display: none;">Split</button>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="status" id="status">
                     Connecting...
@@ -479,8 +617,17 @@
                     seatEl.classList.add('current');
                 }
 
-                if (seatNum === gameState.button_seat) {
+                const gameState_data = gameState.game_state || {};
+                const buttonSeat = gameState_data.button_seat;
+                if (seatNum === buttonSeat && buttonSeat !== null && buttonSeat !== undefined) {
                     seatEl.classList.add('button');
+                    // Add dealer button indicator
+                    const dealerButton = document.createElement('div');
+                    dealerButton.className = 'dealer-button';
+                    dealerButton.textContent = 'D';
+                    dealerButton.title = 'Dealer Button';
+                    seatEl.style.position = 'relative';
+                    seatEl.appendChild(dealerButton);
                 }
 
                 if (gamePlayer && gamePlayer.is_folded) {
@@ -499,8 +646,11 @@
 
                     if (gamePlayer) {
                         // Game in progress - show game info
-                        if (gamePlayer.revealed_card) {
-                            seatHTML += `<div class="card">${gamePlayer.revealed_card}</div>`;
+                        // Show cards
+                        if (gamePlayer.cards && gamePlayer.cards.length > 0) {
+                            const cardsDisplay = gamePlayer.cards.slice(0, 2).join(' ');
+                            const extraCount = gamePlayer.cards.length > 2 ? ` +${gamePlayer.cards.length - 2}` : '';
+                            seatHTML += `<div class="cards-display">${cardsDisplay}${extraCount}</div>`;
                         }
                         seatHTML += `
                             <div class="player-circles">
@@ -535,8 +685,13 @@
         function updateUI() {
             if (!gameState) return;
 
-            // Update phase
+            const gameState_data = gameState.game_state || {};
             const phase = gameState.phase || 'setup';
+            const currentPlayerSeat = gameState_data.current_player_seat;
+            const currentStep = gameState_data.current_action_step || 0;
+            const isMyTurn = currentPlayerSeat === getCurrentUserSeat();
+
+            // Update phase
             document.getElementById('phaseValue').textContent = phase.charAt(0).toUpperCase() + phase.slice(1);
             document.getElementById('currentPhase').innerHTML = `<value>${phase}</value>`;
 
@@ -553,10 +708,10 @@
             const readyBtn = document.getElementById('readyBtn');
             const advanceBtn = document.getElementById('advanceBtn');
             const seatedCount = gameState.seated_players ? gameState.seated_players.length : 0;
-            const hasButtonAssigned = gameState.button_seat !== null && gameState.button_seat !== undefined;
+            const hasButtonAssigned = gameState_data.button_seat !== null && gameState_data.button_seat !== undefined;
 
             // Show/hide ready button based on game phase
-            if (gameState.phase === 'setup' && seatedCount >= 2 && !hasButtonAssigned) {
+            if (phase === 'setup' && seatedCount >= 2 && !hasButtonAssigned) {
                 readyBtn.style.display = 'block';
                 readyBtn.disabled = false;
             } else {
@@ -564,25 +719,35 @@
             }
 
             // Show advance button if button is assigned and still in SETUP phase
-            if (gameState.phase === 'setup' && hasButtonAssigned) {
+            if (phase === 'setup' && hasButtonAssigned) {
                 advanceBtn.style.display = 'block';
                 advanceBtn.disabled = false;
             } else {
-                advanceBtn.disabled = gameState.phase === 'hand_over';
+                advanceBtn.style.display = 'none';
+                advanceBtn.disabled = phase === 'hand_over';
+            }
+
+            // Update action panel visibility and content
+            const actionPanel = document.getElementById('actionPanel');
+            if (isMyTurn && phase !== 'setup') {
+                actionPanel.style.display = 'block';
+                updateActionPanel(gameState_data, phase, currentStep);
+            } else {
+                actionPanel.style.display = 'none';
             }
 
             // Update ready status display
             const readyStatus = document.getElementById('readyStatus');
-            if (hasButtonAssigned) {
-                // Button has been assigned - show button info and advance prompt
-                const buttonPlayer = gameState.seated_players.find(p => p.seat === gameState.button_seat);
-                const buttonName = buttonPlayer ? buttonPlayer.username : `Seat ${gameState.button_seat + 1}`;
-                readyStatus.innerHTML = `<strong>🎯 Button:</strong> ${buttonName}<br><small>Click "Advance Phase" to start betting</small>`;
+            if (hasButtonAssigned && phase === 'setup') {
+                // Button has been assigned - show button info
+                const buttonPlayer = gameState.seated_players.find(p => p.seat === gameState_data.button_seat);
+                const buttonName = buttonPlayer ? buttonPlayer.username : `Seat ${gameState_data.button_seat + 1}`;
+                readyStatus.innerHTML = `<strong>🎯 Button:</strong> ${buttonName}<br><small>Hand starting...</small>`;
                 readyStatus.style.display = 'block';
-            } else if (gameState.phase === 'setup' && seatedCount >= 2) {
+            } else if (phase === 'setup' && seatedCount >= 2) {
                 readyStatus.textContent = `Click "Ready" to assign button with RNG (${seatedCount} players seated)`;
                 readyStatus.style.display = 'block';
-            } else if (gameState.phase === 'setup' && seatedCount < 2) {
+            } else if (phase === 'setup' && seatedCount < 2) {
                 readyStatus.textContent = `Waiting for ${2 - seatedCount} more player(s)...`;
                 readyStatus.style.display = 'block';
             } else {
@@ -590,25 +755,118 @@
             }
 
             // Update status
-            if (gameState.phase !== 'setup' && gameState.current_player_seat !== null) {
+            if (phase !== 'setup' && currentPlayerSeat !== null) {
                 // Game in progress - show current player
-                const gameState_data = gameState.game_state || {};
                 const players = gameState_data.players || [];
-                const player = players[gameState.current_player_seat];
+                const player = players[currentPlayerSeat];
                 if (player) {
+                    const stepText = phase === 'draw' ? '' : (currentStep === 0 ? ' (Escrow Step)' : ' (Betting)');
                     document.getElementById('status').innerHTML = `
-                        <strong>${player.username}'s Turn</strong>
+                        <strong>${player.username}'s Turn${stepText}</strong>
                     `;
                 }
             } else if (seatedCount < 2) {
                 // Waiting for more players
                 document.getElementById('status').innerHTML = `Waiting for players... (${seatedCount}/2)`;
-            } else if (hasButtonAssigned) {
-                // Button assigned, ready to advance
-                document.getElementById('status').innerHTML = `🎯 Button assigned - Ready to start betting`;
+            } else if (hasButtonAssigned && phase === 'setup') {
+                // Button assigned, waiting to start
+                document.getElementById('status').innerHTML = `🎯 Button assigned - Hand starting...`;
             } else {
                 // Ready or waiting
                 document.getElementById('status').innerHTML = `${seatedCount} players seated - Click Ready to start`;
+            }
+        }
+
+        function updateActionPanel(gameState_data, phase, currentStep) {
+            const stepDisplay = document.getElementById('stepDisplay');
+            const escrowActions = document.getElementById('escrowActions');
+            const normalBetActions = document.getElementById('normalBetActions');
+            const drawActions = document.getElementById('drawActions');
+
+            // Hide all action types first
+            escrowActions.style.display = 'none';
+            normalBetActions.style.display = 'none';
+            drawActions.style.display = 'none';
+
+            if (phase === 'preflop' || phase === 'river') {
+                if (currentStep === 0) {
+                    // Escrow step
+                    stepDisplay.innerHTML = '<span class="step-indicator">Escrow Step</span>';
+                    escrowActions.style.display = 'block';
+                } else {
+                    // Normal betting step
+                    stepDisplay.innerHTML = '<span class="step-indicator">Betting Round</span>';
+                    normalBetActions.style.display = 'block';
+                    updateBettingActions(gameState_data);
+                }
+            } else if (phase === 'draw') {
+                stepDisplay.innerHTML = '<span class="step-indicator">Draw Phase</span>';
+                drawActions.style.display = 'block';
+                updateDrawActions(gameState_data);
+            }
+        }
+
+        function updateBettingActions(gameState_data) {
+            const buttonsDiv = document.getElementById('betActionButtons');
+            const limitsDiv = document.getElementById('betLimits');
+            const currentHighest = gameState_data.current_highest_normal || 0;
+            const potLimit = gameState_data.current_highest_normal + (gameState_data.normal_pot + gameState_data.escrow_pot);
+
+            buttonsDiv.innerHTML = `
+                <div class="action-buttons-grid">
+                    <button class="action-btn action-btn-small" onclick="playerAction('check')">Check</button>
+                    <button class="action-btn action-btn-small" onclick="playerAction('fold')">Fold</button>
+                    ${currentHighest > 0 ? `<button class="action-btn action-btn-small" onclick="playerAction('call', ${currentHighest})">Call ${currentHighest}</button>` : ''}
+                    <button class="action-btn action-btn-small" onclick="showBetInput()">Bet</button>
+                </div>
+            `;
+
+            limitsDiv.innerHTML = `Pot Limit: ${potLimit} | Highest Bet: ${currentHighest}`;
+        }
+
+        function updateDrawActions(gameState_data) {
+            const currentPlayerSeat = gameState_data.current_player_seat;
+            const player = gameState_data.players[currentPlayerSeat];
+
+            // Show double if cards_drawn === 0
+            const doubleBtn = document.getElementById('doubleBtn');
+            doubleBtn.style.display = player.cards_drawn === 0 ? 'block' : 'none';
+
+            // Show split if cards_drawn === 0 and same rank
+            const splitBtn = document.getElementById('splitBtn');
+            if (player.cards && player.cards.length === 2 && player.cards_drawn === 0) {
+                const rank1 = player.cards[0].slice(0, -1);
+                const rank2 = player.cards[1].slice(0, -1);
+                splitBtn.style.display = rank1 === rank2 ? 'block' : 'none';
+            } else {
+                splitBtn.style.display = 'none';
+            }
+        }
+
+        function getCurrentUserSeat() {
+            // Find current user's seat from seated_players
+            const seatedPlayers = gameState.seated_players || [];
+            const myUsername = document.querySelector('header .table-info')?.textContent || '';
+            // This is a simplified approach - in real app would pass user_id from server
+            return null; // Will be improved
+        }
+
+        function showEscrowInput() {
+            const inputGroup = document.getElementById('escrowInputGroup');
+            inputGroup.style.display = 'flex';
+            document.getElementById('escrowAmount').focus();
+        }
+
+        function submitEscrow() {
+            const amount = parseInt(document.getElementById('escrowAmount').value) || 0;
+            playerAction('add_escrow', amount);
+        }
+
+        function showBetInput() {
+            // Show modal or input for bet amount
+            const amount = prompt('Enter bet amount:');
+            if (amount) {
+                playerAction('bet', parseInt(amount));
             }
         }
 
@@ -668,6 +926,43 @@
                     throw new Error(data.error || 'Failed to join seat');
                 }
 
+                updateGameState();
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function playerAction(actionName, amount = 0) {
+            try {
+                const gameState_data = gameState.game_state || {};
+                const currentPlayerSeat = gameState_data.current_player_seat;
+
+                if (currentPlayerSeat === null || currentPlayerSeat === undefined) {
+                    throw new Error('Not your turn');
+                }
+
+                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/action`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        seat: currentPlayerSeat,
+                        action: actionName,
+                        amount: amount
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to take action');
+                }
+
+                // Clear input fields
+                document.getElementById('escrowInputGroup').style.display = 'none';
+                document.getElementById('escrowAmount').value = '';
+
+                // Update game state
                 updateGameState();
             } catch (error) {
                 alert(`Error: ${error.message}`);

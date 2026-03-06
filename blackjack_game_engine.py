@@ -405,6 +405,11 @@ class GameEngine:
             # On subsequent hands, just rotate button one position left
             gs.button_seat = (gs.button_seat + 1) % len(gs.players)
 
+        # Reset button's escrow_circle to 0 (button only posts normal ante, not escrow ante)
+        # This prevents button from being incorrectly skipped in escrow step
+        if gs.button_seat < len(gs.players):
+            gs.players[gs.button_seat].escrow_circle = 0
+
         # Deal 2 face-down cards to each player
         for player in gs.players:
             cards = gs.deck.draw_n(2)

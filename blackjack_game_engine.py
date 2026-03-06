@@ -397,11 +397,19 @@ class GameEngine:
         gs.draw_phase_timestamp = None
         gs.draw_phase_tied_players = set()  # Track tied players for tiebreaker draws
 
-        # Deal 1 face-up card to each player for button determination
+        # Deal 1 face-up card to EACH player for button determination
+        # Make sure every player gets exactly one card
         for player in gs.players:
-            if not hasattr(player.hand, 'draw_cards'):
-                player.hand.draw_cards = []
-            player.hand.draw_cards = gs.deck.draw_n(1)  # 1 card for button determination
+            player.hand.draw_cards = []  # Initialize as empty list
+
+        for player in gs.players:
+            draw_cards = gs.deck.draw_n(1)  # Draw 1 card
+            player.hand.draw_cards = draw_cards  # Assign to player
+
+            # Verify the card was drawn
+            if not player.hand.draw_cards or len(player.hand.draw_cards) == 0:
+                # Fallback: try drawing again
+                player.hand.draw_cards = gs.deck.draw_n(1)
 
     def _handle_initial_skips(self) -> None:
         """Auto-skip players who don't need to act in current step"""
@@ -762,13 +770,20 @@ class GameEngine:
             if gs.draw_phase_timestamp is None:
                 gs.draw_phase_timestamp = current_time
 
-            # Find highest card value(s)
+            # Ensure ALL players have draw_cards (handle initialization failures)
+            for player in gs.players:
+                if not hasattr(player.hand, 'draw_cards') or not player.hand.draw_cards:
+                    # If player somehow doesn't have a draw card, give them one now
+                    player.hand.draw_cards = gs.deck.draw_n(1)
+
+            # Find highest card value(s) - check ALL players
             highest_value = 0
             tied_players = []
 
             for player in gs.players:
-                if player.hand.draw_cards:
-                    card = player.hand.draw_cards[0]
+                if player.hand.draw_cards and len(player.hand.draw_cards) > 0:
+                    # Get the LATEST card (for tiebreaker rounds, it's the newest)
+                    card = player.hand.draw_cards[-1]
                     value = RANK_VALUES.get(card.rank, 0)
                     if value > highest_value:
                         highest_value = value
@@ -781,7 +796,7 @@ class GameEngine:
                 # Deal another card to tied players
                 for seat in tied_players:
                     player = gs.players[seat]
-                    new_card = gs.deck.draw(1)
+                    new_card = gs.deck.draw()  # Fixed: draw() takes no arguments
                     if not hasattr(player.hand, 'draw_cards'):
                         player.hand.draw_cards = []
                     player.hand.draw_cards.append(new_card)
@@ -824,15 +839,27 @@ class GameEngine:
                 gs.draw_phase_timestamp = current_time
             # Wait 3 seconds then deal
             elif current_time - gs.draw_phase_timestamp >= 3:
-                # Deal 2 cards face-down to each player
+                # Deal 2 cards face-down to EACH player
                 for player in gs.players:
-                    player.hand.original_cards = gs.deck.draw_n(2)
+                    cards = gs.deck.draw_n(2)
+                    player.hand.original_cards = cards
+
+                # Verify all players got cards (fallback check)
+                for player in gs.players:
+                    if not player.hand.original_cards or len(player.hand.original_cards) < 2:
+                        # Fallback: redeal if something went wrong
+                        player.hand.original_cards = gs.deck.draw_n(2)
 
                 # Transition to RIVER phase for actual gameplay
                 gs.phase = GamePhase.RIVER
                 gs.current_action_step = 0
                 first_to_act = (gs.button_seat + 1) % len(gs.players)
                 gs.current_player_seat = first_to_act
+
+                # Initialize action tracking for RIVER phase
+                gs.players_acted_this_step.clear()
+                gs.current_highest_normal = 0
+
                 gs.draw_phase_step = 0
                 gs.draw_phase_timestamp = None
 

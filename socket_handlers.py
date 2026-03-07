@@ -130,6 +130,20 @@ def init_socket(socketio):
             elif action_type == 'choice':
                 goes_first = bool(data.get('go_first_as_player', False))
                 make_choice(match, goes_first)
+                db.session.commit()
+
+                # FIX BUG #6: Broadcast choice action with each player's perspective
+                # Player 1 gets state calculated for player 1 (is_my_turn correct for them)
+                state_p1 = get_client_state(match, 1)
+                socketio_emit('game_state', state_p1, room=f'match_{match_id}', namespace='/game/classic', skip_sid=request.sid)
+
+                # Player 2 gets state calculated for player 2 (is_my_turn correct for them)
+                state_p2 = get_client_state(match, 2)
+                socketio_emit('game_state', state_p2, room=f'match_{match_id}', namespace='/game/classic', skip_sid=request.sid)
+
+                # Send requesting player their immediate response
+                emit('game_state', get_client_state(match, user_player_num))
+                return  # Skip generic broadcast below
             elif action_type == 'bet':
                 bets = data.get('bets', [])
                 place_bets(match, bets)

@@ -131,14 +131,20 @@ def init_socket(socketio):
                 goes_first = bool(data.get('go_first_as_player', False))
                 print(f"\n[CHOICE DEBUG] Player {user_player_num} choosing: goes_first_as_player={goes_first}")
                 print(f"[CHOICE DEBUG] match.player1_id={match.player1_id}, match.player2_id={match.player2_id}")
-                print(f"[CHOICE DEBUG] Before: phase={match.match_state.phase}")
+
+                # Get current state before choice
+                from models import MatchState
+                ms_before = MatchState.query.filter_by(match_id=match_id).first()
+                print(f"[CHOICE DEBUG] Before: phase={ms_before.phase if ms_before else 'N/A'}")
 
                 make_choice(match, goes_first)
                 db.session.commit()
 
-                print(f"[CHOICE DEBUG] After make_choice: phase={match.match_state.phase}, choice_made={match.match_state.choice_made}")
-                if match.match_state.current_turn < len(match.turns):
-                    turn = match.turns[match.match_state.current_turn]
+                # Get state after choice
+                ms_after = MatchState.query.filter_by(match_id=match_id).first()
+                print(f"[CHOICE DEBUG] After make_choice: phase={ms_after.phase}, choice_made={ms_after.choice_made}")
+                if ms_after.current_turn < len(match.turns):
+                    turn = match.turns[ms_after.current_turn]
                     print(f"[CHOICE DEBUG] Turn 0: player_role={turn.player_role}, dealer_role={turn.dealer_role}")
 
                 # Calculate and log states

@@ -975,11 +975,22 @@ socket.on('connected', function(data) {
 });
 
 socket.on('game_state', function(state) {
+    console.log('[SOCKET] Received game_state:', {
+        phase: state.phase,
+        is_my_turn: state.is_my_turn,
+        i_am_dealer: state.i_am_dealer,
+        PLAYER_NUM: PLAYER_NUM,
+        chooser: state.chooser,
+        choice_made: state.choice_made,
+        current_turn: state.current_turn
+    });
+
     isFetching = false;
     if (!state) return;
 
     // 🔥 PHASE CHANGE = INSTANT HARD RENDER
     if (state.phase !== lastPhase) {
+        console.log('[RENDER] Phase transition:', lastPhase, '→', state.phase);
         lastPhase = state.phase;
         renderState(state);
         return;

@@ -129,20 +129,35 @@ def init_socket(socketio):
                 do_card_draw(match)
             elif action_type == 'choice':
                 goes_first = bool(data.get('go_first_as_player', False))
+                print(f"\n[CHOICE DEBUG] Player {user_player_num} choosing: goes_first_as_player={goes_first}")
+                print(f"[CHOICE DEBUG] match.player1_id={match.player1_id}, match.player2_id={match.player2_id}")
+                print(f"[CHOICE DEBUG] Before: phase={match.match_state.phase}")
+
                 make_choice(match, goes_first)
                 db.session.commit()
 
-                # FIX BUG #6: Broadcast choice action with each player's perspective
-                # Player 1 gets state calculated for player 1 (is_my_turn correct for them)
+                print(f"[CHOICE DEBUG] After make_choice: phase={match.match_state.phase}, choice_made={match.match_state.choice_made}")
+                if match.match_state.current_turn < len(match.turns):
+                    turn = match.turns[match.match_state.current_turn]
+                    print(f"[CHOICE DEBUG] Turn 0: player_role={turn.player_role}, dealer_role={turn.dealer_role}")
+
+                # Calculate and log states
                 state_p1 = get_client_state(match, 1)
-                socketio_emit('game_state', state_p1, room=f'match_{match_id}', namespace='/game/classic', skip_sid=request.sid)
-
-                # Player 2 gets state calculated for player 2 (is_my_turn correct for them)
                 state_p2 = get_client_state(match, 2)
-                socketio_emit('game_state', state_p2, room=f'match_{match_id}', namespace='/game/classic', skip_sid=request.sid)
+                print(f"[CHOICE DEBUG] State P1: is_my_turn={state_p1.get('is_my_turn')}, phase={state_p1.get('phase')}")
+                print(f"[CHOICE DEBUG] State P2: is_my_turn={state_p2.get('is_my_turn')}, phase={state_p2.get('phase')}")
 
-                # Send requesting player their immediate response
-                emit('game_state', get_client_state(match, user_player_num))
+                # Broadcast - FIX BUG #6: Broadcast choice action with each player's perspective
+                socketio_emit('game_state', state_p1, room=f'match_{match_id}', namespace='/game/classic', skip_sid=request.sid)
+                print(f"[CHOICE DEBUG] Broadcasted state_p1 (skip_sid={request.sid})")
+
+                socketio_emit('game_state', state_p2, room=f'match_{match_id}', namespace='/game/classic', skip_sid=request.sid)
+                print(f"[CHOICE DEBUG] Broadcasted state_p2 (skip_sid={request.sid})")
+
+                # Send requesting player their response
+                state_requester = get_client_state(match, user_player_num)
+                emit('game_state', state_requester)
+                print(f"[CHOICE DEBUG] Sent state to requester (P{user_player_num})\n")
                 return  # Skip generic broadcast below
             elif action_type == 'bet':
                 bets = data.get('bets', [])

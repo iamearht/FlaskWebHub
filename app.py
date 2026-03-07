@@ -2,6 +2,7 @@ import os
 import logging
 
 from flask import Flask, request, abort
+from flask_socketio import SocketIO
 from extensions import db, login_manager
 
 from auth import auth_bp, get_current_user
@@ -26,7 +27,7 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
-def create_app() -> Flask:
+def create_app():
     app = Flask(__name__)
 
     # ---------------------------------------------------
@@ -84,6 +85,13 @@ def create_app() -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(jackpot_bp)
     app.register_blueprint(blackjack_bp)
+
+    # ---------------------------------------------------
+    # INITIALIZE SOCKET.IO
+    # ---------------------------------------------------
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+    from socket_handlers import init_socket
+    init_socket(socketio)
 
     # ---------------------------------------------------
     # DB INIT + AUTO PROMOTE ADMIN
@@ -207,10 +215,10 @@ def create_app() -> Flask:
         finally:
             db.session.remove()
 
-    return app
+    return app, socketio
 
 
-app = create_app()
+app, socketio = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), allow_unsafe_werkzeug=True)

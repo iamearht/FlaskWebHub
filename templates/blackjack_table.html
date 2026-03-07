@@ -539,51 +539,18 @@
         let updateInterval = null;
         let isPlayerReady = false;
 
+        // Socket.IO setup
+        const socket = io('/game/blackjack');
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            updateGameState();
-            updateInterval = setInterval(updateGameState, 2000);
+            // Connect to socket and join table
+            socket.emit('join_table', { table_id: TABLE_ID, seat: null });
         });
 
         async function updateGameState() {
-            try {
-                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/state`);
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.error || 'Failed to fetch state');
-                }
-
-                const data = await response.json();
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                console.log('[API] Full response received:', data);
-                console.log('[API] current_user_id:', data.current_user_id);
-                console.log('[API] seated_players:', data.seated_players);
-                console.log('[API] phase:', data.phase);
-                console.log('[API] game_state.current_player_seat:', data.game_state?.current_player_seat);
-                console.log('[API] game_state.button_seat:', data.game_state?.button_seat);
-
-                gameState = data;
-
-                try {
-                    console.log('[RENDER] Calling renderTable()');
-                    renderTable();
-                } catch (renderError) {
-                    console.error('[ERROR] Error in renderTable:', renderError, renderError.stack);
-                }
-
-                try {
-                    console.log('[RENDER] Calling updateUI()');
-                    updateUI();
-                } catch (uiError) {
-                    console.error('[ERROR] Error in updateUI:', uiError, uiError.stack);
-                }
-            } catch (error) {
-                console.error('[ERROR] Error updating state:', error, error.stack);
-                document.getElementById('status').innerHTML = `❌ Error: ${error.message}`;
-            }
+            // Request state via Socket.IO
+            socket.emit('get_table_state', { table_id: TABLE_ID });
         }
 
         function renderTable() {
@@ -1054,19 +1021,9 @@
 
         async function joinSeat(seatNumber) {
             try {
-                const response = await fetch(`/blackjack/api/join_seat/${TABLE_ID}/${seatNumber}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (!response.ok) {
-                    const data = await response.json();
-                    throw new Error(data.error || 'Failed to join seat');
-                }
-
-                updateGameState();
+                console.log('[JOIN] Joining seat:', seatNumber);
+                // Emit join_table event with specific seat
+                socket.emit('join_table', { table_id: TABLE_ID, seat: seatNumber });
             } catch (error) {
                 alert(`Error: ${error.message}`);
             }
@@ -1087,49 +1044,70 @@
                 }
 
                 const payload = {
+                    table_id: TABLE_ID,
                     seat: currentPlayerSeat,
                     action: actionName,
                     amount: amount
                 };
 
                 console.log('[ACTION] Sending payload:', payload);
-                console.log('[ACTION] Fetching /blackjack/api/table/' + TABLE_ID + '/action');
 
-                const response = await fetch(`/blackjack/api/table/${TABLE_ID}/action`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                console.log('[ACTION] Response status: ' + response.status);
-
-                if (!response.ok) {
-                    const data = await response.json();
-                    console.error('[ERROR] Server returned error:', data);
-                    throw new Error(data.error || 'Failed to take action');
-                }
-
-                const responseData = await response.json();
-                console.log('[ACTION] Server response:', responseData);
+                // Emit action via Socket.IO
+                socket.emit('table_action', payload);
 
                 // Clear input fields
                 document.getElementById('escrowInputGroup').style.display = 'none';
                 document.getElementById('escrowAmount').value = '';
 
-                console.log('[ACTION] Calling updateGameState()');
-                // Update game state
-                updateGameState();
+                console.log('[ACTION] Emitted table_action');
             } catch (error) {
                 console.error('[ERROR] playerAction error:', error, error.stack);
                 alert(`Error: ${error.message}`);
             }
         }
 
+        // Socket.IO event listeners
+        socket.on('connected', function(data) {
+            console.log('Connected to blackjack socket:', data);
+        });
+
+        socket.on('table_state', function(state) {
+            console.log('[API] Full response received:', state);
+
+            gameState = state;
+
+            try {
+                console.log('[RENDER] Calling renderTable()');
+                renderTable();
+            } catch (renderError) {
+                console.error('[ERROR] Error in renderTable:', renderError, renderError.stack);
+            }
+
+            try {
+                console.log('[RENDER] Calling updateUI()');
+                updateUI();
+            } catch (uiError) {
+                console.error('[ERROR] Error in updateUI:', uiError, uiError.stack);
+            }
+        });
+
+        socket.on('player_joined', function(data) {
+            console.log('Player joined:', data);
+            updateGameState();
+        });
+
+        socket.on('error', function(data) {
+            console.error('Socket error:', data.message);
+            document.getElementById('status').innerHTML = `❌ Error: ${data.message}`;
+        });
+
+        socket.on('disconnect', function() {
+            console.log('Disconnected from blackjack socket');
+        });
+
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
-            if (updateInterval) clearInterval(updateInterval);
+            socket.disconnect();
         });
 
         // Global error handling

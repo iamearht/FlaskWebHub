@@ -253,21 +253,30 @@ async function apiCall(endpoint, method, body) {
     actionLock = true;
 
     try {
-        const opts = {
-            method: method,
-            headers: {'Content-Type': 'application/json'}
+        // Structure socket event properly
+        let eventData = {
+            match_id: MATCH_ID
         };
-        if (body) opts.body = JSON.stringify(body);
-        const r = await fetch('/game/' + MATCH_ID + '/' + endpoint, opts);
-        if (!r.ok) return null;
 
-        const data = await r.json();
-        if (data.error) return null;
+        if (endpoint === 'action' && body && body.action) {
+            // Player action with specific action type (hit, stand, double, split)
+            eventData.action = body.action;
+        } else if (endpoint === 'dealer_action' && body && body.action) {
+            // Dealer action
+            eventData.action = 'dealer_action_' + body.action;
+        } else {
+            // Other actions (choice, bet, insurance, joker, etc.)
+            eventData.action = endpoint;
+            if (body) Object.assign(eventData, body);
+        }
 
-        // 🔥 FORCE FAST RESYNC AFTER ACTION
+        socket.emit('player_action', eventData);
+
+        // 🔥 FORCE FAST RESYNC AFTER ACTION (wait for socket event)
         setTimeout(fetchState, 120);
 
-        return data;
+        // Return null - actual state will come via socket listener
+        return null;
 
     } finally {
         actionLock = false;
@@ -279,21 +288,8 @@ async function fetchState() {
     isFetching = true;
 
     try {
-        const r = await fetch(`/game/${MATCH_ID}/state`);
-        if (!r.ok) return;
-
-        const data = await r.json();
-        if (!data) return;
-
-        // 🔥 PHASE CHANGE = INSTANT HARD RENDER
-        if (data.phase !== lastPhase) {
-            lastPhase = data.phase;
-            renderState(data);
-            return;
-        }
-
-        renderState(data);
-
+        // Request state via Socket.IO
+        socket.emit('get_state', { match_id: MATCH_ID });
     } catch (e) {
         console.warn("State fetch failed");
     } finally {
@@ -886,13 +882,18 @@ function showMatchOver(s) {
     details.innerHTML = '<p>Player 1 Final Chips: ' + r.player1_total + '</p><p>Player 2 Final Chips: ' + r.player2_total + '</p>';
 }
 
+// Socket.IO setup
+const socket = io('/game/classic');
+
 function startPolling() {
-    if (polling) return;
-    polling = setInterval(fetchState, 800);
+    // Socket.IO connection is automatically established
+    socket.connect();
+    socket.emit('join_game', { match_id: MATCH_ID });
 }
 
 function stopPolling() {
-    if (polling) { clearInterval(polling); polling = null; }
+    // Disconnect socket when leaving game
+    socket.disconnect();
 }
 
 document.getElementById('btn-go-player').addEventListener('click', async function() {
@@ -966,6 +967,34 @@ document.getElementById('btn-dealer-joker-confirm').addEventListener('click', as
     if (dealerJokerSelectedValues.some(function(v) { return v === null; })) return;
     var data = await apiCall('dealer_joker', 'POST', {values: dealerJokerSelectedValues});
     if (data) renderState(data);
+});
+
+// Socket.IO event listeners
+socket.on('connected', function(data) {
+    console.log('Connected to game socket:', data);
+});
+
+socket.on('game_state', function(state) {
+    isFetching = false;
+    if (!state) return;
+
+    // 🔥 PHASE CHANGE = INSTANT HARD RENDER
+    if (state.phase !== lastPhase) {
+        lastPhase = state.phase;
+        renderState(state);
+        return;
+    }
+
+    renderState(state);
+});
+
+socket.on('error', function(data) {
+    console.error('Socket error:', data.message);
+});
+
+socket.on('disconnect', function() {
+    console.log('Disconnected from game socket');
+    stopPolling();
 });
 
 fetchState();

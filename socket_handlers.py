@@ -75,7 +75,11 @@ def init_socket(socketio):
         GAME_SESSIONS[match_id].add(request.sid)
 
         # Send initial game state
-        state = get_client_state(match, current_user.id)
+        if match.player1_id == current_user.id:
+            player_num = 1
+        else:
+            player_num = 2
+        state = get_client_state(match, player_num)
         emit('game_state', state)
 
     @socketio.on('player_action', namespace='/game/classic')
@@ -203,7 +207,11 @@ def init_socket(socketio):
             emit('error', {'message': 'Match not found'})
             return
 
-        state = get_client_state(match, current_user.id)
+        if match.player1_id == current_user.id:
+            player_num = 1
+        else:
+            player_num = 2
+        state = get_client_state(match, player_num)
         emit('game_state', state)
 
     @socketio.on('disconnect', namespace='/game/classic')

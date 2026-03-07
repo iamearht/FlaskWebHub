@@ -97,17 +97,32 @@ def init_socket(socketio):
             emit('error', {'message': 'Match not found'})
             return
 
-        try:
-            from flask_socketio import emit as socketio_emit
+        # Verify user is participant
+        if match.player1_id != current_user.id and match.player2_id != current_user.id:
+            emit('error', {'message': 'Not a participant in this match'})
+            return
 
-            # Verify user is participant
-            if match.player1_id != current_user.id and match.player2_id != current_user.id:
-                emit('error', {'message': 'Not a participant in this match'})
-                return
+        # FIX BUG #2: Move socketio_emit import outside try block for better error handling
+        from flask_socketio import emit as socketio_emit
+
+        # FIX BUG #4: Verify socket is in the game room
+        if f'match_{match_id}' not in rooms():
+            join_room(f'match_{match_id}')
+
+        try:
+            # Determine correct player number for this user (FIX BUG #1)
+            if match.player1_id == current_user.id:
+                user_player_num = 1
+            else:
+                user_player_num = 2
 
             # Apply any overdue automatic actions BEFORE proceeding
             while check_timeout(match):
                 apply_timeout(match)
+                # FIX BUG #3/5: Broadcast state after each timeout action, not just at the end
+                db.session.commit()
+                state = get_client_state(match, user_player_num)
+                socketio_emit('game_state', state, room=f'match_{match_id}', namespace='/game/classic')
 
             # Process action based on type
             if action_type == 'draw':
@@ -143,8 +158,8 @@ def init_socket(socketio):
             # Commit changes
             db.session.commit()
 
-            # Broadcast updated state to all players
-            state = get_client_state(match, None)
+            # Broadcast updated state to all players (FIX BUG #1: Pass correct player_num instead of None)
+            state = get_client_state(match, user_player_num)
             socketio_emit('game_state', state, room=f'match_{match_id}', namespace='/game/classic')
 
         except ValueError as e:

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Wallet - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="wallet-page">
+    <h1>Wallet</h1>
+    <div class="wallet-balance">
+        <span class="balance-label">Balance</span>
+        <span class="balance-amount">{{ user.coins }} coins</span>
+    </div>
+
+    <div class="wallet-actions">
+        <div class="wallet-card">
+            <h3>Deposit</h3>
+            <form method="POST" action="/wallet/deposit">
+                <div class="form-group">
+                    <label for="deposit-amount">Amount ($)</label>
+                    <input type="number" id="deposit-amount" name="amount" min="1" max="10000" step="1" required>
+                </div>
+                <button type="submit" class="btn btn-success">Deposit</button>
+            </form>
+        </div>
+
+        <div class="wallet-card">
+            <h3>Withdraw</h3>
+            <form method="POST" action="/wallet/withdraw">
+                <div class="form-group">
+                    <label for="withdraw-amount">Amount ($)</label>
+                    <input type="number" id="withdraw-amount" name="amount" min="1" max="{{ user.coins }}" step="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="crypto-address">Wallet Address</label>
+                    <input type="text" id="crypto-address" name="crypto_address" required placeholder="Enter your crypto wallet address">
+                </div>
+                <div class="form-group">
+                    <label for="network">Blockchain Network</label>
+                    <select id="network" name="network" required>
+                        <option value="">Select network</option>
+                        <option value="ethereum">Ethereum (ETH)</option>
+                        <option value="bitcoin">Bitcoin (BTC)</option>
+                        <option value="bsc">Binance Smart Chain (BSC)</option>
+                        <option value="polygon">Polygon (MATIC)</option>
+                        <option value="solana">Solana (SOL)</option>
+                        <option value="tron">Tron (TRX)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-warning">Withdraw</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="wallet-section">
+        <h2>Transaction History</h2>
+        {% if transactions %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in transactions %}
+                <tr>
+                    <td>{{ tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else '-' }}</td>
+                    <td><span class="tx-type tx-{{ tx.type }}">{{ tx.type|capitalize }}</span></td>
+                    <td class="{% if tx.type == 'deposit' %}text-green{% else %}text-red{% endif %}">
+                        {% if tx.type == 'deposit' %}+{% else %}-{% endif %}${{ '%.2f'|format(tx.amount) }}
+                    </td>
+                    <td><span class="status-badge status-{{ tx.status }}">{{ tx.status }}</span></td>
+                    <td>{{ tx.description or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-text">No transactions yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

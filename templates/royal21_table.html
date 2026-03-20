@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Royal 21 — {{ table.table_name }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/royal21.css') }}">
+
+<!-- Status bar -->
+<div id="r21-status-bar">
+  <div id="r21-status-dot"></div>
+  <span id="r21-status-text">Connecting...</span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- Screen 1: Seat Selection                            -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="screen-seat" class="r21-card-surface r21-hidden">
+  <h1>Royal 21</h1>
+  <h2>{{ table.table_name }}</h2>
+  <p style="color:#7a8ba8;font-size:0.88rem">
+    Ante: <strong style="color:#e0e6f0">{{ table.ante }}</strong> &nbsp;·&nbsp;
+    Buy-in: <strong style="color:#e0e6f0">{{ table.min_buyin }}–{{ table.max_buyin }}</strong> coins
+  </p>
+
+  <div class="r21-buyin-section">
+    <label for="inp-buyin">Buy-in amount</label>
+    <input type="number" id="inp-buyin"
+           min="{{ table.min_buyin }}" max="{{ table.max_buyin }}"
+           value="{{ table.min_buyin }}"
+           placeholder="{{ table.min_buyin }}">
+  </div>
+
+  <p style="font-size:0.85rem;color:#8fa3c4;margin-bottom:8px">Choose a seat:</p>
+  <div id="seat-grid" class="r21-seat-grid"></div>
+  <p style="color:#4a6080;font-size:0.8rem;text-align:center">Click an empty seat to join.</p>
+  <div id="r21-seat-status"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- Screen 2: Ready Check                               -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="screen-ready" class="r21-card-surface r21-hidden">
+  <h1>Royal 21 — Ready?</h1>
+  <h2>Players at {{ table.table_name }}</h2>
+  <div id="r21-seated-list" class="r21-seated-list"></div>
+  <button class="r21-btn r21-btn-ready" id="btn-ready">I'm Ready</button>
+  <div class="r21-leave-area" style="margin-top:12px">
+    <button class="r21-btn r21-btn-danger r21-leave-btn" style="font-size:0.85rem;padding:8px 16px">Leave Table</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- Screen 3: Game                                      -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div id="screen-game" class="r21-hidden">
+
+  <!-- Leave button -->
+  <div class="r21-leave-area">
+    <button class="r21-btn r21-btn-danger r21-leave-btn" style="font-size:0.85rem;padding:8px 16px">Leave Table</button>
+  </div>
+
+  <!-- Header -->
+  <div class="r21-game-header">
+    <div>
+      <div class="phase-label" id="g-phase">—</div>
+      <div class="meta-item">Hand <span id="g-hand">#—</span> &nbsp;·&nbsp; Button: Seat <span id="g-button">—</span></div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap">
+      <div class="r21-pot-item">
+        <div class="pot-item-label">Pot</div>
+        <div class="pot-item-val" id="g-pot">0</div>
+      </div>
+      <div class="r21-pot-item">
+        <div class="pot-item-label">Pending Bets</div>
+        <div class="pot-item-val" id="g-pending">0</div>
+      </div>
+      <div class="r21-pot-item">
+        <div class="pot-item-label">High Bet</div>
+        <div class="pot-item-val" id="g-highbet">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Players table -->
+  <div class="r21-players-section">
+    <table>
+      <thead>
+        <tr>
+          <th>Seat</th>
+          <th>Name</th>
+          <th>Stack</th>
+          <th>Bet</th>
+          <th>Cards</th>
+        </tr>
+      </thead>
+      <tbody id="players-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- Your hand -->
+  <div class="r21-your-hand-panel">
+    <h3>Your Hand</h3>
+    <div class="r21-hand-cards" id="hand-cards">
+      <span style="color:#4a6080;font-size:0.9rem">No cards yet</span>
+    </div>
+  </div>
+
+  <!-- Showdown -->
+  <div class="r21-showdown-panel r21-hidden" id="showdown-panel">
+    <h3 id="showdown-title">Showdown</h3>
+    <table>
+      <thead><tr>
+        <th>Seat</th><th>Name</th><th>Cards</th><th>Hand</th><th>Won</th>
+      </tr></thead>
+      <tbody id="showdown-tbody"></tbody>
+    </table>
+    <div style="margin-top:12px;font-size:0.82rem;color:#7a8ba8" id="showdown-stacks"></div>
+  </div>
+
+  <!-- Actions -->
+  <div class="r21-action-panel">
+    <h3>Your Turn</h3>
+    <div id="action-waiting" class="r21-waiting-label">Waiting...</div>
+    <div id="action-buttons" class="r21-action-row r21-hidden"></div>
+
+    <!-- Raise/bet panel -->
+    <div id="raise-panel" class="r21-raise-panel r21-hidden">
+      <label id="raise-label">Raise amount</label>
+      <div class="r21-slider-row">
+        <span class="range-val" id="raise-min-label">—</span>
+        <input type="range" id="raise-slider" min="1" max="100" value="1">
+        <span class="range-val" id="raise-max-label">—</span>
+      </div>
+      <div class="r21-raise-input-row">
+        <input type="number" id="raise-input" min="1" max="100" placeholder="Amount">
+        <button class="r21-btn r21-btn-raise" id="btn-raise-confirm">Confirm</button>
+        <button class="r21-btn r21-btn-secondary" id="btn-raise-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event log -->
+  <details class="r21-log-panel">
+    <summary>Event Log</summary>
+    <div class="r21-log-body" id="r21-log-body"></div>
+  </details>
+
+</div>
+
+<!-- Card reveal overlay -->
+<div id="r21-reveal-overlay" class="r21-hidden">
+  <div id="r21-reveal-box">
+    <h2>Reveal a Card</h2>
+    <p>Click one card to reveal it to all players.</p>
+    <div id="r21-reveal-cards"></div>
+  </div>
+</div>
+
+<!-- Error flash -->
+<div id="r21-error-flash" class="r21-hidden"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Inject game config for JS -->
+<script>
+  const CURRENT_USER = {
+    id:   "{{ user.id }}",
+    name: "{{ user.username | e }}"
+  };
+  const TABLE_CONFIG = {
+    id:        {{ table.id }},
+    ante:      {{ table.ante }},
+    min_buyin: {{ table.min_buyin }},
+    max_buyin: {{ table.max_buyin }},
+    name:      "{{ table.table_name | e }}"
+  };
+  const HAS_SEAT = {{ 'true' if my_seat_rec else 'false' }};
+</script>
+<!-- Socket.IO client -->
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- Royal 21 game logic -->
+<script src="{{ url_for('static', filename='js/royal21.js') }}"></script>
+{% endblock %}

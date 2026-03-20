@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Jackpot & Leaderboard{% endblock %}
+{% block content %}
+<div class="jackpot-page">
+    <div class="lobby-header">
+        <h1>Jackpot & Leaderboard</h1>
+        <p class="subtitle">Score = Finishing Chips x Match Stake. Top scores win a share of the jackpot!</p>
+    </div>
+
+    <div class="game-mode-tabs" style="margin-bottom: 20px;">
+        <a href="/jackpots?type=standard" class="mode-tab {% if pool_type == 'standard' %}active{% endif %}">
+            <span class="mode-name">Standard</span>
+            <span class="mode-desc">Classic & Interactive</span>
+        </a>
+        <a href="/jackpots?type=joker" class="mode-tab {% if pool_type == 'joker' %}active{% endif %}">
+            <span class="mode-name">Joker</span>
+            <span class="mode-desc">Classic Joker & Interactive Joker</span>
+        </a>
+    </div>
+
+    <div class="jackpot-pools-overview">
+        <div class="jackpot-pool-card">
+            <div class="jackpot-pool-header">
+                <span class="jackpot-tier-name">{{ pool_types[pool_type] }} Jackpot</span>
+            </div>
+            <div class="jackpot-amount">{{ jackpot_data.pool.pool_amount }} <span class="jackpot-coins-label">coins</span></div>
+            {% if countdown %}
+            <div class="jackpot-countdown" id="jackpot-countdown" data-total-seconds="{{ countdown.total_seconds }}">
+                <span class="countdown-label">Payout in:</span>
+                <span class="countdown-timer">
+                    <span id="cd-days">{{ countdown.days }}</span>d
+                    <span id="cd-hours">{{ countdown.hours }}</span>h
+                    <span id="cd-minutes">{{ countdown.minutes }}</span>m
+                    <span id="cd-seconds">{{ countdown.seconds }}</span>s
+                </span>
+            </div>
+            {% else %}
+            <div class="jackpot-countdown expired">
+                <span class="countdown-label">Payout period ended - awaiting distribution</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="payout-structure">
+        <h3>Payout Structure</h3>
+        <div class="payout-table">
+            {% for place, pct in payouts|dictsort %}
+            <div class="payout-item">
+                <span class="payout-place">#{{ place }}</span>
+                <span class="payout-pct">{{ pct }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="lobby-section jackpot-leaderboard-section">
+        <h2>
+            {{ pool_types[pool_type] }} Leaderboard
+            <span class="jackpot-pool-display">Jackpot: {{ jackpot_data.pool.pool_amount }} coins</span>
+        </h2>
+
+        {% if user_score %}
+        <div class="your-score-banner">
+            Your Best Score: <strong>{{ user_score.best_score }}</strong>
+            ({{ user_score.games }} games played)
+        </div>
+        {% endif %}
+
+        {% if jackpot_data.leaderboard %}
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Player</th>
+                    <th>Best Score</th>
+                    <th>Games</th>
+                    <th>Prize Share</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in jackpot_data.leaderboard %}
+                <tr class="{% if entry.user_id == user.id %}my-row{% endif %} {% if loop.index <= payouts|length %}prize-row{% endif %}">
+                    <td>
+                        {% if loop.index == 1 %}&#129351;
+                        {% elif loop.index == 2 %}&#129352;
+                        {% elif loop.index == 3 %}&#129353;
+                        {% else %}#{{ loop.index }}
+                        {% endif %}
+                    </td>
+                    <td>{{ entry.username }}{% if entry.user_id == user.id %} <span class="you-tag">(You)</span>{% endif %}</td>
+                    <td class="text-green">{{ entry.best_score }}</td>
+                    <td>{{ entry.games_played }}</td>
+                    <td>
+                        {% if loop.index in payouts %}
+                        <span class="prize-amount">{{ (jackpot_data.pool.pool_amount * payouts[loop.index] / 100)|int }} coins ({{ payouts[loop.index] }}%)</span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-text">No entries yet. Play {{ 'joker mode' if pool_type == 'joker' else 'standard' }} lobby matches to get on the leaderboard!</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var el = document.getElementById('jackpot-countdown');
+    if (!el) return;
+    var total = parseInt(el.getAttribute('data-total-seconds'), 10);
+    if (isNaN(total) || total <= 0) return;
+
+    function update() {
+        total--;
+        if (total <= 0) {
+            el.innerHTML = '<span class="countdown-label">Payout period ended - awaiting distribution</span>';
+            return;
+        }
+        var d = Math.floor(total / 86400);
+        var h = Math.floor((total % 86400) / 3600);
+        var m = Math.floor((total % 3600) / 60);
+        var s = total % 60;
+        document.getElementById('cd-days').textContent = d;
+        document.getElementById('cd-hours').textContent = h;
+        document.getElementById('cd-minutes').textContent = m;
+        document.getElementById('cd-seconds').textContent = s;
+        setTimeout(update, 1000);
+    }
+    setTimeout(update, 1000);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,17 @@
+name: Cleanup Matches
+
+on:
+  schedule:
+    - cron: "* * * * *"   # every minute
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call cleanup endpoint
+        run: |
+          curl -sS --max-time 20 \
+          -H "X-CRON-KEY: ${{ secrets.CRON_SECRET }}" \
+          https://flaskwebhub.onrender.com/internal/cleanup

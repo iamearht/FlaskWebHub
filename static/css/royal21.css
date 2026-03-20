@@ -1,0 +1,242 @@
+/* Royal 21 Game Styles — Dark Theme */
+
+/* ─── Utility ─────────────────────────────────────── */
+.r21-hidden { display: none !important; }
+
+/* ─── Status bar ─────────────────────────────────────── */
+#r21-status-bar {
+  padding: 8px 14px;
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 6px;
+  font-size: 0.8rem; color: #7a8ba8; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+#r21-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: #3a4a60; flex-shrink: 0;
+}
+#r21-status-dot.connected { background: #27ae60; }
+#r21-status-dot.error     { background: #e74c3c; }
+
+/* ─── Card surface ─────────────────────────────────────── */
+.r21-card-surface {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 8px; padding: 24px;
+  max-width: 560px; margin: 0 auto 16px;
+}
+.r21-card-surface h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; color: #e0e6f0; }
+.r21-card-surface h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 16px; color: #8fa3c4; }
+
+/* ─── Buttons ─────────────────────────────────────── */
+.r21-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 20px; border-radius: 6px; font-size: 0.92rem; font-weight: 600;
+  cursor: pointer; border: none; transition: opacity 0.15s, transform 0.1s;
+  user-select: none;
+}
+.r21-btn:active { transform: scale(0.97); }
+.r21-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+.r21-btn-primary  { background: #1565C0; color: #fff; }
+.r21-btn-primary:hover:not(:disabled)  { background: #1976D2; }
+.r21-btn-fold     { background: #c0392b; color: #fff; }
+.r21-btn-fold:hover:not(:disabled)     { background: #e74c3c; }
+.r21-btn-call     { background: #1a7a45; color: #fff; }
+.r21-btn-call:hover:not(:disabled)     { background: #27ae60; }
+.r21-btn-check    { background: #1a7a45; color: #fff; }
+.r21-btn-check:hover:not(:disabled)    { background: #27ae60; }
+.r21-btn-raise    { background: #b85c00; color: #fff; }
+.r21-btn-raise:hover:not(:disabled)    { background: #e67e22; }
+.r21-btn-hit      { background: #6c2fa0; color: #fff; }
+.r21-btn-hit:hover:not(:disabled)      { background: #8e44ad; }
+.r21-btn-stand    { background: #1e2d4a; color: #c0cfe8; border: 1px solid #2e4068; }
+.r21-btn-stand:hover:not(:disabled)    { background: #263854; color: #e0e6f0; }
+.r21-btn-ready    { background: #1565C0; color: #fff; width: 100%; margin-top: 8px; padding: 13px; font-size: 1rem; }
+.r21-btn-ready:hover:not(:disabled)    { background: #1976D2; }
+.r21-btn-secondary { background: #1e2d4a; color: #b0c0d8; border: 1px solid #2e4068; }
+.r21-btn-secondary:hover:not(:disabled){ background: #263854; }
+.r21-btn-danger   { background: #c0392b; color: #fff; }
+.r21-btn-danger:hover:not(:disabled)   { background: #e74c3c; }
+
+.r21-action-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ─── Seat Selection ─────────────────────────────────── */
+.r21-seat-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px;
+}
+.r21-seat-btn {
+  padding: 12px 6px; border: 2px solid #1e2d4a; border-radius: 8px;
+  text-align: center; cursor: pointer; transition: all 0.15s;
+  background: #1a2235; font-size: 0.82rem; color: #9ab0cc;
+}
+.r21-seat-btn .seat-num { font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; color: #e0e6f0; }
+.r21-seat-btn.empty { border-color: #1a5c30; }
+.r21-seat-btn.empty:hover { background: #0d2e1a; border-color: #27ae60; color: #4fc87a; }
+.r21-seat-btn.taken { background: #141c2e; border-color: #1e2d4a; cursor: default; color: #4a5e7a; }
+.r21-seat-btn.taken .seat-name { font-size: 0.75rem; }
+.r21-seat-btn.unavailable { background: #101620; border-color: #1a2235; cursor: default; opacity: 0.4; }
+.r21-seat-btn.selected-seat { background: #0d1e3a; border-color: #2196F3; border-width: 2px; cursor: default; color: #5ab3f5; font-weight: 600; }
+#r21-seat-status { margin-top: 10px; font-size: 0.85rem; color: #2196F3; text-align: center; font-weight: 500; min-height: 1.2em; }
+
+/* ─── Ready Check ─────────────────────────────────── */
+.r21-seated-list { margin-bottom: 16px; }
+.r21-seated-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e2d4a; font-size: 0.9rem; color: #c0d0e8; }
+.r21-seated-row:last-child { border-bottom: none; }
+
+/* ─── Game screen ─────────────────────────────────── */
+#screen-game { width: 100%; max-width: 720px; margin: 0 auto; }
+
+.r21-game-header {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 8px;
+  padding: 14px 18px; margin-bottom: 12px;
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: center;
+}
+.r21-game-header .phase-label { font-weight: 700; font-size: 1rem; letter-spacing: 0.03em; color: #2196F3; }
+.r21-game-header .meta-item { font-size: 0.85rem; color: #7a8ba8; }
+.r21-game-header .meta-item span { font-weight: 600; color: #c0d0e8; }
+
+.r21-pot-item { font-size: 0.8rem; }
+.r21-pot-item .pot-item-label { color: #5a7090; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.r21-pot-item .pot-item-val { font-family: monospace; font-weight: 700; font-size: 1rem; color: #e8f0ff; }
+
+/* ─── Players table ─────────────────────────────────── */
+.r21-players-section {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 8px;
+  overflow: hidden; margin-bottom: 12px;
+}
+.r21-players-section table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.r21-players-section th {
+  background: #1a2235; padding: 8px 12px; text-align: left;
+  font-size: 0.75rem; font-weight: 600; color: #5a7090; text-transform: uppercase; letter-spacing: 0.05em;
+  border-bottom: 1px solid #1e2d4a;
+}
+.r21-players-section td { padding: 9px 12px; border-bottom: 1px solid #1a2235; color: #c0d0e8; }
+.r21-players-section tr:last-child td { border-bottom: none; }
+.r21-players-section tr.is-acting { background: #1c2a1a; }
+.r21-players-section tr.is-acting td:first-child { border-left: 3px solid #f0c040; }
+.r21-players-section tr.is-folded { opacity: 0.35; }
+.r21-players-section tr.is-me td { background: #0f1f35; }
+.r21-players-section tr.is-me.is-acting td { background: #0e2218; }
+
+.r21-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; margin-left: 4px;
+}
+.r21-badge-btn   { background: #3a2e00; color: #f0c040; border: 1px solid #5a4800; }
+.r21-badge-you   { background: #0d2137; color: #5ab3f5; border: 1px solid #1565C0; }
+.r21-badge-fold  { background: #2e0d0d; color: #e07070; border: 1px solid #5c1a1a; }
+.r21-badge-allin { background: #1e1040; color: #a880e0; border: 1px solid #3a1a70; }
+
+.r21-card-chip {
+  display: inline-block; font-family: monospace; font-size: 0.9rem;
+  background: #1e2d4a; border: 1px solid #2e4068; border-radius: 4px;
+  padding: 1px 5px; margin: 0 1px; letter-spacing: 0.02em; color: #c0d0e8;
+}
+
+/* ─── Your hand panel ─────────────────────────────── */
+.r21-your-hand-panel {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 8px;
+  padding: 14px 18px; margin-bottom: 12px;
+}
+.r21-your-hand-panel h3 { font-size: 0.8rem; font-weight: 600; color: #5a7090; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+.r21-hand-cards { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.r21-hand-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 56px; height: 80px; border: 2px solid #2e4068; border-radius: 8px;
+  background: #f0f0f0; color: #111; font-family: monospace; font-size: 1.1rem; font-weight: 700;
+  cursor: default; transition: all 0.15s; position: relative; user-select: none;
+}
+.r21-hand-card .card-rank { font-size: 1.2rem; }
+.r21-hand-card .card-suit { font-size: 1rem; }
+.r21-hand-card.hearts   .card-suit,
+.r21-hand-card.diamonds .card-suit { color: #c0392b; }
+.r21-hand-card.spades   .card-suit,
+.r21-hand-card.clubs    .card-suit { color: #111; }
+.r21-hand-card.clickable { cursor: pointer; border-color: #2196F3; box-shadow: 0 0 0 2px #1565C0; }
+.r21-hand-card.clickable:hover { background: #e0efff; transform: translateY(-3px); }
+.r21-hand-value { font-family: monospace; font-size: 1.1rem; font-weight: 700; color: #2196F3; }
+.r21-hand-value.bust { color: #e74c3c; }
+.r21-hand-label { font-size: 0.8rem; color: #5a7090; margin-top: 4px; }
+
+/* ─── Action panel ─────────────────────────────────── */
+.r21-action-panel {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 8px;
+  padding: 16px 18px; margin-bottom: 12px;
+}
+.r21-action-panel h3 { font-size: 0.8rem; font-weight: 600; color: #5a7090; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+.r21-waiting-label { font-size: 0.9rem; color: #4a6080; font-style: italic; }
+
+.r21-raise-panel {
+  margin-top: 14px; padding: 14px; background: #1a2235;
+  border: 1px solid #1e2d4a; border-radius: 6px;
+}
+.r21-raise-panel label { font-size: 0.8rem; color: #7a8ba8; margin-bottom: 6px; display: block; }
+.r21-slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.r21-slider-row input[type="range"] { flex: 1; accent-color: #e67e22; }
+.r21-slider-row .range-val { font-family: monospace; font-size: 0.85rem; color: #7a8ba8; white-space: nowrap; }
+.r21-raise-input-row { display: flex; gap: 8px; align-items: center; }
+.r21-raise-input-row input[type="number"] {
+  flex: 1; padding: 8px 10px; border: 1px solid #2e4068; border-radius: 6px;
+  font-size: 0.95rem; background: #101620; color: #e0e6f0; outline: none;
+}
+.r21-raise-input-row input[type="number"]:focus { border-color: #2196F3; }
+
+/* ─── Log panel ─────────────────────────────────────── */
+.r21-log-panel {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 8px;
+  margin-bottom: 12px; overflow: hidden;
+}
+.r21-log-panel summary {
+  padding: 10px 14px; font-size: 0.8rem; font-weight: 600; color: #5a7090;
+  text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none;
+}
+.r21-log-panel summary:hover { color: #8fa3c4; }
+.r21-log-body {
+  padding: 0 14px 12px; max-height: 160px; overflow-y: auto;
+  font-size: 0.82rem; color: #7a8ba8; font-family: monospace;
+}
+.r21-log-entry { padding: 2px 0; border-bottom: 1px solid #1a2235; }
+.r21-log-entry:last-child { border-bottom: none; }
+
+/* ─── Showdown panel ─────────────────────────────────── */
+.r21-showdown-panel {
+  background: #151b2b; border: 2px solid #c8980a; border-radius: 8px;
+  padding: 18px; margin-bottom: 12px;
+}
+.r21-showdown-panel h3 { font-size: 1rem; font-weight: 700; margin-bottom: 14px; color: #f0c040; }
+.r21-showdown-panel table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.r21-showdown-panel th { font-size: 0.75rem; color: #5a7090; text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 8px; border-bottom: 2px solid #1e2d4a; }
+.r21-showdown-panel td { padding: 8px 8px; border-bottom: 1px solid #1a2235; color: #c0d0e8; }
+.r21-showdown-panel tr.winner td { background: #0d2e18; font-weight: 600; color: #4fc87a; }
+.r21-showdown-panel .won-chips { font-family: monospace; font-weight: 700; color: #27ae60; }
+
+/* ─── Error flash ─────────────────────────────────────── */
+#r21-error-flash {
+  position: fixed; top: 16px; right: 16px; z-index: 999;
+  background: #7c1a1a; color: #ffb0b0; border: 1px solid #c0392b;
+  padding: 10px 16px; border-radius: 6px;
+  font-size: 0.88rem; max-width: 300px; box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  transition: opacity 0.3s;
+}
+
+/* ─── Card reveal overlay ─────────────────────────────── */
+#r21-reveal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+#r21-reveal-box {
+  background: #151b2b; border: 1px solid #1e2d4a; border-radius: 12px; padding: 28px 32px;
+  max-width: 360px; width: 90%; text-align: center;
+}
+#r21-reveal-box h2 { margin-bottom: 6px; font-size: 1.3rem; color: #e0e6f0; }
+#r21-reveal-box p { margin-bottom: 20px; color: #7a8ba8; }
+#r21-reveal-cards { display: flex; gap: 20px; justify-content: center; }
+
+/* ─── Leave button area ─────────────────────────────── */
+.r21-leave-area { margin-bottom: 12px; text-align: right; }
+
+/* ─── Buyin input ─────────────────────────────────── */
+.r21-buyin-section { margin-bottom: 16px; }
+.r21-buyin-section label { display: block; font-size: 0.82rem; font-weight: 600; color: #8fa3c4; margin-bottom: 4px; }
+.r21-buyin-section input[type="number"] {
+  width: 100%; padding: 9px 12px; border: 1px solid #2e4068; border-radius: 6px;
+  font-size: 0.95rem; outline: none; transition: border-color 0.15s;
+  background: #101620; color: #e0e6f0;
+}
+.r21-buyin-section input:focus { border-color: #2196F3; }

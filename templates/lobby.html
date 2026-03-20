@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+{% block title %}Lobby - Blackjack Platform{% endblock %}
+{% block content %}
+
+<div class="lobby">
+
+  <!-- HEADER -->
+  <div class="lobby-header">
+    <h1>Game Lobby</h1>
+    <div class="user-info">
+      <span class="coins-display">
+        Your Coins:
+        <strong id="coins-display">{{ user.coins }}</strong>
+      </span>
+    </div>
+  </div>
+
+
+  <!-- JACKPOT SECTION -->
+  {% if jackpot_pools %}
+  <div class="lobby-section jackpot-banner-section">
+    <div class="jackpot-banner">
+      <a href="/jackpots" style="text-decoration:none; color:inherit;">
+        <h3>Jackpot Pools</h3>
+
+        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+          <div>
+            <strong>Standard:</strong>
+            {{ jackpot_pools.standard.pool_amount if jackpot_pools.standard else 0 }} coins
+          </div>
+
+          <div>
+            <strong>Joker:</strong>
+            {{ jackpot_pools.joker.pool_amount if jackpot_pools.joker else 0 }} coins
+          </div>
+        </div>
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+
+  <!-- ✅ YOUR ACTIVE GAMES -->
+  {% if my_active %}
+  <div class="lobby-section">
+    <h2>Your Active Games</h2>
+
+    <div class="match-list">
+
+      {% for m in my_active %}
+        {% set opponent = m.player2 if m.player1_id == user.id else m.player1 %}
+
+        <div class="match-card">
+
+          <div class="match-info">
+            <span class="match-stake">
+              Match #{{ m.id }}
+            </span>
+
+            <span>
+              vs {{ opponent.username if opponent else "Unknown" }}
+            </span>
+
+            <span class="mode-badge">
+              {{ game_modes[m.game_mode].name
+                 if m.game_mode in game_modes
+                 else m.game_mode }}
+            </span>
+          </div>
+
+          <div class="match-actions">
+
+            <!-- PLAY -->
+            <a href="{{ url_for('game.play', match_id=m.id) }}"
+               class="btn btn-primary">
+              Play
+            </a>
+
+            <!-- FORFEIT -->
+            <form method="POST"
+                  action="{{ url_for('game.forfeit_match', match_id=m.id) }}"
+                  onsubmit="return confirm('Are you sure you want to forfeit this match?');">
+              <button type="submit"
+                      class="btn btn-danger">
+                Forfeit
+              </button>
+            </form>
+
+          </div>
+        </div>
+
+      {% endfor %}
+
+    </div>
+  </div>
+  {% endif %}
+
+
+  <!-- CREATE MATCH -->
+  <div class="lobby-section">
+    <h2>Create a Match</h2>
+
+    <form method="POST"
+          action="{{ url_for('game.create_match') }}"
+          class="create-match-form">
+
+      <div class="form-group">
+        <label>Game Mode</label>
+        <select name="game_mode">
+          {% for mode_key, mode_info in game_modes.items() %}
+            <option value="{{ mode_key }}">
+              {{ mode_info.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Stake Amount (min 10 coins)</label>
+        <input type="number"
+               name="stake"
+               min="10"
+               max="{{ user.coins }}"
+               value="50"
+               required>
+      </div>
+
+      <button type="submit" class="btn btn-primary">
+        Create Match
+      </button>
+    </form>
+  </div>
+
+
+  <!-- AVAILABLE MATCHES (WAITING ONLY) -->
+  <div class="lobby-section">
+    <h2>Available Matches</h2>
+
+    <div id="lobby-container" class="match-list">
+
+      {% for m in waiting %}
+
+        {% set is_creator = (m.player1_id == user.id) %}
+        {% set has_opponent = (m.player2_id is not none) %}
+
+        <div class="match-card">
+
+          <div class="match-info">
+            <span class="match-stake">
+              Stake: {{ m.stake }} coins
+            </span>
+
+            <span>
+              {{ m.player1.username }}
+              {% if m.player2 %}
+                vs {{ m.player2.username }}
+              {% else %}
+                (waiting)
+              {% endif %}
+            </span>
+
+            <span class="mode-badge">
+              {{ game_modes[m.game_mode].name
+                 if m.game_mode in game_modes
+                 else m.game_mode }}
+            </span>
+          </div>
+
+
+          <div class="match-actions">
+
+            {% if is_creator and not has_opponent %}
+
+              <!-- Creator can cancel waiting lobby -->
+              <form method="POST"
+                    action="{{ url_for('game.cancel_match', match_id=m.id) }}">
+                <button type="submit"
+                        class="btn btn-danger">
+                  Cancel Lobby
+                </button>
+              </form>
+
+            {% elif not has_opponent %}
+
+              <!-- Other player can join -->
+              <form method="POST"
+                    action="{{ url_for('game.join_match', match_id=m.id) }}">
+                <button type="submit"
+                        class="btn btn-success"
+                        {% if m.stake > user.coins %}disabled{% endif %}>
+                  Join
+                </button>
+              </form>
+
+            {% else %}
+
+              <button type="button"
+                      class="btn btn-secondary"
+                      disabled>
+                Waiting...
+              </button>
+
+            {% endif %}
+
+          </div>
+        </div>
+
+      {% endfor %}
+    </div>
+
+    {% if not waiting %}
+      <p class="empty-text">
+        No matches available.
+      </p>
+    {% endif %}
+  </div>
+
+
+  <!-- ROYAL 21 TABLES -->
+  {% if royal21_tables %}
+  <div class="lobby-section">
+    <h2>♠ Royal 21 Tables</h2>
+    <div class="match-list">
+      {% for t in royal21_tables %}
+      <div class="match-card">
+        <div class="match-info">
+          <span class="match-stake">{{ t.table_name }}</span>
+          <span>Ante: {{ t.ante }} &nbsp;·&nbsp; Buy-in: {{ t.min_buyin }}–{{ t.max_buyin }} coins</span>
+          <span class="mode-badge">Up to 7 players</span>
+        </div>
+        <div class="match-actions">
+          <a href="/royal21/table/{{ t.id }}" class="btn btn-primary">Join Table</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if is_admin %}
+  <div class="lobby-section">
+    <h2>♠ Royal 21 Admin</h2>
+    <a href="/admin/royal21-tables" class="btn btn-secondary">Manage Royal 21 Tables</a>
+  </div>
+  {% endif %}
+
+</div>
+
+<style>
+.seats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.seat {
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  padding: 15px;
+  text-align: center;
+  transition: all 0.3s ease;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.seat.empty {
+  background-color: #f5f5f5;
+  border-color: #ddd;
+  border: 2px dashed #999;
+}
+
+.seat.empty:hover {
+  background-color: #e8f4f8;
+  border-color: #4CAF50;
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
+}
+
+.seat.occupied {
+  background-color: #e8f5e9;
+  border-color: #4CAF50;
+}
+
+.seat-label {
+  font-weight: bold;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.seat-status {
+  color: #999;
+  font-size: 12px;
+}
+
+.player-name {
+  font-size: 14px;
+  margin: 5px 0;
+  color: #333;
+}
+
+.leave-btn {
+  margin-top: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.table-info {
+  color: #666;
+  margin: 0 0 15px 0;
+  font-size: 14px;
+}
+
+</style>
+
+{% endblock %}

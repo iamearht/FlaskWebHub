@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Watch Live - Blackjack Platform{% endblock %}
+
+{% block content %}
+<div class="watch-page">
+
+  <div class="watch-header">
+    <h1>Live Matches</h1>
+  </div>
+
+  <div class="watch-section">
+    <h2>Top Lobby Matches</h2>
+
+    <div id="watch-lobby-container" class="match-list">
+      {% for match in top_lobby %}
+      <div class="match-card">
+        <div class="match-info">
+          <span class="match-stake">Stake: {{ match.stake }} coins</span>
+          <span>
+            {{ match.player1.username if match.player1 else "?" }}
+            vs
+            {{ match.player2.username if match.player2 else "?" }}
+          </span>
+        </div>
+        <div class="match-actions">
+          <a href="{{ url_for('game.play', match_id=match.id) }}"
+             class="btn btn-primary">
+            Watch
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if not top_lobby %}
+    <p class="empty-text">No live lobby matches.</p>
+    {% endif %}
+  </div>
+
+
+  <div class="watch-section">
+    <h2>Top Tournament Matches</h2>
+
+    <div id="watch-tournament-container" class="match-list">
+      {% for item in tournament_display %}
+      <div class="match-card">
+        <div class="match-info">
+          <span class="match-stake">
+            Tournament Stake: {{ item.tournament.stake_amount }}
+          </span>
+          <span>
+            {{ item.p1.username if item.p1 else "?" }}
+            vs
+            {{ item.p2.username if item.p2 else "?" }}
+          </span>
+          <span class="mode-badge">
+            {{ item.round_name }}
+          </span>
+        </div>
+        <div class="match-actions">
+          <a href="{{ url_for('game.play', match_id=item.match.id) }}"
+             class="btn btn-primary">
+            Watch
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if not tournament_display %}
+    <p class="empty-text">No live tournament matches.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+// -----------------------------
+// REST POLLING FOR WATCH PAGE
+// -----------------------------
+
+function refreshWatchPage() {
+    fetch("/watch?partial=1")
+        .then(r => r.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            const newLobby = doc.querySelector("#watch-lobby-container");
+            const newTournament = doc.querySelector("#watch-tournament-container");
+
+            if (newLobby) {
+                document.querySelector("#watch-lobby-container").innerHTML =
+                    newLobby.innerHTML;
+            }
+
+            if (newTournament) {
+                document.querySelector("#watch-tournament-container").innerHTML =
+                    newTournament.innerHTML;
+            }
+        })
+        .catch(() => {});
+}
+
+// Poll every 5 seconds (watch page needs slightly faster updates)
+setInterval(refreshWatchPage, 5000);
+
+// Refresh when tab becomes active
+document.addEventListener("visibilitychange", function() {
+    if (!document.hidden) {
+        refreshWatchPage();
+    }
+});
+</script>
+
+{% endblock %}

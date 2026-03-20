@@ -1,0 +1,89 @@
+{% extends "admin/base_admin.html" %}
+{% block admin_content %}
+
+<div style="padding: 24px 0;">
+  <h2 style="margin-bottom: 20px;">♠ Royal 21 Tables</h2>
+
+  <!-- Create Table Form -->
+  <div style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:20px;margin-bottom:24px;max-width:500px;">
+    <h3 style="margin-bottom:14px;font-size:1rem;">Create New Table</h3>
+    <form method="POST" action="{{ url_for('admin.royal21_create_table') }}">
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:0.82rem;font-weight:600;color:#555;margin-bottom:4px;">Table Name</label>
+        <input type="text" name="table_name" value="Royal 21 Table"
+               style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;font-size:0.95rem;" required>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:0.82rem;font-weight:600;color:#555;margin-bottom:4px;">Ante</label>
+          <input type="number" name="ante" value="10" min="1"
+                 style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.95rem;" required>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.82rem;font-weight:600;color:#555;margin-bottom:4px;">Min Buy-in</label>
+          <input type="number" name="min_buyin" value="100" min="1"
+                 style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.95rem;" required>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.82rem;font-weight:600;color:#555;margin-bottom:4px;">Max Buy-in</label>
+          <input type="number" name="max_buyin" value="1000" min="1"
+                 style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:6px;font-size:0.95rem;" required>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Create Table</button>
+    </form>
+  </div>
+
+  <!-- Tables List -->
+  {% if tables %}
+  <div style="background:#fff;border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+      <thead>
+        <tr style="background:#f8f8f8;border-bottom:1px solid #eee;">
+          <th style="padding:10px 14px;text-align:left;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;">ID</th>
+          <th style="padding:10px 14px;text-align:left;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;">Name</th>
+          <th style="padding:10px 14px;text-align:left;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;">Ante</th>
+          <th style="padding:10px 14px;text-align:left;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;">Buy-in</th>
+          <th style="padding:10px 14px;text-align:left;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;">Status</th>
+          <th style="padding:10px 14px;text-align:left;font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:.05em;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tables %}
+        <tr style="border-bottom:1px solid #f5f5f5;">
+          <td style="padding:10px 14px;color:#888;">#{{ t.id }}</td>
+          <td style="padding:10px 14px;font-weight:600;">{{ t.table_name }}</td>
+          <td style="padding:10px 14px;font-family:monospace;">{{ t.ante }}</td>
+          <td style="padding:10px 14px;font-family:monospace;">{{ t.min_buyin }}–{{ t.max_buyin }}</td>
+          <td style="padding:10px 14px;">
+            {% if t.is_open %}
+              <span style="background:#d5f5e3;color:#1e8449;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">OPEN</span>
+            {% else %}
+              <span style="background:#fadbd8;color:#922b21;padding:2px 8px;border-radius:4px;font-size:0.78rem;font-weight:600;">CLOSED</span>
+            {% endif %}
+          </td>
+          <td style="padding:10px 14px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <a href="/royal21/table/{{ t.id }}" target="_blank" class="btn btn-sm btn-secondary">View</a>
+              {% if t.is_open %}
+                <form method="POST" action="{{ url_for('admin.royal21_close_table', table_id=t.id) }}" style="display:inline;">
+                  <button type="submit" class="btn btn-sm btn-danger">Close</button>
+                </form>
+              {% else %}
+                <form method="POST" action="{{ url_for('admin.royal21_open_table', table_id=t.id) }}" style="display:inline;">
+                  <button type="submit" class="btn btn-sm btn-success">Open</button>
+                </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:#999;">No tables created yet. Use the form above to create one.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

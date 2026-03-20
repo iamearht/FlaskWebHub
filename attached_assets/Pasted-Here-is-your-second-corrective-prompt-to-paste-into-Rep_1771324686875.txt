@@ -1,0 +1,253 @@
+Here is your second corrective prompt to paste into Replit AI.
+
+This is written clearly and firmly so it understands we are simplifying and fixing the architecture.
+
+🔧 CORRECTION PROMPT – SIMPLIFY GAME + ADD TIMER LOGIC
+
+We need to REBUILD the blackjack match logic cleanly.
+
+Keep everything previously defined (authentication, persistent balances, 1v1 betting, multi-box blackjack, insurance, split, double, payout rules, dealer rules, etc.)
+
+BUT make the following major changes and simplify structure:
+
+✅ CHANGE #1 — ONLY 2 TURNS (NOT 4)
+
+The match should now have:
+
+2 total player-turns
+
+Each player plays ONCE as the Player
+
+The other player acts as Bank for that turn
+
+Turn order:
+
+Turn 1 → Player 1 plays as Player, Player 2 is Bank
+
+Turn 2 → Player 2 plays as Player, Player 1 is Bank
+
+After Turn 2 → Match ends
+
+Remove all 4-turn scheduling logic.
+
+Remove:
+
+total_turns = 4
+
+turn_index logic for 4 rounds
+
+role rotation complexity
+
+Replace with simple:
+
+turn_index = 1 or 2
+if turn_index == 1:
+    player_id = p1
+    bank_id = p2
+else:
+    player_id = p2
+    bank_id = p1
+
+
+After Turn 2 ends → immediately resolve match winner.
+
+✅ CHANGE #2 — DECISION TIMER SYSTEM (10 SECONDS PER DECISION)
+
+We must enforce time-based decisions.
+
+Every player decision has a strict 10-second limit.
+
+A decision includes:
+
+Placing bets (multi-box)
+
+Taking insurance
+
+Hit
+
+Stand
+
+Split
+
+Double
+
+Clicking “Next Round”
+
+⏳ TIMER RULES
+
+For every decision:
+
+When the game enters a state where the player must act:
+
+Store decision_started_at timestamp in database
+
+Store decision_type (BET, INSURANCE, ACTION, NEXT)
+
+When a player makes a request:
+
+Check current time
+
+If now - decision_started_at > 10 seconds:
+→ The player timed out
+→ Apply automatic fallback rule
+
+Else:
+→ Process normally
+
+🧠 TIMEOUT FALLBACK RULES
+
+If player fails to act in 10 seconds:
+
+1️⃣ If phase == WAITING_BETS
+
+Auto-place:
+
+1 chip bet
+
+On Box 1 only
+
+Boxes 2 and 3 = 0
+
+If player has 0 chips:
+
+End turn immediately
+
+2️⃣ If phase == INSURANCE
+
+Auto-decline insurance.
+
+3️⃣ If phase == PLAYER_TURN (Hit/Stand/Split/Double decision)
+
+If active hand exists:
+
+Automatically STAND on that hand.
+
+If multiple hands:
+
+Mark current hand done
+
+Continue normally to next hand
+
+4️⃣ If phase == ROUND_RESULT (waiting for Next)
+
+Auto-click Next after 10 seconds.
+
+⚠️ IMPORTANT IMPLEMENTATION DETAIL
+
+Do NOT rely on frontend timers.
+
+Timer enforcement must be:
+
+Fully server-side
+
+Based on stored timestamps
+
+Validated inside every API endpoint
+
+Before executing any action:
+Call a function like:
+
+check_and_handle_timeout(match)
+
+
+If timeout occurred:
+
+Apply fallback action
+
+Return updated state
+
+Then reject the original action.
+
+🧱 DATABASE CHANGES REQUIRED
+
+Add fields to Match model:
+
+decision_started_at (datetime)
+
+decision_type (string)
+
+is_waiting_decision (boolean)
+
+Whenever phase changes to something requiring player input:
+
+Set decision_started_at = now
+
+Set decision_type accordingly
+
+Set is_waiting_decision = True
+
+Whenever player acts successfully:
+
+Clear decision fields
+
+Then set new timer if next decision required
+
+🧹 REMOVE BROKEN COMPLEXITY
+
+Because Replit created many errors before:
+
+We want:
+
+Cleaner state machine
+
+Clear phase transitions
+
+No hidden logic inside random endpoints
+
+No duplicate payout calls
+
+No recursive role switching
+
+Each phase should have:
+
+enter_phase()
+handle_action()
+exit_phase()
+
+
+Explicit transitions only.
+
+🎯 MATCH RESOLUTION (AFTER 2 TURNS)
+
+At end of Turn 2:
+
+Compare P1 result (from their only turn)
+
+Compare P2 result (from their only turn)
+
+Winner takes match stake.
+Tie refunds stake.
+
+Persist coins immediately.
+
+Match status = FINISHED
+
+🔐 STILL REQUIRED
+
+Authentication
+
+Persistent balances
+
+Match stake deducted at start
+
+Secure validation
+
+No negative balances
+
+All bet validation server-side
+
+🧠 SIMPLIFY BEFORE EXTENDING
+
+Do NOT reuse the broken 4-turn logic.
+Do NOT try to patch old logic.
+Rewrite the turn system cleanly for 2 turns only.
+
+Focus on:
+
+Correct game flow
+
+Clean state transitions
+
+Reliable timeout handling
+
+Secure balance updates

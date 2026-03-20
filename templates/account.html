@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Account - Blackjack Platform{% endblock %}
+{% block content %}
+<div class="account-page">
+    <h1>My Account</h1>
+
+    <div class="account-grid">
+        <div class="account-card">
+            <h3>Profile</h3>
+            <div class="profile-info">
+                <div class="info-row"><span class="label">Username:</span> <span>{{ user.username }}</span></div>
+                <div class="info-row"><span class="label">Email:</span> <span>{{ user.email or 'Not set' }}</span></div>
+                <div class="info-row"><span class="label">Balance:</span> <span>{{ user.coins }} coins</span></div>
+                <div class="info-row"><span class="label">Member since:</span> <span>{{ user.created_at.strftime('%b %d, %Y') if user.created_at else '-' }}</span></div>
+            </div>
+            <form method="POST" action="/account/update" class="update-form">
+                <div class="form-group">
+                    <label for="email">Update Email</label>
+                    <input type="email" id="email" name="email" value="{{ user.email or '' }}" placeholder="your@email.com">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Update</button>
+            </form>
+        </div>
+
+        <div class="account-card">
+            <h3>Statistics</h3>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.total_matches }}</span>
+                    <span class="stat-label">Total Games</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.wins }}</span>
+                    <span class="stat-label">Wins</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.losses }}</span>
+                    <span class="stat-label">Losses</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.win_rate }}%</span>
+                    <span class="stat-label">Win Rate</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.total_wagered }}</span>
+                    <span class="stat-label">Total Wagered</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ stats.total_won }}</span>
+                    <span class="stat-label">Total Won</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="account-card">
+            <h3>VIP Status</h3>
+            <div class="vip-card-display">
+                <span class="vip-tier-large vip-{{ vip.tier|lower }}">{{ vip.tier }}</span>
+                <div class="vip-progress-bar large">
+                    <div class="vip-progress-fill" style="width: {{ vip.progress_percent }}%"></div>
+                </div>
+                <div class="vip-details">
+                    <span>Total Wagered: {{ vip.total_wagered|int }}</span>
+                    {% if vip.next_tier[0] %}
+                    <span>Next Tier: {{ vip.next_tier[0] }} at {{ vip.next_tier[1]|int }}</span>
+                    {% else %}
+                    <span>Maximum tier reached!</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="account-card">
+            <h3>Affiliate Program</h3>
+            <div class="affiliate-info">
+                <div class="info-row">
+                    <span class="label">Your Referral Code:</span>
+                    <span class="affiliate-code">{{ user.affiliate_code }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Referrals:</span>
+                    <span>{{ referral_count }}</span>
+                </div>
+                <p class="affiliate-tip">Share your code with friends. You earn 5% commission on their match stakes!</p>
+                <a href="/affiliate" class="btn btn-secondary btn-sm">View Affiliate Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="account-tabs">
+        <a href="/account/transactions" class="btn btn-secondary">Transaction History</a>
+        <a href="/account/games" class="btn btn-secondary">Game History</a>
+    </div>
+</div>
+{% endblock %}
